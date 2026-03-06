@@ -11,6 +11,7 @@ const warehouseRoutes    = require('./warehouse.routes');
 const machineRoutes              = require('./machine.routes');
 const itemRoutes                 = require('./item.routes');
 const productionParameterRoutes  = require('./productionParameter.routes');
+const tagRoutes                  = require('./tag.routes');
 
 // Mount routes
 router.use('/auth',          authRoutes);
@@ -23,5 +24,6 @@ router.use('/warehouses',    warehouseRoutes);
 router.use('/machines',              machineRoutes);
 router.use('/items',                 itemRoutes);
 router.use('/production-parameters', productionParameterRoutes);
+router.use('/tags',                  tagRoutes);
 
 module.exports = router;

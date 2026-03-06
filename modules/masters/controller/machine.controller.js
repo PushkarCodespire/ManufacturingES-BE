@@ -130,16 +130,25 @@ const bulkCreateMachines = async (req, res) => {
         updated_by:         req.user?.id || null,
       });
 
-      // Assign parameters
+      // Assign parameters by ID
+      const paramIds = new Set();
       if (Array.isArray(item.parameter_ids)) {
-        for (const pid of item.parameter_ids) {
-          await MachineParameter.create({
-            machine_id:    machine.id,
-            parameter_id:  pid,
-            is_production: false,
-            is_barcode:    false,
-          });
+        item.parameter_ids.forEach((pid) => paramIds.add(pid));
+      }
+      // Also resolve parameter_names to IDs (for hardcoded column names)
+      if (Array.isArray(item.parameter_names)) {
+        for (const pName of item.parameter_names) {
+          const found = await ProductionParameter.findOne({ where: { name: pName, is_active: true } });
+          if (found) paramIds.add(found.id);
         }
+      }
+      for (const pid of paramIds) {
+        await MachineParameter.create({
+          machine_id:    machine.id,
+          parameter_id:  pid,
+          is_production: false,
+          is_barcode:    false,
+        });
       }
 
       created.push(machine);

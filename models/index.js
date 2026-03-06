@@ -13,6 +13,7 @@ const Machine              = require('../modules/masters/model/Machine');
 const Item                 = require('../modules/masters/model/Item');
 const ProductionParameter  = require('../modules/masters/model/ProductionParameter');
 const MachineParameter     = require('../modules/masters/model/MachineParameter');
+const Tag                  = require('../modules/masters/model/Tag');
 
 // ─── Associations ────────────────────────────────────────────────────────────
 
@@ -82,6 +83,10 @@ ProductionParameter.belongsToMany(Machine, {
 MachineParameter.belongsTo(Machine,             { foreignKey: 'machine_id' });
 MachineParameter.belongsTo(ProductionParameter,  { foreignKey: 'parameter_id' });
 
+// Tag audit — created_by / updated_by
+Tag.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
+Tag.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
+
 // User ↔ Site  (many-to-many via user_sites junction table)
 User.belongsToMany(Site,      { through: 'user_sites',      foreignKey: 'user_id',      otherKey: 'site_id' });
 Site.belongsToMany(User,      { through: 'user_sites',      foreignKey: 'site_id',      otherKey: 'user_id' });
@@ -106,4 +111,5 @@ module.exports = {
   Item,
   ProductionParameter,
   MachineParameter,
+  Tag,
 };
