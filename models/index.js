@@ -9,6 +9,10 @@ const Notification = require('../modules/notification/model/Notification');
 const Site         = require('../modules/masters/model/Site');
 const Warehouse    = require('../modules/masters/model/Warehouse');
 const Shift        = require('../modules/masters/model/Shift');
+const Machine              = require('../modules/masters/model/Machine');
+const Item                 = require('../modules/masters/model/Item');
+const ProductionParameter  = require('../modules/masters/model/ProductionParameter');
+const MachineParameter     = require('../modules/masters/model/MachineParameter');
 
 // ─── Associations ────────────────────────────────────────────────────────────
 
@@ -48,6 +52,36 @@ Site.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
 Shift.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
 Shift.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
 
+// Warehouse audit — created_by / updated_by
+Warehouse.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
+Warehouse.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
+
+// Machine — self-referencing parent
+Machine.belongsTo(Machine, { foreignKey: 'parent_id', as: 'Parent' });
+Machine.hasMany(Machine,   { foreignKey: 'parent_id', as: 'Children' });
+
+// Machine audit — created_by / updated_by
+Machine.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
+Machine.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
+
+// Item audit — created_by / updated_by
+Item.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
+Item.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
+
+// ProductionParameter audit
+ProductionParameter.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
+ProductionParameter.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
+
+// Machine ↔ ProductionParameter (many-to-many via machine_parameters)
+Machine.belongsToMany(ProductionParameter, {
+  through: MachineParameter, foreignKey: 'machine_id', otherKey: 'parameter_id', as: 'Parameters',
+});
+ProductionParameter.belongsToMany(Machine, {
+  through: MachineParameter, foreignKey: 'parameter_id', otherKey: 'machine_id', as: 'Machines',
+});
+MachineParameter.belongsTo(Machine,             { foreignKey: 'machine_id' });
+MachineParameter.belongsTo(ProductionParameter,  { foreignKey: 'parameter_id' });
+
 // User ↔ Site  (many-to-many via user_sites junction table)
 User.belongsToMany(Site,      { through: 'user_sites',      foreignKey: 'user_id',      otherKey: 'site_id' });
 Site.belongsToMany(User,      { through: 'user_sites',      foreignKey: 'site_id',      otherKey: 'user_id' });
@@ -68,4 +102,8 @@ module.exports = {
   Site,
   Warehouse,
   Shift,
+  Machine,
+  Item,
+  ProductionParameter,
+  MachineParameter,
 };

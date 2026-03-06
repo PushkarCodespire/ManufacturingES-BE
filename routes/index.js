@@ -7,6 +7,10 @@ const auditRoutes        = require('./audit.routes');
 const notificationRoutes = require('./notification.routes');
 const siteRoutes         = require('./site.routes');
 const shiftRoutes        = require('./shift.routes');
+const warehouseRoutes    = require('./warehouse.routes');
+const machineRoutes              = require('./machine.routes');
+const itemRoutes                 = require('./item.routes');
+const productionParameterRoutes  = require('./productionParameter.routes');
 
 // Mount routes
 router.use('/auth',          authRoutes);
@@ -15,5 +19,9 @@ router.use('/audit',         auditRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/sites',         siteRoutes);
 router.use('/shifts',        shiftRoutes);
+router.use('/warehouses',    warehouseRoutes);
+router.use('/machines',              machineRoutes);
+router.use('/items',                 itemRoutes);
+router.use('/production-parameters', productionParameterRoutes);
 
 module.exports = router;

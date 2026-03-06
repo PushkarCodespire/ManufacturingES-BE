@@ -13,7 +13,30 @@ const Warehouse = sequelize.define(
     name:      { type: DataTypes.STRING(100), allowNull: false },
     code:      { type: DataTypes.STRING(20),  allowNull: false, comment: 'Short code e.g. RMS-01' },
     site_id:   { type: DataTypes.INTEGER,     allowNull: true,  comment: 'FK to sites.id' },
-    is_active: { type: DataTypes.BOOLEAN,     defaultValue: true },
+
+    linked_partners:           { type: DataTypes.STRING(500), allowNull: true,  comment: 'Comma-separated partner names' },
+
+    // ── Attributes (Yes / No toggles) ──────────────────────────────────────
+    mrn_to_issue:              { type: DataTypes.BOOLEAN, defaultValue: false },
+    rack_tracking:             { type: DataTypes.BOOLEAN, defaultValue: false },
+    costing_calculation:       { type: DataTypes.BOOLEAN, defaultValue: false },
+    bundle_tracking:           { type: DataTypes.BOOLEAN, defaultValue: false },
+
+    // ── GRN settings ───────────────────────────────────────────────────────
+    generate_grn_sequentially: { type: DataTypes.BOOLEAN,    defaultValue: true },
+    grn_prefix:                { type: DataTypes.STRING(2),  allowNull: true },
+    year_basis:                { type: DataTypes.STRING(20), defaultValue: 'calendar_year', comment: 'calendar_year | financial_year' },
+
+    // ── Configurable param blocks (stored as JSON) ─────────────────────────
+    pre_approval_params:       { type: DataTypes.JSONB, defaultValue: [],
+                                 comment: '[{ request_type, partner_type, approval_check }]' },
+    item_level_params:         { type: DataTypes.JSONB, defaultValue: { approved_tags: [], unapproved_tags: [] },
+                                 comment: '{ approved_tags: [...], unapproved_tags: [...] }' },
+
+    // ── Status & audit ─────────────────────────────────────────────────────
+    is_active:   { type: DataTypes.BOOLEAN, defaultValue: true },
+    created_by:  { type: DataTypes.INTEGER, allowNull: true, comment: 'FK to users.id' },
+    updated_by:  { type: DataTypes.INTEGER, allowNull: true, comment: 'FK to users.id' },
   },
   {
     tableName:  'warehouses',
