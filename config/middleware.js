@@ -26,6 +26,11 @@ const authenticate = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'User not found or inactive' });
     }
 
+    // Permissions-change invalidation: reject tokens issued before token_invalidated_at
+    if (user.token_invalidated_at && decoded.iat * 1000 < new Date(user.token_invalidated_at).getTime()) {
+      return res.status(401).json({ success: false, message: 'Session invalidated. Please log in again.' });
+    }
+
     req.user = user;
     next();
   } catch (err) {

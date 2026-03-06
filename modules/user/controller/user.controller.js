@@ -268,6 +268,13 @@ const updateUser = async (req, res) => {
 
     // Update scalar fields (exclude junction table fields)
     const { site_ids, warehouse_ids, ...scalarFields } = value;
+
+    // When permissions are changed, invalidate existing tokens so the affected
+    // user is forced to re-authenticate and pick up the new permission set.
+    if ('permissions' in scalarFields) {
+      scalarFields.token_invalidated_at = new Date();
+    }
+
     await user.update(scalarFields);
 
     // Update many-to-many associations

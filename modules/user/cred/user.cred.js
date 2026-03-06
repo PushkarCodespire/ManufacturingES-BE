@@ -68,6 +68,8 @@ const updateUserSchema = Joi.object({
   site_ids: Joi.array().items(Joi.number().integer().positive()).optional().allow(null).default([]),
   warehouse_ids: Joi.array().items(Joi.number().integer().positive()).optional().allow(null).default([]),
   landing_page: Joi.string().valid(...LANDING_PAGES).optional(),
+  // Flat array of permission tree keys (from Employee Detail access tabs)
+  permissions: Joi.array().items(Joi.string().trim()).optional().default([]),
 });
 
 const validateUserId     = (data) => userIdSchema.validate(data,     { abortEarly: false });

@@ -24,10 +24,12 @@ router.get('/roles',       getRoles);
 router.get('/sites',       getSites);
 router.get('/warehouses',  getWarehouses);
 
-// ── Employee management (IT Admin / Plant Head only) ─────────────────────────
-router.get( '/',     authorize('plant_head', 'it_admin'), getAllUsers);
-router.post('/',     authorize('plant_head', 'it_admin'), createUser);
-router.get(  '/:id',         authorize('plant_head', 'it_admin'), getUserById);
+// ── Read — any authenticated user (frontend gates with sites-employees___access-read) ─
+router.get('/',    getAllUsers);
+router.get('/:id', getUserById);
+
+// ── Write — admin only ───────────────────────────────────────────────────────
+router.post('/',             authorize('plant_head', 'it_admin'), createUser);
 router.patch('/:id',         authorize('plant_head', 'it_admin'), updateUser);
 router.patch('/:id/toggle',  authorize('plant_head', 'it_admin'), toggleUserStatus);
 
