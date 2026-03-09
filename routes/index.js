@@ -12,6 +12,13 @@ const machineRoutes              = require('./machine.routes');
 const itemRoutes                 = require('./item.routes');
 const productionParameterRoutes  = require('./productionParameter.routes');
 const tagRoutes                  = require('./tag.routes');
+const vendorRoutes               = require('./vendor.routes');
+const vendorCostingRoutes        = require('./vendorCosting.routes');
+const customFieldGroupRoutes     = require('./customFieldGroup.routes');
+const integrationRoutes          = require('./integration.routes');
+const stickerTemplateRoutes      = require('./stickerTemplate.routes');
+const templateRoutes             = require('./template.routes');
+const productionFormRoutes       = require('./productionForm.routes');
 
 // Mount routes
 router.use('/auth',          authRoutes);
@@ -25,5 +32,12 @@ router.use('/machines',              machineRoutes);
 router.use('/items',                 itemRoutes);
 router.use('/production-parameters', productionParameterRoutes);
 router.use('/tags',                  tagRoutes);
+router.use('/vendors',               vendorRoutes);
+router.use('/vendor-costings',       vendorCostingRoutes);
+router.use('/custom-field-groups',   customFieldGroupRoutes);
+router.use('/integrations',          integrationRoutes);
+router.use('/sticker-templates',     stickerTemplateRoutes);
+router.use('/templates',             templateRoutes);
+router.use('/production-forms',      productionFormRoutes);
 
 module.exports = router;
