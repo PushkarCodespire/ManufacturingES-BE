@@ -19,6 +19,7 @@ const BomLine              = require('../modules/masters/model/BomLine');
 const CycleTimeRule        = require('../modules/masters/model/CycleTimeRule');
 const DailyTarget          = require('../modules/masters/model/DailyTarget');
 const DowntimeReason       = require('../modules/masters/model/DowntimeReason');
+const CtqIssue             = require('../modules/masters/model/CtqIssue');
 
 // ─── Associations ────────────────────────────────────────────────────────────
 
@@ -124,6 +125,10 @@ DailyTarget.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
 DowntimeReason.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
 DowntimeReason.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
 
+// CtqIssue audit
+CtqIssue.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
+CtqIssue.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
+
 // User ↔ Site  (many-to-many via user_sites junction table)
 User.belongsToMany(Site,      { through: 'user_sites',      foreignKey: 'user_id',      otherKey: 'site_id' });
 Site.belongsToMany(User,      { through: 'user_sites',      foreignKey: 'site_id',      otherKey: 'user_id' });
@@ -154,4 +159,5 @@ module.exports = {
   CycleTimeRule,
   DailyTarget,
   DowntimeReason,
+  CtqIssue,
 };
