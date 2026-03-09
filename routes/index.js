@@ -24,6 +24,9 @@ const bomRoutes                  = require('./bom.routes');
 const cycleTimeRuleRoutes        = require('./cycleTimeRule.routes');
 const downtimeReasonRoutes       = require('./downtimeReason.routes');
 const packageRoutes              = require('./package.routes');
+const ctqIssueRoutes             = require('./ctqIssue.routes');
+const toolRoutes                 = require('./tool.routes');
+const reportRoutes               = require('./report.routes');
 
 // Mount routes
 router.use('/auth',          authRoutes);
@@ -49,5 +52,8 @@ router.use('/boms',                  bomRoutes);
 router.use('/cycle-time-rules',      cycleTimeRuleRoutes);
 router.use('/downtime-reasons',      downtimeReasonRoutes);
 router.use('/packages',              packageRoutes);
+router.use('/ctq-issues',            ctqIssueRoutes);
+router.use('/tools',                 toolRoutes);
+router.use('/reports',               reportRoutes);
 
 module.exports = router;

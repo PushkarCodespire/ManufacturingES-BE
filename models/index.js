@@ -28,6 +28,9 @@ const CycleTimeRule        = require('../modules/masters/model/CycleTimeRule');
 const DailyTarget          = require('../modules/masters/model/DailyTarget');
 const DowntimeReason       = require('../modules/masters/model/DowntimeReason');
 const Package              = require('../modules/masters/model/Package');
+const CtqIssue             = require('../modules/masters/model/CtqIssue');
+const Tool                 = require('../modules/masters/model/Tool');
+const Report               = require('../modules/masters/model/Report');
 
 // ─── Associations ────────────────────────────────────────────────────────────
 
@@ -175,6 +178,17 @@ DowntimeReason.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
 // Package audit
 Package.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
 Package.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
+// CtqIssue audit
+CtqIssue.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
+CtqIssue.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
+
+// Tool audit
+Tool.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
+Tool.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
+
+// Report audit
+Report.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
+Report.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
 
 // User ↔ Site  (many-to-many via user_sites junction table)
 User.belongsToMany(Site,      { through: 'user_sites',      foreignKey: 'user_id',      otherKey: 'site_id' });
@@ -215,4 +229,7 @@ module.exports = {
   DailyTarget,
   DowntimeReason,
   Package,
+  CtqIssue,
+  Tool,
+  Report,
 };

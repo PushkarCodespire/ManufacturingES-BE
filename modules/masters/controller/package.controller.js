@@ -18,7 +18,7 @@ exports.getAll = async (req, res) => {
       include: AUDIT_INCLUDE,
       order:   [['createdAt', 'DESC']],
     });
-    res.json(packages);
+    res.json({ success: true, data: packages });
   } catch (err) {
     console.error('package.getAll:', err);
     res.status(500).json({ success: false, message: 'Failed to fetch packages' });
@@ -30,7 +30,7 @@ exports.getById = async (req, res) => {
   try {
     const pkg = await Package.findByPk(req.params.id, { include: AUDIT_INCLUDE });
     if (!pkg) return res.status(404).json({ success: false, message: 'Package not found' });
-    res.json(pkg);
+    res.json({ success: true, data: pkg });
   } catch (err) {
     console.error('package.getById:', err);
     res.status(500).json({ success: false, message: 'Failed to fetch package' });
