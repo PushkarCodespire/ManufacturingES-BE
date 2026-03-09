@@ -12,6 +12,10 @@ const machineRoutes              = require('./machine.routes');
 const itemRoutes                 = require('./item.routes');
 const productionParameterRoutes  = require('./productionParameter.routes');
 const tagRoutes                  = require('./tag.routes');
+const uploadRoutes               = require('./upload.routes');
+const bomRoutes                  = require('./bom.routes');
+const cycleTimeRuleRoutes        = require('./cycleTimeRule.routes');
+const downtimeReasonRoutes       = require('./downtimeReason.routes');
 
 // Mount routes
 router.use('/auth',          authRoutes);
@@ -25,5 +29,9 @@ router.use('/machines',              machineRoutes);
 router.use('/items',                 itemRoutes);
 router.use('/production-parameters', productionParameterRoutes);
 router.use('/tags',                  tagRoutes);
+router.use('/upload',                uploadRoutes);
+router.use('/boms',                  bomRoutes);
+router.use('/cycle-time-rules',      cycleTimeRuleRoutes);
+router.use('/downtime-reasons',      downtimeReasonRoutes);
 
 module.exports = router;
