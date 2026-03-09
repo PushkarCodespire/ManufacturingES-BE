@@ -22,6 +22,11 @@ const IntegrationLog       = require('../modules/masters/model/IntegrationLog');
 const StickerTemplate      = require('../modules/masters/model/StickerTemplate');
 const Template             = require('../modules/masters/model/Template');
 const ProductionForm       = require('../modules/masters/model/ProductionForm');
+const Bom                  = require('../modules/masters/model/Bom');
+const BomLine              = require('../modules/masters/model/BomLine');
+const CycleTimeRule        = require('../modules/masters/model/CycleTimeRule');
+const DailyTarget          = require('../modules/masters/model/DailyTarget');
+const DowntimeReason       = require('../modules/masters/model/DowntimeReason');
 
 // ─── Associations ────────────────────────────────────────────────────────────
 
@@ -134,6 +139,38 @@ MachineParameter.belongsTo(ProductionParameter,  { foreignKey: 'parameter_id' })
 Tag.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
 Tag.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
 
+// Item → Bom (one BOM per item)
+Item.hasOne(Bom, { foreignKey: 'item_id', as: 'Bom' });
+Bom.belongsTo(Item, { foreignKey: 'item_id', as: 'Item' });
+
+// Bom → BomLine (one BOM has many lines)
+Bom.hasMany(BomLine, { foreignKey: 'bom_id', as: 'Lines', onDelete: 'CASCADE' });
+BomLine.belongsTo(Bom, { foreignKey: 'bom_id' });
+
+// BomLine → Item (component item)
+BomLine.belongsTo(Item, { foreignKey: 'component_item_id', as: 'Component' });
+
+// Bom audit
+Bom.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
+Bom.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
+Bom.belongsTo(User, { foreignKey: 'finalized_by', as: 'Finalizer' });
+
+// CycleTimeRule audit
+CycleTimeRule.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
+CycleTimeRule.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
+
+// CycleTimeRule → DailyTarget
+CycleTimeRule.hasMany(DailyTarget, { foreignKey: 'rule_id', as: 'DailyTargets', onDelete: 'CASCADE' });
+DailyTarget.belongsTo(CycleTimeRule, { foreignKey: 'rule_id' });
+
+// DailyTarget audit
+DailyTarget.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
+DailyTarget.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
+
+// DowntimeReason audit
+DowntimeReason.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
+DowntimeReason.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
+
 // User ↔ Site  (many-to-many via user_sites junction table)
 User.belongsToMany(Site,      { through: 'user_sites',      foreignKey: 'user_id',      otherKey: 'site_id' });
 Site.belongsToMany(User,      { through: 'user_sites',      foreignKey: 'site_id',      otherKey: 'user_id' });
@@ -167,4 +204,9 @@ module.exports = {
   StickerTemplate,
   Template,
   ProductionForm,
+  Bom,
+  BomLine,
+  CycleTimeRule,
+  DailyTarget,
+  DowntimeReason,
 };

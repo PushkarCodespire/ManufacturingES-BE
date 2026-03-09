@@ -19,6 +19,10 @@ const integrationRoutes          = require('./integration.routes');
 const stickerTemplateRoutes      = require('./stickerTemplate.routes');
 const templateRoutes             = require('./template.routes');
 const productionFormRoutes       = require('./productionForm.routes');
+const uploadRoutes               = require('./upload.routes');
+const bomRoutes                  = require('./bom.routes');
+const cycleTimeRuleRoutes        = require('./cycleTimeRule.routes');
+const downtimeReasonRoutes       = require('./downtimeReason.routes');
 
 // Mount routes
 router.use('/auth',          authRoutes);
@@ -39,5 +43,9 @@ router.use('/integrations',          integrationRoutes);
 router.use('/sticker-templates',     stickerTemplateRoutes);
 router.use('/templates',             templateRoutes);
 router.use('/production-forms',      productionFormRoutes);
+router.use('/upload',                uploadRoutes);
+router.use('/boms',                  bomRoutes);
+router.use('/cycle-time-rules',      cycleTimeRuleRoutes);
+router.use('/downtime-reasons',      downtimeReasonRoutes);
 
 module.exports = router;
