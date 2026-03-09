@@ -4,25 +4,27 @@
   "description": "Dynatech ONE — Backend API",
   "main": "index.js",
   "scripts": {
-    "start":              "node index.js",
-    "dev":                "nodemon index.js",
-    "seed":               "node seeders/index.js",
-    "migration:create":   "node scripts/create-migration.js",
-    "migration:up":       "node -e \"require('./config/migrator').runMigrations()\"",
-    "migration:down":     "node -e \"require('./config/migrator').rollbackLastMigration()\"",
-    "migration:list":     "node -e \"const {umzug}=require('./config/migrator'); Promise.all([umzug.executed(), umzug.pending()]).then(([done,pending])=>{ console.log('Applied:', done.map(m=>m.name)); console.log('Pending:', pending.map(m=>m.name)); })\""
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "seed": "node seeders/index.js",
+    "migration:create": "node scripts/create-migration.js",
+    "migration:up": "node -e \"require('./config/migrator').runMigrations()\"",
+    "migration:down": "node -e \"require('./config/migrator').rollbackLastMigration()\"",
+    "migration:list": "node -e \"const {umzug}=require('./config/migrator'); Promise.all([umzug.executed(), umzug.pending()]).then(([done,pending])=>{ console.log('Applied:', done.map(m=>m.name)); console.log('Pending:', pending.map(m=>m.name)); })\""
   },
   "dependencies": {
-    "bcryptjs":  "^2.4.3",
-    "cors":      "^2.8.5",
-    "dotenv":    "^16.3.1",
-    "express":   "^4.18.2",
-    "joi":       "^17.11.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "joi": "^17.11.0",
     "jsonwebtoken": "^9.0.2",
-    "pg":        "^8.11.3",
+    "multer": "^2.1.1",
+    "pg": "^8.11.3",
     "pg-hstore": "^2.3.4",
     "sequelize": "^6.35.1",
-    "umzug":     "^3.8.0"
+    "swagger-ui-express": "^5.0.1",
+    "umzug": "^3.8.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"

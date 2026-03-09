@@ -167,6 +167,7 @@ const login = async (req, res) => {
           role:           user.Role,
           department:     user.Department,
           is_first_login: user.is_first_login,
+          permissions:    user.permissions ?? [],
         },
       },
     });
@@ -207,6 +208,12 @@ const refresh = async (req, res) => {
 
     if (!user || !user.is_active) {
       return res.status(401).json({ success: false, message: 'User not found or inactive' });
+    }
+
+    // Permissions-change invalidation: reject sessions created before token_invalidated_at
+    if (user.token_invalidated_at && new Date(session.createdAt) < new Date(user.token_invalidated_at)) {
+      await session.update({ is_revoked: true }); // Clean up the dead session
+      return res.status(401).json({ success: false, message: 'Session invalidated. Please log in again.' });
     }
 
     // Revoke old session (token rotation for security)

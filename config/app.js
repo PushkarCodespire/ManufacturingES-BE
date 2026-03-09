@@ -1,8 +1,11 @@
-const express = require('express');
-const cors = require('cors');
+const express     = require('express');
+const cors        = require('cors');
+const path        = require('path');
+const swaggerUi   = require('swagger-ui-express');
 require('dotenv').config();
 
-const routes = require('../routes');
+const routes      = require('../routes');
+const swaggerSpec = require('./swagger');
 
 const app = express();
 
@@ -17,6 +20,19 @@ app.use(
 // Body parsers
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Swagger UI — http://localhost:5000/api-docs
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customSiteTitle: 'Dynatech ONE — API Docs',
+  swaggerOptions: {
+    persistAuthorization: true,   // keeps the token between page refreshes
+    displayRequestDuration: true,
+    filter: true,
+  },
+}));
+
+// Serve uploaded files as static assets — /uploads/filename.jpg
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // Health check
 app.get('/health', (req, res) => {

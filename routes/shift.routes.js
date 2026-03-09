@@ -11,9 +11,12 @@ const { authenticate, authorize } = require('../config/middleware');
 
 router.use(authenticate);
 
-router.get( '/',     authorize('plant_head', 'it_admin'), getAllShifts);
+// Read — any authenticated user (frontend gates with sites-shifts___leaves-read permission)
+router.get( '/',     getAllShifts);
+router.get( '/:id',  getShiftById);
+
+// Write — admin only
 router.post('/',     authorize('plant_head', 'it_admin'), createShift);
-router.get( '/:id',  authorize('plant_head', 'it_admin'), getShiftById);
 router.patch('/:id', authorize('plant_head', 'it_admin'), updateShift);
 router.delete('/:id',authorize('plant_head', 'it_admin'), deleteShift);
 

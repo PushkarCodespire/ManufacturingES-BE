@@ -25,6 +25,21 @@ const User = sequelize.define(
     // SYS-002: Force password change on first login
     is_first_login: { type: DataTypes.BOOLEAN, defaultValue: true },
     is_active:      { type: DataTypes.BOOLEAN, defaultValue: true },
+    // Flat array of permission keys assigned via Employee Detail → Access Tabs
+    // e.g. ['sites-configuration-read', 'store-requests-material_request-read', ...]
+    permissions: {
+      type:         DataTypes.JSONB,
+      defaultValue: [],
+      comment:      'Flat array of checked permission tree keys',
+    },
+    // Session invalidation: set to NOW() when permissions are updated by admin.
+    // authenticate middleware and refresh handler reject tokens issued before this time.
+    token_invalidated_at: {
+      type:         DataTypes.DATE,
+      allowNull:    true,
+      defaultValue: null,
+      comment:      'Tokens with iat before this timestamp are rejected → forces re-login',
+    },
   },
   {
     tableName: 'users',
