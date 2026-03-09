@@ -37,8 +37,12 @@ const swaggerSpec = {
     { name: 'Users',         description: 'Employee CRUD & lookup dropdowns' },
     { name: 'Sites',         description: 'Site / factory configuration (Masters)' },
     { name: 'Shifts',        description: 'Shift management (Masters)' },
-    { name: 'Audit',         description: 'Audit log & activity trail (SYS-007)' },
-    { name: 'Notifications', description: 'In-app notification bell' },
+    { name: 'Audit',                description: 'Audit log & activity trail (SYS-007)' },
+    { name: 'Notifications',        description: 'In-app notification bell' },
+    { name: 'Warehouses',           description: 'Warehouse / storage location management (Masters)' },
+    { name: 'Machines',             description: 'Production equipment & hierarchy (Masters)' },
+    { name: 'Items',                description: 'Parts / materials master (Masters)' },
+    { name: 'ProductionParameters', description: 'QC & production parameters (Masters)' },
   ],
 
   // ── Security ──────────────────────────────────────────────────────────────
@@ -375,6 +379,269 @@ const swaggerSpec = {
         properties: {
           success:      { type: 'boolean', example: true },
           unread_count: { type: 'integer', example: 3 },
+        },
+      },
+
+      // ── Warehouse ────────────────────────────────────────────────────
+      WarehouseResponse: {
+        type: 'object',
+        properties: {
+          id:                        { type: 'integer', example: 1 },
+          name:                      { type: 'string',  example: 'Raw Material Store' },
+          code:                      { type: 'string',  example: 'RAW-01' },
+          site_id:                   { type: 'integer', example: 1, nullable: true },
+          linked_partners:           { type: 'string',  example: 'Partner A, Partner B', nullable: true },
+          mrn_to_issue:              { type: 'boolean', example: false },
+          rack_tracking:             { type: 'boolean', example: false },
+          costing_calculation:       { type: 'boolean', example: false },
+          bundle_tracking:           { type: 'boolean', example: false },
+          generate_grn_sequentially: { type: 'boolean', example: true },
+          grn_prefix:                { type: 'string',  example: 'GRN', nullable: true },
+          year_basis:                { type: 'string',  example: 'calendar_year', enum: ['calendar_year', 'financial_year'] },
+          pre_approval_params:       { type: 'array', items: { type: 'object' }, example: [] },
+          item_level_params:         { type: 'object', example: { approved_tags: [], unapproved_tags: [] } },
+          is_active:                 { type: 'boolean', example: true },
+          created_by:                { type: 'integer', example: 1 },
+          updated_by:                { type: 'integer', example: 1 },
+          Creator:                   { type: 'object', properties: { id: { type: 'integer' }, name: { type: 'string' }, employee_id: { type: 'string' } }, nullable: true },
+          Updater:                   { type: 'object', properties: { id: { type: 'integer' }, name: { type: 'string' }, employee_id: { type: 'string' } }, nullable: true },
+          createdAt:                 { type: 'string', format: 'date-time', example: '2026-01-15T08:30:00.000Z' },
+          updatedAt:                 { type: 'string', format: 'date-time', example: '2026-03-01T10:00:00.000Z' },
+        },
+      },
+      CreateWarehouseRequest: {
+        type:     'object',
+        required: ['name'],
+        properties: {
+          name:                      { type: 'string',  example: 'Raw Material Store' },
+          site_id:                   { type: 'integer', example: 1 },
+          linked_partners:           { type: 'string',  example: 'Partner A, Partner B' },
+          mrn_to_issue:              { type: 'boolean', example: false },
+          rack_tracking:             { type: 'boolean', example: false },
+          costing_calculation:       { type: 'boolean', example: false },
+          bundle_tracking:           { type: 'boolean', example: false },
+          generate_grn_sequentially: { type: 'boolean', example: true },
+          grn_prefix:                { type: 'string',  example: 'GRN' },
+          year_basis:                { type: 'string',  example: 'calendar_year', enum: ['calendar_year', 'financial_year'] },
+          pre_approval_params:       { type: 'array',   items: { type: 'object' }, example: [] },
+          item_level_params:         { type: 'object',  example: { approved_tags: [], unapproved_tags: [] } },
+        },
+      },
+      UpdateWarehouseRequest: {
+        type: 'object',
+        description: 'All fields optional — send only what needs to change',
+        properties: {
+          name:                      { type: 'string',  example: 'Raw Material Store Updated' },
+          site_id:                   { type: 'integer', example: 2 },
+          linked_partners:           { type: 'string',  example: 'Partner C' },
+          mrn_to_issue:              { type: 'boolean', example: true },
+          rack_tracking:             { type: 'boolean', example: true },
+          costing_calculation:       { type: 'boolean', example: false },
+          bundle_tracking:           { type: 'boolean', example: false },
+          generate_grn_sequentially: { type: 'boolean', example: true },
+          grn_prefix:                { type: 'string',  example: 'GRN' },
+          year_basis:                { type: 'string',  example: 'financial_year' },
+          pre_approval_params:       { type: 'array',   items: { type: 'object' } },
+          item_level_params:         { type: 'object' },
+        },
+      },
+
+      // ── Machine ──────────────────────────────────────────────────────
+      MachineResponse: {
+        type: 'object',
+        properties: {
+          id:                    { type: 'integer', example: 1 },
+          name:                  { type: 'string',  example: 'CNC Lathe' },
+          code:                  { type: 'string',  example: 'CNC-01' },
+          parent_id:             { type: 'integer', example: null, nullable: true },
+          description:           { type: 'string',  example: 'High-precision turning', nullable: true },
+          production_against:    { type: 'string',  example: 'none', enum: ['none', 'work_order', 'sales_order'] },
+          shift:                 { type: 'string',  example: 'Day Shift', nullable: true },
+          setup_time_hrs:        { type: 'number',  example: 1.5, nullable: true },
+          queue_time_days:       { type: 'number',  example: 0.5, nullable: true },
+          min_batch_quantity:    { type: 'integer', example: 100, nullable: true },
+          item_group_tags:       { type: 'array',   items: { type: 'string' }, example: [] },
+          machine_group_tags:    { type: 'array',   items: { type: 'string' }, example: [] },
+          iot_device_tags:       { type: 'array',   items: { type: 'string' }, example: [] },
+          weighted_production:   { type: 'boolean', example: false },
+          auto_production:       { type: 'boolean', example: false },
+          start_stop_flow:       { type: 'boolean', example: false },
+          serialization:         { type: 'boolean', example: false },
+          is_active:             { type: 'boolean', example: true },
+          created_by:            { type: 'integer', example: 1 },
+          updated_by:            { type: 'integer', example: 1 },
+          Creator:               { type: 'object', properties: { id: { type: 'integer' }, name: { type: 'string' }, employee_id: { type: 'string' } }, nullable: true },
+          Updater:               { type: 'object', properties: { id: { type: 'integer' }, name: { type: 'string' }, employee_id: { type: 'string' } }, nullable: true },
+          Parent:                { type: 'object', properties: { id: { type: 'integer' }, name: { type: 'string' }, code: { type: 'string' } }, nullable: true },
+          Children:              { type: 'array',  items: { type: 'object', properties: { id: { type: 'integer' }, name: { type: 'string' }, code: { type: 'string' } } } },
+          Parameters:            { type: 'array',  items: { $ref: '#/components/schemas/ProductionParameterResponse' } },
+          createdAt:             { type: 'string', format: 'date-time', example: '2026-01-15T08:30:00.000Z' },
+          updatedAt:             { type: 'string', format: 'date-time', example: '2026-03-01T10:00:00.000Z' },
+        },
+      },
+      CreateMachineRequest: {
+        type:     'object',
+        required: ['name'],
+        properties: {
+          name:               { type: 'string',  example: 'CNC Lathe' },
+          parent_id:          { type: 'integer', example: null, nullable: true, description: 'Parent machine ID for hierarchy' },
+          description:        { type: 'string',  example: 'High-precision turning' },
+          production_against: { type: 'string',  example: 'none', enum: ['none', 'work_order', 'sales_order'] },
+          parameter_ids:      { type: 'array',   items: { type: 'integer' }, example: [1, 2], description: 'Production parameter IDs to assign' },
+        },
+      },
+      UpdateMachineRequest: {
+        type: 'object',
+        description: 'All fields optional — send only what needs to change',
+        properties: {
+          name:               { type: 'string',  example: 'CNC Lathe Updated' },
+          parent_id:          { type: 'integer', example: 2, nullable: true },
+          description:        { type: 'string',  example: 'Updated description' },
+          production_against: { type: 'string',  example: 'work_order', enum: ['none', 'work_order', 'sales_order'] },
+          parameter_ids:      { type: 'array',   items: { type: 'integer' }, example: [1, 3], description: 'Replaces all assigned parameters' },
+        },
+      },
+      BulkCreateMachinesRequest: {
+        type:     'object',
+        required: ['machines'],
+        properties: {
+          machines: {
+            type: 'array',
+            description: 'Array of machines with optional children for hierarchy',
+            items: {
+              type: 'object',
+              required: ['name'],
+              properties: {
+                name:               { type: 'string',  example: 'CNC Line' },
+                parent_id:          { type: 'integer', example: null, nullable: true },
+                description:        { type: 'string',  example: 'CNC production line' },
+                production_against: { type: 'string',  example: 'none' },
+                parameter_ids:      { type: 'array',   items: { type: 'integer' }, example: [1] },
+                children: {
+                  type: 'array',
+                  description: 'Child machines (recursive)',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      name:               { type: 'string',  example: 'CNC Lathe #1' },
+                      description:        { type: 'string' },
+                      production_against: { type: 'string' },
+                      parameter_ids:      { type: 'array', items: { type: 'integer' } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      UpdateMachineParametersRequest: {
+        type:     'object',
+        required: ['parameters'],
+        properties: {
+          parameters: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['parameter_id'],
+              properties: {
+                parameter_id:  { type: 'integer', example: 1 },
+                is_production: { type: 'boolean', example: true,  description: 'Track in production recording' },
+                is_barcode:    { type: 'boolean', example: false, description: 'Enable barcode scanning' },
+              },
+            },
+          },
+        },
+      },
+
+      // ── Item ─────────────────────────────────────────────────────────
+      ItemResponse: {
+        type: 'object',
+        properties: {
+          id:          { type: 'integer', example: 1 },
+          name:        { type: 'string',  example: 'Steel Shaft' },
+          code:        { type: 'string',  example: 'STE-01' },
+          description: { type: 'string',  example: 'Grade: EN8', nullable: true },
+          unit:        { type: 'string',  example: 'Nos', nullable: true },
+          hsn_code:    { type: 'string',  example: '7307', nullable: true },
+          category:    { type: 'string',  example: 'Raw Material', enum: ['Raw Material', 'Component', 'Finished Good', 'Consumable'], nullable: true },
+          is_active:   { type: 'boolean', example: true },
+          created_by:  { type: 'integer', example: 1 },
+          updated_by:  { type: 'integer', example: 1 },
+          Creator:     { type: 'object', properties: { id: { type: 'integer' }, name: { type: 'string' }, employee_id: { type: 'string' } }, nullable: true },
+          Updater:     { type: 'object', properties: { id: { type: 'integer' }, name: { type: 'string' }, employee_id: { type: 'string' } }, nullable: true },
+          createdAt:   { type: 'string', format: 'date-time', example: '2026-01-15T08:30:00.000Z' },
+          updatedAt:   { type: 'string', format: 'date-time', example: '2026-03-01T10:00:00.000Z' },
+        },
+      },
+      CreateItemRequest: {
+        type:     'object',
+        required: ['name'],
+        properties: {
+          name:        { type: 'string', example: 'Steel Shaft' },
+          description: { type: 'string', example: 'Grade: EN8' },
+          unit:        { type: 'string', example: 'Nos', description: 'Unit of measure (Kg, Nos, Mtr, etc.)' },
+          hsn_code:    { type: 'string', example: '7307' },
+          category:    { type: 'string', example: 'Raw Material', enum: ['Raw Material', 'Component', 'Finished Good', 'Consumable'] },
+        },
+      },
+      UpdateItemRequest: {
+        type: 'object',
+        description: 'All fields optional — send only what needs to change',
+        properties: {
+          name:        { type: 'string', example: 'Steel Shaft Updated' },
+          description: { type: 'string', example: 'Grade: EN24' },
+          unit:        { type: 'string', example: 'Kg' },
+          hsn_code:    { type: 'string', example: '7308' },
+          category:    { type: 'string', example: 'Component', enum: ['Raw Material', 'Component', 'Finished Good', 'Consumable'] },
+        },
+      },
+
+      // ── Production Parameter ─────────────────────────────────────────
+      ProductionParameterResponse: {
+        type: 'object',
+        properties: {
+          id:         { type: 'integer', example: 1 },
+          name:       { type: 'string',  example: 'Temperature' },
+          type:       { type: 'string',  example: 'number', enum: ['text', 'number', 'date', 'datetime', 'derived', 'integrated', 'checkbox'] },
+          formula:    { type: 'string',  example: null, nullable: true, description: 'Formula expression (for derived type)' },
+          ctq:        { type: 'string',  example: null, nullable: true, description: 'CTQ expression (for derived type)' },
+          is_active:  { type: 'boolean', example: true },
+          created_by: { type: 'integer', example: 1 },
+          updated_by: { type: 'integer', example: 1 },
+          Creator:    { type: 'object', properties: { id: { type: 'integer' }, name: { type: 'string' }, employee_id: { type: 'string' } }, nullable: true },
+          Updater:    { type: 'object', properties: { id: { type: 'integer' }, name: { type: 'string' }, employee_id: { type: 'string' } }, nullable: true },
+          createdAt:  { type: 'string', format: 'date-time', example: '2026-01-15T08:30:00.000Z' },
+          updatedAt:  { type: 'string', format: 'date-time', example: '2026-03-01T10:00:00.000Z' },
+        },
+      },
+      CreateProductionParameterRequest: {
+        type:     'object',
+        required: ['name'],
+        properties: {
+          name:    { type: 'string',  example: 'Temperature' },
+          type:    { type: 'string',  example: 'number', enum: ['text', 'number', 'date', 'datetime', 'derived', 'integrated', 'checkbox'] },
+          formula: { type: 'string',  example: 'force / area', description: 'Required for derived type' },
+          ctq:     { type: 'string',  example: 'stress < 250', description: 'CTQ expression for derived type' },
+        },
+      },
+      BulkCreateProductionParametersRequest: {
+        type:     'object',
+        required: ['parameters'],
+        properties: {
+          parameters: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['name'],
+              properties: {
+                name:    { type: 'string', example: 'Pressure' },
+                type:    { type: 'string', example: 'number', enum: ['text', 'number', 'date', 'datetime', 'derived', 'integrated', 'checkbox'] },
+                formula: { type: 'string' },
+                ctq:     { type: 'string' },
+              },
+            },
+          },
         },
       },
     },
@@ -1393,6 +1660,664 @@ const swaggerSpec = {
           200: { description: 'Marked as read', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessMessage' } } } },
           401: { description: 'Unauthorized',   content: { 'application/json': { schema: { $ref: '#/components/schemas/Error401' } } } },
           404: { description: 'Not found',      content: { 'application/json': { schema: { $ref: '#/components/schemas/Error404' } } } },
+          500: { description: 'Internal server error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error500' } } } },
+        },
+      },
+    },
+
+    // ── Warehouses ─────────────────────────────────────────────────────
+    '/api/warehouses': {
+      get: {
+        tags:        ['Warehouses'],
+        summary:     'List all warehouses',
+        description: 'Returns all warehouses with Creator/Updater audit info. Any authenticated user can call this.',
+        operationId: 'getAllWarehouses',
+        security:    [{ BearerAuth: [] }],
+        parameters: [
+          { name: 'is_active', in: 'query', schema: { type: 'boolean' }, description: 'Filter by active status' },
+          { name: 'search',    in: 'query', schema: { type: 'string' },  description: 'Search by name or code' },
+        ],
+        responses: {
+          200: {
+            description: 'Warehouse list',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data:    { type: 'array', items: { $ref: '#/components/schemas/WarehouseResponse' } },
+                  },
+                },
+              },
+            },
+          },
+          401: { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error401' } } } },
+          500: { description: 'Internal server error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error500' } } } },
+        },
+      },
+
+      post: {
+        tags:        ['Warehouses'],
+        summary:     'Create warehouse',
+        description: 'Auto-generates `code` from name (first 3 letters + sequence). **Roles:** `plant_head`, `it_admin`',
+        operationId: 'createWarehouse',
+        security:    [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/CreateWarehouseRequest' } },
+          },
+        },
+        responses: {
+          201: {
+            description: 'Warehouse created',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string',  example: 'Warehouse "Raw Material Store" created successfully' },
+                    data:    { $ref: '#/components/schemas/WarehouseResponse' },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'Validation error',          content: { 'application/json': { schema: { $ref: '#/components/schemas/Error400' } } } },
+          401: { description: 'Unauthorized',               content: { 'application/json': { schema: { $ref: '#/components/schemas/Error401' } } } },
+          403: { description: 'Forbidden',                  content: { 'application/json': { schema: { $ref: '#/components/schemas/Error403' } } } },
+          409: { description: 'Duplicate code',             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error400' } } } },
+          500: { description: 'Internal server error',      content: { 'application/json': { schema: { $ref: '#/components/schemas/Error500' } } } },
+        },
+      },
+    },
+
+    '/api/warehouses/{id}': {
+      parameters: [
+        { name: 'id', in: 'path', required: true, schema: { type: 'integer' }, description: 'Warehouse ID' },
+      ],
+
+      get: {
+        tags:        ['Warehouses'],
+        summary:     'Get warehouse by ID',
+        operationId: 'getWarehouseById',
+        security:    [{ BearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'Warehouse details',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data:    { $ref: '#/components/schemas/WarehouseResponse' },
+                  },
+                },
+              },
+            },
+          },
+          401: { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error401' } } } },
+          404: { description: 'Not found',    content: { 'application/json': { schema: { $ref: '#/components/schemas/Error404' } } } },
+          500: { description: 'Internal server error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error500' } } } },
+        },
+      },
+
+      patch: {
+        tags:        ['Warehouses'],
+        summary:     'Update warehouse',
+        description: 'Partial update. `code` and audit fields are read-only. **Roles:** `plant_head`, `it_admin`',
+        operationId: 'updateWarehouse',
+        security:    [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/UpdateWarehouseRequest' } },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Warehouse updated',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string',  example: 'Warehouse updated successfully' },
+                    data:    { $ref: '#/components/schemas/WarehouseResponse' },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error400' } } } },
+          401: { description: 'Unauthorized',     content: { 'application/json': { schema: { $ref: '#/components/schemas/Error401' } } } },
+          403: { description: 'Forbidden',        content: { 'application/json': { schema: { $ref: '#/components/schemas/Error403' } } } },
+          404: { description: 'Not found',        content: { 'application/json': { schema: { $ref: '#/components/schemas/Error404' } } } },
+          500: { description: 'Internal server error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error500' } } } },
+        },
+      },
+
+      delete: {
+        tags:        ['Warehouses'],
+        summary:     'Delete warehouse',
+        description: 'Permanently deletes the warehouse. **Roles:** `plant_head`, `it_admin`',
+        operationId: 'deleteWarehouse',
+        security:    [{ BearerAuth: [] }],
+        responses: {
+          200: { description: 'Warehouse deleted',  content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessMessage' } } } },
+          401: { description: 'Unauthorized',       content: { 'application/json': { schema: { $ref: '#/components/schemas/Error401' } } } },
+          403: { description: 'Forbidden',          content: { 'application/json': { schema: { $ref: '#/components/schemas/Error403' } } } },
+          404: { description: 'Not found',          content: { 'application/json': { schema: { $ref: '#/components/schemas/Error404' } } } },
+          500: { description: 'Internal server error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error500' } } } },
+        },
+      },
+    },
+
+    // ── Machines ───────────────────────────────────────────────────────
+    '/api/machines': {
+      get: {
+        tags:        ['Machines'],
+        summary:     'List all machines',
+        description: 'Returns all machines with Parent, Children, Parameters, and Creator/Updater. Any authenticated user can call this.',
+        operationId: 'getAllMachines',
+        security:    [{ BearerAuth: [] }],
+        parameters: [
+          { name: 'is_active', in: 'query', schema: { type: 'boolean' }, description: 'Filter by active status' },
+          { name: 'search',    in: 'query', schema: { type: 'string' },  description: 'Search by name or code' },
+        ],
+        responses: {
+          200: {
+            description: 'Machine list',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data:    { type: 'array', items: { $ref: '#/components/schemas/MachineResponse' } },
+                  },
+                },
+              },
+            },
+          },
+          401: { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error401' } } } },
+          500: { description: 'Internal server error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error500' } } } },
+        },
+      },
+
+      post: {
+        tags:        ['Machines'],
+        summary:     'Create machine',
+        description: 'Auto-generates `code` from name. Optionally assigns production parameters. **Roles:** `plant_head`, `it_admin`',
+        operationId: 'createMachine',
+        security:    [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/CreateMachineRequest' } },
+          },
+        },
+        responses: {
+          201: {
+            description: 'Machine created',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string',  example: 'Machine "CNC Lathe" created successfully' },
+                    data:    { $ref: '#/components/schemas/MachineResponse' },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'Validation error',     content: { 'application/json': { schema: { $ref: '#/components/schemas/Error400' } } } },
+          401: { description: 'Unauthorized',          content: { 'application/json': { schema: { $ref: '#/components/schemas/Error401' } } } },
+          403: { description: 'Forbidden',             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error403' } } } },
+          409: { description: 'Duplicate code',        content: { 'application/json': { schema: { $ref: '#/components/schemas/Error400' } } } },
+          500: { description: 'Internal server error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error500' } } } },
+        },
+      },
+    },
+
+    '/api/machines/bulk': {
+      post: {
+        tags:        ['Machines'],
+        summary:     'Bulk create machines with hierarchy',
+        description: [
+          'Creates multiple machines at once with parent-child hierarchy support.',
+          '',
+          'Each machine can have nested `children` array for recursive creation.',
+          '**Roles:** `plant_head`, `it_admin`',
+        ].join('\n'),
+        operationId: 'bulkCreateMachines',
+        security:    [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/BulkCreateMachinesRequest' } },
+          },
+        },
+        responses: {
+          201: {
+            description: 'Machines created',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string',  example: '3 machine(s) created successfully' },
+                    data:    { type: 'array', items: { $ref: '#/components/schemas/MachineResponse' } },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'Validation error',     content: { 'application/json': { schema: { $ref: '#/components/schemas/Error400' } } } },
+          401: { description: 'Unauthorized',          content: { 'application/json': { schema: { $ref: '#/components/schemas/Error401' } } } },
+          403: { description: 'Forbidden',             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error403' } } } },
+          500: { description: 'Internal server error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error500' } } } },
+        },
+      },
+    },
+
+    '/api/machines/{id}': {
+      parameters: [
+        { name: 'id', in: 'path', required: true, schema: { type: 'integer' }, description: 'Machine ID' },
+      ],
+
+      get: {
+        tags:        ['Machines'],
+        summary:     'Get machine by ID',
+        operationId: 'getMachineById',
+        security:    [{ BearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'Machine details',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data:    { $ref: '#/components/schemas/MachineResponse' },
+                  },
+                },
+              },
+            },
+          },
+          401: { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error401' } } } },
+          404: { description: 'Not found',    content: { 'application/json': { schema: { $ref: '#/components/schemas/Error404' } } } },
+          500: { description: 'Internal server error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error500' } } } },
+        },
+      },
+
+      patch: {
+        tags:        ['Machines'],
+        summary:     'Update machine',
+        description: 'Partial update. If `parameter_ids` is sent, it replaces all assigned parameters. **Roles:** `plant_head`, `it_admin`',
+        operationId: 'updateMachine',
+        security:    [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/UpdateMachineRequest' } },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Machine updated',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string',  example: 'Machine updated successfully' },
+                    data:    { $ref: '#/components/schemas/MachineResponse' },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error400' } } } },
+          401: { description: 'Unauthorized',     content: { 'application/json': { schema: { $ref: '#/components/schemas/Error401' } } } },
+          403: { description: 'Forbidden',        content: { 'application/json': { schema: { $ref: '#/components/schemas/Error403' } } } },
+          404: { description: 'Not found',        content: { 'application/json': { schema: { $ref: '#/components/schemas/Error404' } } } },
+          500: { description: 'Internal server error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error500' } } } },
+        },
+      },
+
+      delete: {
+        tags:        ['Machines'],
+        summary:     'Delete machine',
+        description: 'Permanently deletes the machine. **Roles:** `plant_head`, `it_admin`',
+        operationId: 'deleteMachine',
+        security:    [{ BearerAuth: [] }],
+        responses: {
+          200: { description: 'Machine deleted',    content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessMessage' } } } },
+          401: { description: 'Unauthorized',       content: { 'application/json': { schema: { $ref: '#/components/schemas/Error401' } } } },
+          403: { description: 'Forbidden',          content: { 'application/json': { schema: { $ref: '#/components/schemas/Error403' } } } },
+          404: { description: 'Not found',          content: { 'application/json': { schema: { $ref: '#/components/schemas/Error404' } } } },
+          500: { description: 'Internal server error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error500' } } } },
+        },
+      },
+    },
+
+    '/api/machines/{id}/parameters': {
+      patch: {
+        tags:        ['Machines'],
+        summary:     'Update machine parameter assignments',
+        description: 'Replaces all parameter assignments for a machine with fine-grained `is_production` and `is_barcode` flags. **Roles:** `plant_head`, `it_admin`',
+        operationId: 'updateMachineParameters',
+        security:    [{ BearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' }, description: 'Machine ID' },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/UpdateMachineParametersRequest' } },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Parameters updated',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data:    { $ref: '#/components/schemas/MachineResponse' },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error400' } } } },
+          401: { description: 'Unauthorized',     content: { 'application/json': { schema: { $ref: '#/components/schemas/Error401' } } } },
+          403: { description: 'Forbidden',        content: { 'application/json': { schema: { $ref: '#/components/schemas/Error403' } } } },
+          404: { description: 'Not found',        content: { 'application/json': { schema: { $ref: '#/components/schemas/Error404' } } } },
+          500: { description: 'Internal server error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error500' } } } },
+        },
+      },
+    },
+
+    // ── Items ──────────────────────────────────────────────────────────
+    '/api/items': {
+      get: {
+        tags:        ['Items'],
+        summary:     'List all items',
+        description: 'Returns all items (parts/materials). Any authenticated user can call this.',
+        operationId: 'getAllItems',
+        security:    [{ BearerAuth: [] }],
+        parameters: [
+          { name: 'is_active', in: 'query', schema: { type: 'boolean' },                                                             description: 'Filter by active status' },
+          { name: 'category',  in: 'query', schema: { type: 'string', enum: ['Raw Material', 'Component', 'Finished Good', 'Consumable'] }, description: 'Filter by category' },
+          { name: 'search',    in: 'query', schema: { type: 'string' },                                                              description: 'Search by name, code, or HSN code' },
+        ],
+        responses: {
+          200: {
+            description: 'Item list',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data:    { type: 'array', items: { $ref: '#/components/schemas/ItemResponse' } },
+                  },
+                },
+              },
+            },
+          },
+          401: { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error401' } } } },
+          500: { description: 'Internal server error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error500' } } } },
+        },
+      },
+
+      post: {
+        tags:        ['Items'],
+        summary:     'Create item',
+        description: 'Auto-generates `code` from name (first 3 letters + sequence). **Roles:** `plant_head`, `it_admin`',
+        operationId: 'createItem',
+        security:    [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/CreateItemRequest' } },
+          },
+        },
+        responses: {
+          201: {
+            description: 'Item created',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string',  example: 'Item "Steel Shaft" created successfully' },
+                    data:    { $ref: '#/components/schemas/ItemResponse' },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'Validation error',     content: { 'application/json': { schema: { $ref: '#/components/schemas/Error400' } } } },
+          401: { description: 'Unauthorized',          content: { 'application/json': { schema: { $ref: '#/components/schemas/Error401' } } } },
+          403: { description: 'Forbidden',             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error403' } } } },
+          409: { description: 'Duplicate code',        content: { 'application/json': { schema: { $ref: '#/components/schemas/Error400' } } } },
+          500: { description: 'Internal server error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error500' } } } },
+        },
+      },
+    },
+
+    '/api/items/{id}': {
+      parameters: [
+        { name: 'id', in: 'path', required: true, schema: { type: 'integer' }, description: 'Item ID' },
+      ],
+
+      get: {
+        tags:        ['Items'],
+        summary:     'Get item by ID',
+        operationId: 'getItemById',
+        security:    [{ BearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'Item details',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data:    { $ref: '#/components/schemas/ItemResponse' },
+                  },
+                },
+              },
+            },
+          },
+          401: { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error401' } } } },
+          404: { description: 'Not found',    content: { 'application/json': { schema: { $ref: '#/components/schemas/Error404' } } } },
+          500: { description: 'Internal server error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error500' } } } },
+        },
+      },
+
+      patch: {
+        tags:        ['Items'],
+        summary:     'Update item',
+        description: 'Partial update. `code` and audit fields are read-only. **Roles:** `plant_head`, `it_admin`',
+        operationId: 'updateItem',
+        security:    [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/UpdateItemRequest' } },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Item updated',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string',  example: 'Item updated successfully' },
+                    data:    { $ref: '#/components/schemas/ItemResponse' },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error400' } } } },
+          401: { description: 'Unauthorized',     content: { 'application/json': { schema: { $ref: '#/components/schemas/Error401' } } } },
+          403: { description: 'Forbidden',        content: { 'application/json': { schema: { $ref: '#/components/schemas/Error403' } } } },
+          404: { description: 'Not found',        content: { 'application/json': { schema: { $ref: '#/components/schemas/Error404' } } } },
+          500: { description: 'Internal server error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error500' } } } },
+        },
+      },
+
+      delete: {
+        tags:        ['Items'],
+        summary:     'Delete item',
+        description: 'Permanently deletes the item. **Roles:** `plant_head`, `it_admin`',
+        operationId: 'deleteItem',
+        security:    [{ BearerAuth: [] }],
+        responses: {
+          200: { description: 'Item deleted',       content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessMessage' } } } },
+          401: { description: 'Unauthorized',       content: { 'application/json': { schema: { $ref: '#/components/schemas/Error401' } } } },
+          403: { description: 'Forbidden',          content: { 'application/json': { schema: { $ref: '#/components/schemas/Error403' } } } },
+          404: { description: 'Not found',          content: { 'application/json': { schema: { $ref: '#/components/schemas/Error404' } } } },
+          500: { description: 'Internal server error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error500' } } } },
+        },
+      },
+    },
+
+    // ── Production Parameters ──────────────────────────────────────────
+    '/api/production-parameters': {
+      get: {
+        tags:        ['ProductionParameters'],
+        summary:     'List all production parameters',
+        description: 'Returns all active production parameters. Any authenticated user can call this.',
+        operationId: 'getAllProductionParameters',
+        security:    [{ BearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'Parameter list',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data:    { type: 'array', items: { $ref: '#/components/schemas/ProductionParameterResponse' } },
+                  },
+                },
+              },
+            },
+          },
+          401: { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error401' } } } },
+          500: { description: 'Internal server error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error500' } } } },
+        },
+      },
+
+      post: {
+        tags:        ['ProductionParameters'],
+        summary:     'Create production parameter',
+        description: 'For `derived` type, provide `formula` and optionally `ctq`. **Roles:** `plant_head`, `it_admin`',
+        operationId: 'createProductionParameter',
+        security:    [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/CreateProductionParameterRequest' } },
+          },
+        },
+        responses: {
+          201: {
+            description: 'Parameter created',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data:    { $ref: '#/components/schemas/ProductionParameterResponse' },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'Validation error',     content: { 'application/json': { schema: { $ref: '#/components/schemas/Error400' } } } },
+          401: { description: 'Unauthorized',          content: { 'application/json': { schema: { $ref: '#/components/schemas/Error401' } } } },
+          403: { description: 'Forbidden',             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error403' } } } },
+          500: { description: 'Internal server error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error500' } } } },
+        },
+      },
+    },
+
+    '/api/production-parameters/bulk': {
+      post: {
+        tags:        ['ProductionParameters'],
+        summary:     'Bulk create production parameters',
+        description: 'Creates multiple parameters at once. **Roles:** `plant_head`, `it_admin`',
+        operationId: 'bulkCreateProductionParameters',
+        security:    [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/BulkCreateProductionParametersRequest' } },
+          },
+        },
+        responses: {
+          201: {
+            description: 'Parameters created',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data:    { type: 'array', items: { $ref: '#/components/schemas/ProductionParameterResponse' } },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'Validation error',     content: { 'application/json': { schema: { $ref: '#/components/schemas/Error400' } } } },
+          401: { description: 'Unauthorized',          content: { 'application/json': { schema: { $ref: '#/components/schemas/Error401' } } } },
+          403: { description: 'Forbidden',             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error403' } } } },
+          500: { description: 'Internal server error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error500' } } } },
+        },
+      },
+    },
+
+    '/api/production-parameters/{id}': {
+      delete: {
+        tags:        ['ProductionParameters'],
+        summary:     'Delete production parameter',
+        description: 'Soft-deletes the parameter by setting `is_active = false`. **Roles:** `plant_head`, `it_admin`',
+        operationId: 'deleteProductionParameter',
+        security:    [{ BearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' }, description: 'Parameter ID' },
+        ],
+        responses: {
+          200: { description: 'Parameter deleted',  content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessMessage' } } } },
+          401: { description: 'Unauthorized',       content: { 'application/json': { schema: { $ref: '#/components/schemas/Error401' } } } },
+          403: { description: 'Forbidden',          content: { 'application/json': { schema: { $ref: '#/components/schemas/Error403' } } } },
+          404: { description: 'Not found',          content: { 'application/json': { schema: { $ref: '#/components/schemas/Error404' } } } },
           500: { description: 'Internal server error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error500' } } } },
         },
       },
