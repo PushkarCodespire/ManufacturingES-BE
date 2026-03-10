@@ -31,6 +31,32 @@ const Package              = require('../modules/masters/model/Package');
 const CtqIssue             = require('../modules/masters/model/CtqIssue');
 const Tool                 = require('../modules/masters/model/Tool');
 const Report               = require('../modules/masters/model/Report');
+const Rfq                  = require('../modules/orders/model/Rfq');
+const RfqItem              = require('../modules/orders/model/RfqItem');
+const Quotation            = require('../modules/orders/model/Quotation');
+const QuotationItem        = require('../modules/orders/model/QuotationItem');
+const CustomerOrder        = require('../modules/orders/model/CustomerOrder');
+const OrderItem            = require('../modules/orders/model/OrderItem');
+const Grn                  = require('../modules/store/model/Grn');
+const GrnItem              = require('../modules/store/model/GrnItem');
+const Inventory            = require('../modules/store/model/Inventory');
+const InventoryTxn         = require('../modules/store/model/InventoryTxn');
+const MaterialRequest      = require('../modules/store/model/MaterialRequest');
+const MaterialRequestItem  = require('../modules/store/model/MaterialRequestItem');
+const IssueSlip            = require('../modules/store/model/IssueSlip');
+const IssueSlipItem        = require('../modules/store/model/IssueSlipItem');
+const StockAdjustment      = require('../modules/store/model/StockAdjustment');
+const StockAdjustmentItem  = require('../modules/store/model/StockAdjustmentItem');
+const WorkOrder              = require('../modules/production/model/WorkOrder');
+const JobCard                = require('../modules/production/model/JobCard');
+const LqcInspection          = require('../modules/production/model/LqcInspection');
+const LqcInspectionResult    = require('../modules/production/model/LqcInspectionResult');
+const ProductionSchedule     = require('../modules/production/model/ProductionSchedule');
+const ScrapVoucher           = require('../modules/production/model/ScrapVoucher');
+const PurchaseOrder          = require('../modules/procurement/model/PurchaseOrder');
+const PurchaseOrderItem      = require('../modules/procurement/model/PurchaseOrderItem');
+const SubcontractChallan     = require('../modules/subcontracting/model/SubcontractChallan');
+const SubcontractChallanItem = require('../modules/subcontracting/model/SubcontractChallanItem');
 
 // ─── Associations ────────────────────────────────────────────────────────────
 
@@ -190,6 +216,134 @@ Tool.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
 Report.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
 Report.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
 
+// ── Orders module ─────────────────────────────────────────────────────────────
+
+// Rfq — customer FK + line items + audit
+Rfq.belongsTo(Vendor, { foreignKey: 'customer_id', as: 'Customer' });
+Rfq.belongsTo(User,   { foreignKey: 'created_by',  as: 'Creator'  });
+Rfq.belongsTo(User,   { foreignKey: 'updated_by',  as: 'Updater'  });
+Rfq.hasMany(RfqItem,  { foreignKey: 'rfq_id',      as: 'Items', onDelete: 'CASCADE' });
+Vendor.hasMany(Rfq,   { foreignKey: 'customer_id', as: 'Rfqs' });
+
+// RfqItem — rfq + item FKs
+RfqItem.belongsTo(Rfq,  { foreignKey: 'rfq_id'  });
+RfqItem.belongsTo(Item, { foreignKey: 'item_id', as: 'Item' });
+
+// Quotation — customer + rfq + line items + audit
+Quotation.belongsTo(Vendor,    { foreignKey: 'customer_id',  as: 'Customer' });
+Quotation.belongsTo(Rfq,       { foreignKey: 'rfq_id',       as: 'Rfq'      });
+Quotation.belongsTo(User,      { foreignKey: 'created_by',   as: 'Creator'  });
+Quotation.belongsTo(User,      { foreignKey: 'updated_by',   as: 'Updater'  });
+Quotation.hasMany(QuotationItem, { foreignKey: 'quotation_id', as: 'Items', onDelete: 'CASCADE' });
+Rfq.hasMany(Quotation,         { foreignKey: 'rfq_id',       as: 'Quotations' });
+Vendor.hasMany(Quotation,      { foreignKey: 'customer_id',  as: 'Quotations' });
+
+// QuotationItem — quotation + item FKs
+QuotationItem.belongsTo(Quotation, { foreignKey: 'quotation_id' });
+QuotationItem.belongsTo(Item,      { foreignKey: 'item_id',     as: 'Item' });
+
+// CustomerOrder — customer + quotation + line items + audit
+CustomerOrder.belongsTo(Vendor,    { foreignKey: 'customer_id',  as: 'Customer'  });
+CustomerOrder.belongsTo(Quotation, { foreignKey: 'quotation_id', as: 'Quotation' });
+CustomerOrder.belongsTo(User,      { foreignKey: 'created_by',   as: 'Creator'   });
+CustomerOrder.belongsTo(User,      { foreignKey: 'updated_by',   as: 'Updater'   });
+CustomerOrder.hasMany(OrderItem,   { foreignKey: 'order_id',     as: 'Items', onDelete: 'CASCADE' });
+Quotation.hasMany(CustomerOrder,   { foreignKey: 'quotation_id', as: 'Orders' });
+Vendor.hasMany(CustomerOrder,      { foreignKey: 'customer_id',  as: 'Orders' });
+
+// OrderItem — order + item FKs
+OrderItem.belongsTo(CustomerOrder, { foreignKey: 'order_id' });
+OrderItem.belongsTo(Item,          { foreignKey: 'item_id', as: 'Item' });
+
+// ── Store associations ────────────────────────────────────────────────────────
+
+// Grn — vendor + warehouse + audit + items
+Grn.belongsTo(Vendor,    { foreignKey: 'vendor_id',    as: 'Vendor'    });
+Grn.belongsTo(Warehouse, { foreignKey: 'warehouse_id', as: 'Warehouse' });
+Grn.belongsTo(User,      { foreignKey: 'created_by',   as: 'Creator'   });
+Grn.hasMany(GrnItem,     { foreignKey: 'grn_id',        as: 'Items', onDelete: 'CASCADE' });
+GrnItem.belongsTo(Grn,   { foreignKey: 'grn_id',        as: 'Grn'       });
+GrnItem.belongsTo(Item,  { foreignKey: 'item_id',       as: 'Item'      });
+
+// Inventory + InventoryTxn
+Inventory.belongsTo(Item,         { foreignKey: 'item_id',      as: 'Item'      });
+Inventory.belongsTo(Warehouse,    { foreignKey: 'warehouse_id', as: 'Warehouse' });
+InventoryTxn.belongsTo(Item,      { foreignKey: 'item_id',      as: 'Item'      });
+InventoryTxn.belongsTo(Warehouse, { foreignKey: 'warehouse_id', as: 'Warehouse' });
+
+// MaterialRequest — warehouse + user audit + items
+MaterialRequest.belongsTo(Warehouse, { foreignKey: 'warehouse_id', as: 'Warehouse' });
+MaterialRequest.belongsTo(User,      { foreignKey: 'requested_by', as: 'Requester' });
+MaterialRequest.belongsTo(User,      { foreignKey: 'created_by',   as: 'Creator'   });
+MaterialRequest.hasMany(MaterialRequestItem, { foreignKey: 'request_id', as: 'Items', onDelete: 'CASCADE' });
+MaterialRequestItem.belongsTo(MaterialRequest, { foreignKey: 'request_id', as: 'Request' });
+MaterialRequestItem.belongsTo(Item,            { foreignKey: 'item_id',    as: 'Item'    });
+
+// IssueSlip — warehouse + user audit + material request + items
+IssueSlip.belongsTo(Warehouse,       { foreignKey: 'warehouse_id',        as: 'Warehouse'       });
+IssueSlip.belongsTo(User,            { foreignKey: 'issued_to',           as: 'IssuedTo'        });
+IssueSlip.belongsTo(User,            { foreignKey: 'created_by',          as: 'Creator'         });
+IssueSlip.belongsTo(MaterialRequest, { foreignKey: 'material_request_id', as: 'MaterialRequest' });
+IssueSlip.hasMany(IssueSlipItem,     { foreignKey: 'slip_id',             as: 'Items', onDelete: 'CASCADE' });
+IssueSlipItem.belongsTo(IssueSlip,   { foreignKey: 'slip_id',             as: 'Slip' });
+IssueSlipItem.belongsTo(Item,        { foreignKey: 'item_id',             as: 'Item' });
+
+// StockAdjustment — warehouse + user audit + items
+StockAdjustment.belongsTo(Warehouse, { foreignKey: 'warehouse_id', as: 'Warehouse' });
+StockAdjustment.belongsTo(User,      { foreignKey: 'created_by',   as: 'Creator'   });
+StockAdjustment.hasMany(StockAdjustmentItem,    { foreignKey: 'adj_id', as: 'Items', onDelete: 'CASCADE' });
+StockAdjustmentItem.belongsTo(StockAdjustment,  { foreignKey: 'adj_id',  as: 'Adjustment' });
+StockAdjustmentItem.belongsTo(Item,             { foreignKey: 'item_id', as: 'Item'       });
+
+// ── Production module associations ──────────────────────────────────────────
+WorkOrder.belongsTo(Item,          { foreignKey: 'item_id',           as: 'Item'          });
+WorkOrder.belongsTo(Machine,       { foreignKey: 'machine_id',        as: 'Machine'       });
+WorkOrder.belongsTo(Shift,         { foreignKey: 'shift_id',          as: 'Shift'         });
+WorkOrder.belongsTo(CustomerOrder, { foreignKey: 'customer_order_id', as: 'CustomerOrder' });
+WorkOrder.belongsTo(User,          { foreignKey: 'created_by',        as: 'Creator'       });
+WorkOrder.belongsTo(User,          { foreignKey: 'updated_by',        as: 'Updater'       });
+WorkOrder.hasMany(JobCard,         { foreignKey: 'work_order_id',     as: 'JobCards'      });
+
+JobCard.belongsTo(WorkOrder, { foreignKey: 'work_order_id', as: 'WorkOrder' });
+JobCard.belongsTo(Machine,   { foreignKey: 'machine_id',   as: 'Machine'   });
+JobCard.belongsTo(User,      { foreignKey: 'operator_id',  as: 'Operator'  });
+JobCard.belongsTo(User,      { foreignKey: 'created_by',   as: 'Creator'   });
+
+LqcInspection.belongsTo(Item,      { foreignKey: 'item_id',       as: 'Item'      });
+LqcInspection.belongsTo(Machine,   { foreignKey: 'machine_id',    as: 'Machine'   });
+LqcInspection.belongsTo(User,      { foreignKey: 'inspector_id',  as: 'Inspector' });
+LqcInspection.belongsTo(WorkOrder, { foreignKey: 'work_order_id', as: 'WorkOrder' });
+LqcInspection.belongsTo(JobCard,   { foreignKey: 'job_card_id',   as: 'JobCard'   });
+LqcInspection.hasMany(LqcInspectionResult, { foreignKey: 'inspection_id', as: 'Results', onDelete: 'CASCADE' });
+LqcInspectionResult.belongsTo(LqcInspection, { foreignKey: 'inspection_id', as: 'Inspection' });
+
+ProductionSchedule.belongsTo(Item,      { foreignKey: 'item_id',       as: 'Item'      });
+ProductionSchedule.belongsTo(Machine,   { foreignKey: 'machine_id',    as: 'Machine'   });
+ProductionSchedule.belongsTo(Shift,     { foreignKey: 'shift_id',      as: 'Shift'     });
+ProductionSchedule.belongsTo(WorkOrder, { foreignKey: 'work_order_id', as: 'WorkOrder' });
+ProductionSchedule.belongsTo(User,      { foreignKey: 'created_by',    as: 'Creator'   });
+
+ScrapVoucher.belongsTo(Item,      { foreignKey: 'item_id',       as: 'Item'         });
+ScrapVoucher.belongsTo(Machine,   { foreignKey: 'machine_id',    as: 'Machine'      });
+ScrapVoucher.belongsTo(WorkOrder, { foreignKey: 'work_order_id', as: 'WorkOrder'    });
+ScrapVoucher.belongsTo(User,      { foreignKey: 'authorized_by', as: 'AuthorizedBy' });
+ScrapVoucher.belongsTo(User,      { foreignKey: 'created_by',    as: 'Creator'      });
+
+// ── Procurement module associations ─────────────────────────────────────────
+PurchaseOrder.belongsTo(Vendor, { foreignKey: 'vendor_id',  as: 'Vendor'  });
+PurchaseOrder.belongsTo(User,   { foreignKey: 'created_by', as: 'Creator' });
+PurchaseOrder.hasMany(PurchaseOrderItem, { foreignKey: 'po_id', as: 'Items', onDelete: 'CASCADE' });
+PurchaseOrderItem.belongsTo(PurchaseOrder, { foreignKey: 'po_id',    as: 'PurchaseOrder' });
+PurchaseOrderItem.belongsTo(Item,          { foreignKey: 'item_id',  as: 'Item'          });
+
+// ── Subcontracting module associations ───────────────────────────────────────
+SubcontractChallan.belongsTo(Vendor,    { foreignKey: 'vendor_id',     as: 'Vendor'     });
+SubcontractChallan.belongsTo(WorkOrder, { foreignKey: 'work_order_id', as: 'WorkOrder'  });
+SubcontractChallan.belongsTo(User,      { foreignKey: 'created_by',    as: 'Creator'    });
+SubcontractChallan.hasMany(SubcontractChallanItem, { foreignKey: 'challan_id', as: 'Items', onDelete: 'CASCADE' });
+SubcontractChallanItem.belongsTo(SubcontractChallan, { foreignKey: 'challan_id', as: 'Challan' });
+SubcontractChallanItem.belongsTo(Item,               { foreignKey: 'item_id',    as: 'Item'    });
+
 // User ↔ Site  (many-to-many via user_sites junction table)
 User.belongsToMany(Site,      { through: 'user_sites',      foreignKey: 'user_id',      otherKey: 'site_id' });
 Site.belongsToMany(User,      { through: 'user_sites',      foreignKey: 'site_id',      otherKey: 'user_id' });
@@ -232,4 +386,30 @@ module.exports = {
   CtqIssue,
   Tool,
   Report,
+  Rfq,
+  RfqItem,
+  Quotation,
+  QuotationItem,
+  CustomerOrder,
+  OrderItem,
+  Grn,
+  GrnItem,
+  Inventory,
+  InventoryTxn,
+  MaterialRequest,
+  MaterialRequestItem,
+  IssueSlip,
+  IssueSlipItem,
+  StockAdjustment,
+  StockAdjustmentItem,
+  WorkOrder,
+  JobCard,
+  LqcInspection,
+  LqcInspectionResult,
+  ProductionSchedule,
+  ScrapVoucher,
+  PurchaseOrder,
+  PurchaseOrderItem,
+  SubcontractChallan,
+  SubcontractChallanItem,
 };

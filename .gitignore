@@ -8,3 +8,9 @@ build/
 npm-debug.log*
 .DS_Store
 Thumbs.db
+
+nul
+
+# Uploaded files — keep folder, ignore contents
+uploads/*
+!uploads/.gitkeep

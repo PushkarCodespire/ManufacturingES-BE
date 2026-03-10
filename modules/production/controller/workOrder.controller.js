@@ -1,0 +1,187 @@
+const { Op } = require('sequelize');
+const {
+  WorkOrder,
+  JobCard,
+  Item,
+  Machine,
+  Shift,
+  CustomerOrder,
+  User,
+} = require('../../../models');
+
+// ── Auto-number generator ────────────────────────────────────────────────────
+async function nextWoNo() {
+  const year = new Date().getFullYear();
+  const prefix = `WO-${year}-`;
+  const last = await WorkOrder.findOne({
+    where: { wo_no: { [Op.like]: `${prefix}%` } },
+    order: [['wo_no', 'DESC']],
+  });
+  let seq = 1;
+  if (last) {
+    const parts = last.wo_no.split('-');
+    seq = parseInt(parts[parts.length - 1], 10) + 1;
+  }
+  return `${prefix}${String(seq).padStart(4, '0')}`;
+}
+
+// ── GET /work-orders ─────────────────────────────────────────────────────────
+const getAll = async (req, res) => {
+  try {
+    const { search, status, machine_id, item_id } = req.query;
+    const where = {};
+    if (search)     where.wo_no      = { [Op.iLike]: `%${search}%` };
+    if (status)     where.status     = status;
+    if (machine_id) where.machine_id = machine_id;
+    if (item_id)    where.item_id    = item_id;
+
+    const records = await WorkOrder.findAll({
+      where,
+      include: [
+        { model: Item,          as: 'Item',          attributes: ['id', 'name', 'code'] },
+        { model: Machine,       as: 'Machine',        attributes: ['id', 'name'] },
+        { model: CustomerOrder, as: 'CustomerOrder',  attributes: ['id', 'order_no'] },
+        { model: User,          as: 'Creator',        attributes: ['id', 'name'] },
+      ],
+      order: [['created_at', 'DESC']],
+    });
+    return res.json({ success: true, data: records });
+  } catch (err) {
+    console.error('[WorkOrder.getAll]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// ── GET /work-orders/:id ─────────────────────────────────────────────────────
+const getById = async (req, res) => {
+  try {
+    const record = await WorkOrder.findByPk(req.params.id, {
+      include: [
+        { model: Item,          as: 'Item',          attributes: ['id', 'name', 'code'] },
+        { model: Machine,       as: 'Machine',        attributes: ['id', 'name'] },
+        { model: Shift,         as: 'Shift',          attributes: ['id', 'name'] },
+        { model: CustomerOrder, as: 'CustomerOrder',  attributes: ['id', 'order_no'] },
+        { model: User,          as: 'Creator',        attributes: ['id', 'name'] },
+        { model: JobCard,       as: 'JobCards' },
+      ],
+    });
+    if (!record) return res.status(404).json({ success: false, message: 'Work order not found' });
+    return res.json({ success: true, data: record });
+  } catch (err) {
+    console.error('[WorkOrder.getById]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// ── POST /work-orders ────────────────────────────────────────────────────────
+const create = async (req, res) => {
+  try {
+    const wo_no = await nextWoNo();
+    const userId = req.user.id;
+    const record = await WorkOrder.create({
+      ...req.body,
+      wo_no,
+      status: 'draft',
+      created_by: userId,
+      updated_by: userId,
+    });
+    return res.status(201).json({ success: true, data: record });
+  } catch (err) {
+    console.error('[WorkOrder.create]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// ── PATCH /work-orders/:id ───────────────────────────────────────────────────
+const update = async (req, res) => {
+  try {
+    const record = await WorkOrder.findByPk(req.params.id);
+    if (!record) return res.status(404).json({ success: false, message: 'Work order not found' });
+
+    const {
+      customer_order_id, item_id, machine_id, shift_id,
+      planned_qty, produced_qty, rejected_qty,
+      planned_start, planned_end, actual_start, actual_end,
+      priority, notes,
+    } = req.body;
+
+    await record.update({
+      customer_order_id, item_id, machine_id, shift_id,
+      planned_qty, produced_qty, rejected_qty,
+      planned_start, planned_end, actual_start, actual_end,
+      priority, notes,
+      updated_by: req.user.id,
+    });
+    return res.json({ success: true, data: record });
+  } catch (err) {
+    console.error('[WorkOrder.update]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// ── PATCH /work-orders/:id/status ────────────────────────────────────────────
+const VALID_TRANSITIONS = {
+  draft:       ['open'],
+  open:        ['in_progress', 'on_hold', 'cancelled'],
+  in_progress: ['completed', 'on_hold', 'cancelled'],
+  on_hold:     ['open', 'in_progress', 'cancelled'],
+  completed:   [],
+  cancelled:   [],
+};
+
+const updateStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!status) return res.status(400).json({ success: false, message: 'status is required' });
+
+    const record = await WorkOrder.findByPk(req.params.id);
+    if (!record) return res.status(404).json({ success: false, message: 'Work order not found' });
+
+    const allowed = VALID_TRANSITIONS[record.status] || [];
+    if (!allowed.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot transition from '${record.status}' to '${status}'`,
+      });
+    }
+
+    const updates = { status, updated_by: req.user.id };
+    if (status === 'in_progress' && !record.actual_start) {
+      updates.actual_start = new Date();
+    }
+    if (status === 'completed') {
+      updates.actual_end = new Date();
+    }
+
+    await record.update(updates);
+    return res.json({ success: true, data: record });
+  } catch (err) {
+    console.error('[WorkOrder.updateStatus]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// ── DELETE /work-orders/:id ──────────────────────────────────────────────────
+const deleteWorkOrder = async (req, res) => {
+  try {
+    const record = await WorkOrder.findByPk(req.params.id);
+    if (!record) return res.status(404).json({ success: false, message: 'Work order not found' });
+    if (record.status !== 'draft') {
+      return res.status(400).json({ success: false, message: 'Only draft work orders can be deleted' });
+    }
+    await record.destroy();
+    return res.json({ success: true, message: 'Work order deleted' });
+  } catch (err) {
+    console.error('[WorkOrder.delete]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+module.exports = {
+  getAll,
+  getById,
+  create,
+  update,
+  updateStatus,
+  delete: deleteWorkOrder,
+};

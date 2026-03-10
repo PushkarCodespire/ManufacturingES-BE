@@ -34,6 +34,20 @@ const upload = multer({
   },
 });
 
+// Accept documents (PDF + images), max 10MB
+const ALLOWED_DOC_EXTS  = ['pdf', 'jpg', 'jpeg', 'png'];
+const ALLOWED_DOC_MIMES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+const uploadDoc = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ext  = path.extname(file.originalname).toLowerCase().replace('.', '');
+    const mime = file.mimetype;
+    if (ALLOWED_DOC_EXTS.includes(ext) && ALLOWED_DOC_MIMES.includes(mime)) return cb(null, true);
+    cb(new Error('Only PDF and image files (jpg, png) are allowed'));
+  },
+});
+
 // ─── POST /api/upload ───────────────────────────────────────────────────────
 router.post('/', authenticate, upload.single('image'), (req, res) => {
   if (!req.file) {
@@ -51,6 +65,28 @@ router.post('/', authenticate, upload.single('image'), (req, res) => {
       filename: req.file.filename,
       size:     req.file.size,
       mimetype: req.file.mimetype,
+    },
+  });
+});
+
+// ─── POST /api/upload/document ──────────────────────────────────────────────
+// For RFQ drawings, item datasheets, etc. Accepts PDF + PNG/JPG, max 10MB.
+router.post('/document', authenticate, uploadDoc.single('file'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, message: 'No file uploaded' });
+  }
+
+  const fileUrl = `/uploads/${req.file.filename}`;
+
+  return res.json({
+    success: true,
+    message: 'Document uploaded successfully',
+    data: {
+      url:           fileUrl,
+      filename:      req.file.filename,
+      original_name: req.file.originalname,
+      size:          req.file.size,
+      mimetype:      req.file.mimetype,
     },
   });
 });

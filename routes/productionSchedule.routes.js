@@ -1,0 +1,10 @@
+const router = require('express').Router();
+const { authenticate } = require('../config/middleware');
+const ctrl = require('../modules/production/controller/productionSchedule.controller');
+router.get('/',              authenticate, ctrl.getAll);
+router.get('/:id',           authenticate, ctrl.getById);
+router.post('/',             authenticate, ctrl.create);
+router.patch('/:id',         authenticate, ctrl.update);
+router.patch('/:id/publish', authenticate, ctrl.publish);
+router.delete('/:id',        authenticate, ctrl.delete);
+module.exports = router;
