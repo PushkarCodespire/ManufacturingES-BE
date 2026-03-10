@@ -50,9 +50,10 @@ async function deductInventory(items, warehouseId, refId, refNo, userId) {
 
 // ── Shared includes ───────────────────────────────────────────────────────────
 const HEADER_INCLUDE = [
-  { model: Warehouse, as: 'Warehouse', attributes: ['id', 'name'] },
-  { model: User,      as: 'IssuedTo',  attributes: ['id', 'name'] },
-  { model: User,      as: 'Creator',   attributes: ['id', 'name'] },
+  { model: Warehouse,       as: 'Warehouse',       attributes: ['id', 'name'] },
+  { model: MaterialRequest, as: 'MaterialRequest',  attributes: ['id', 'request_no'] },
+  { model: User,            as: 'IssuedTo',         attributes: ['id', 'name'] },
+  { model: User,            as: 'Creator',          attributes: ['id', 'name'] },
 ];
 
 // ── GET /issue-slips ──────────────────────────────────────────────────────────
