@@ -1,0 +1,199 @@
+const Joi = require('joi');
+const { DispatchOrder, DispatchOrderItem, DeliveryChallan, Transporter, Vendor, Warehouse, Item, User, sequelize } = require('../../../models');
+const { Op } = require('sequelize');
+
+const AUDIT_ATTRS = ['id', 'name', 'employee_id'];
+
+const orderSchema = Joi.object({
+  customer_id:            Joi.number().integer().allow(null).optional(),
+  transporter_id:         Joi.number().integer().allow(null).optional(),
+  from_warehouse_id:      Joi.number().integer().allow(null).optional(),
+  vehicle_number:         Joi.string().trim().max(30).allow('', null).optional(),
+  driver_name:            Joi.string().trim().max(200).allow('', null).optional(),
+  driver_phone:           Joi.string().trim().max(30).allow('', null).optional(),
+  dispatch_date:          Joi.string().isoDate().allow(null).optional(),
+  expected_delivery_date: Joi.string().isoDate().allow(null).optional(),
+  actual_delivery_date:   Joi.string().isoDate().allow(null).optional(),
+  status:                 Joi.string().valid('draft', 'confirmed', 'loading', 'dispatched', 'delivered', 'cancelled').default('draft'),
+  shipping_address:       Joi.string().trim().max(2000).allow('', null).optional(),
+  notes:                  Joi.string().trim().max(2000).allow('', null).optional(),
+  total_weight:           Joi.number().min(0).allow(null).optional(),
+  total_packages:         Joi.number().integer().min(0).allow(null).optional(),
+  items: Joi.array().items(Joi.object({
+    id:       Joi.number().integer().optional(),
+    item_id:  Joi.number().integer().required(),
+    quantity: Joi.number().positive().required(),
+    unit:     Joi.string().trim().max(30).allow('', null).optional(),
+    weight:   Joi.number().min(0).allow(null).optional(),
+    notes:    Joi.string().trim().max(1000).allow('', null).optional(),
+  })).default([]),
+});
+
+// Generate unique order number: DO-YYYYMMDD-XXXX
+const generateOrderNumber = async () => {
+  const today  = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const prefix = 'DO-' + today + '-';
+  const last   = await DispatchOrder.findOne({
+    where: { order_number: { [Op.like]: prefix + '%' } },
+    order: [['order_number', 'DESC']],
+  });
+  const seq = last ? parseInt(last.order_number.slice(-4), 10) + 1 : 1;
+  return prefix + String(seq).padStart(4, '0');
+};
+
+const buildIncludes = () => [
+  { model: Vendor,       as: 'Customer',      attributes: ['id', 'name', 'partner_code'] },
+  { model: Transporter,  as: 'Transporter',   attributes: ['id', 'name', 'phone']        },
+  { model: Warehouse,    as: 'FromWarehouse',  attributes: ['id', 'name', 'code']         },
+  { model: User,         as: 'Creator',        attributes: AUDIT_ATTRS },
+  { model: User,         as: 'Updater',        attributes: AUDIT_ATTRS },
+  {
+    model: DispatchOrderItem,
+    as: 'Items',
+    include: [{ model: Item, as: 'Item', attributes: ['id', 'name', 'code', 'unit'] }],
+  },
+  {
+    model: DeliveryChallan,
+    as: 'Challans',
+    attributes: ['id', 'challan_number', 'status', 'issued_date', 'signed_date'],
+  },
+];
+
+const getAllOrders = async (req, res) => {
+  try {
+    const where = {};
+    if (req.query.status)      where.status       = req.query.status;
+    if (req.query.customer_id) where.customer_id  = req.query.customer_id;
+    if (req.query.search)      where.order_number = { [Op.iLike]: '%' + req.query.search + '%' };
+    if (req.query.from_date && req.query.to_date) {
+      where.dispatch_date = { [Op.between]: [req.query.from_date, req.query.to_date] };
+    }
+
+    const orders = await DispatchOrder.findAll({
+      where,
+      include: buildIncludes(),
+      order: [['createdAt', 'DESC']],
+    });
+    return res.json({ success: true, data: orders });
+  } catch (err) {
+    console.error('[getAllOrders]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+const getOrderById = async (req, res) => {
+  try {
+    const order = await DispatchOrder.findByPk(req.params.id, { include: buildIncludes() });
+    if (!order) return res.status(404).json({ success: false, message: 'Dispatch order not found' });
+    return res.json({ success: true, data: order });
+  } catch (err) {
+    console.error('[getOrderById]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+const createOrder = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const { error, value } = orderSchema.validate(req.body, { abortEarly: false });
+    if (error) {
+      await t.rollback();
+      return res.status(400).json({ success: false, message: error.details.map((d) => d.message).join(', ') });
+    }
+
+    const { items, ...orderData } = value;
+    const order_number = await generateOrderNumber();
+
+    const order = await DispatchOrder.create({
+      ...orderData,
+      order_number,
+      created_by: req.user?.id || null,
+      updated_by: req.user?.id || null,
+    }, { transaction: t });
+
+    if (items && items.length > 0) {
+      await DispatchOrderItem.bulkCreate(
+        items.map((it) => ({
+          ...it,
+          dispatch_order_id: order.id,
+          created_by: req.user?.id || null,
+          updated_by: req.user?.id || null,
+        })),
+        { transaction: t }
+      );
+    }
+
+    await t.commit();
+    const full = await DispatchOrder.findByPk(order.id, { include: buildIncludes() });
+    return res.status(201).json({ success: true, message: 'Dispatch order ' + order_number + ' created', data: full });
+  } catch (err) {
+    await t.rollback();
+    console.error('[createOrder]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+const updateOrder = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const order = await DispatchOrder.findByPk(req.params.id, { transaction: t });
+    if (!order) {
+      await t.rollback();
+      return res.status(404).json({ success: false, message: 'Dispatch order not found' });
+    }
+
+    const updateSchema = orderSchema.fork(['status'], (s) => s.optional());
+    const { error, value } = updateSchema.validate(req.body, { abortEarly: false });
+    if (error) {
+      await t.rollback();
+      return res.status(400).json({ success: false, message: error.details.map((d) => d.message).join(', ') });
+    }
+
+    const { items, ...orderData } = value;
+    await order.update({ ...orderData, updated_by: req.user?.id || null }, { transaction: t });
+
+    // Replace items if provided
+    if (items !== undefined) {
+      await DispatchOrderItem.destroy({ where: { dispatch_order_id: order.id }, transaction: t });
+      if (items.length > 0) {
+        await DispatchOrderItem.bulkCreate(
+          items.map((it) => {
+            const { id: _omit, ...rest } = it;
+            return {
+              ...rest,
+              dispatch_order_id: order.id,
+              created_by: req.user?.id || null,
+              updated_by: req.user?.id || null,
+            };
+          }),
+          { transaction: t }
+        );
+      }
+    }
+
+    await t.commit();
+    const full = await DispatchOrder.findByPk(order.id, { include: buildIncludes() });
+    return res.json({ success: true, message: 'Dispatch order updated', data: full });
+  } catch (err) {
+    await t.rollback();
+    console.error('[updateOrder]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+const deleteOrder = async (req, res) => {
+  try {
+    const order = await DispatchOrder.findByPk(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Dispatch order not found' });
+    if (order.status !== 'draft' && order.status !== 'cancelled') {
+      return res.status(409).json({ success: false, message: 'Cannot delete a ' + order.status + ' order. Cancel it first.' });
+    }
+    await order.destroy();
+    return res.json({ success: true, message: 'Dispatch order ' + order.order_number + ' deleted' });
+  } catch (err) {
+    console.error('[deleteOrder]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+module.exports = { getAllOrders, getOrderById, createOrder, updateOrder, deleteOrder };

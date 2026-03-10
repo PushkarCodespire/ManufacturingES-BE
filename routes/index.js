@@ -42,6 +42,13 @@ const productionScheduleRoutes   = require('./productionSchedule.routes');
 const scrapVoucherRoutes         = require('./scrapVoucher.routes');
 const purchaseOrderRoutes        = require('./purchaseOrder.routes');
 const subcontractChallanRoutes   = require('./subcontractChallan.routes');
+const trainingTopicRoutes         = require('./trainingTopic.routes');
+const roleRequirementRoutes       = require('./roleRequirement.routes');
+const trainingRecordRoutes        = require('./trainingRecord.routes');
+const trainingEffectivenessRoutes = require('./trainingEffectiveness.routes');
+const transporterRoutes           = require('./transporter.routes');
+const dispatchOrderRoutes         = require('./dispatchOrder.routes');
+const deliveryChallanRoutes       = require('./deliveryChallan.routes');
 
 // Mount routes
 router.use('/auth',          authRoutes);
@@ -85,5 +92,12 @@ router.use('/production-schedules',  productionScheduleRoutes);
 router.use('/scrap-vouchers',        scrapVoucherRoutes);
 router.use('/purchase-orders',       purchaseOrderRoutes);
 router.use('/subcontract-challans',  subcontractChallanRoutes);
+router.use('/hr/training-topics',         trainingTopicRoutes);
+router.use('/hr/role-requirements',       roleRequirementRoutes);
+router.use('/hr/training-records',        trainingRecordRoutes);
+router.use('/hr/training-effectiveness',  trainingEffectivenessRoutes);
+router.use('/dispatch/transporters',      transporterRoutes);
+router.use('/dispatch/orders',            dispatchOrderRoutes);
+router.use('/dispatch/challans',          deliveryChallanRoutes);
 
 module.exports = router;
