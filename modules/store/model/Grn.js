@@ -11,8 +11,10 @@ const Grn = sequelize.define('Grn', {
   invoice_no:    { type: DataTypes.STRING(100), allowNull: true },
   status:        { type: DataTypes.STRING(20), defaultValue: 'pending', comment: 'pending | approved | cancelled' },
   notes:         { type: DataTypes.TEXT, allowNull: true },
-  created_by:    { type: DataTypes.INTEGER, allowNull: true },    // FK → users.id (INTEGER)
-  updated_by:    { type: DataTypes.INTEGER, allowNull: true },    // FK → users.id (INTEGER)
+  created_by:        { type: DataTypes.INTEGER, allowNull: true },    // FK → users.id (INTEGER)
+  updated_by:        { type: DataTypes.INTEGER, allowNull: true },    // FK → users.id (INTEGER)
+  tally_sync_status: { type: DataTypes.STRING(20), defaultValue: 'pending' },
+  tally_sync_at:     { type: DataTypes.DATE, allowNull: true },
 }, {
   tableName: 'grns',
   timestamps: true,

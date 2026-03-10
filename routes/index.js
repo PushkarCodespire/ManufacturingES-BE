@@ -49,6 +49,11 @@ const trainingEffectivenessRoutes = require('./trainingEffectiveness.routes');
 const transporterRoutes           = require('./transporter.routes');
 const dispatchOrderRoutes         = require('./dispatchOrder.routes');
 const deliveryChallanRoutes       = require('./deliveryChallan.routes');
+const salesInvoiceRoutes          = require('./salesInvoice.routes');
+const debitCreditNoteRoutes       = require('./debitCreditNote.routes');
+const paymentRoutes               = require('./payment.routes');
+const copqEntryRoutes             = require('./copqEntry.routes');
+const tallySyncRoutes             = require('./tallySync.routes');
 
 // Mount routes
 router.use('/auth',          authRoutes);
@@ -99,5 +104,10 @@ router.use('/hr/training-effectiveness',  trainingEffectivenessRoutes);
 router.use('/dispatch/transporters',      transporterRoutes);
 router.use('/dispatch/orders',            dispatchOrderRoutes);
 router.use('/dispatch/challans',          deliveryChallanRoutes);
+router.use('/sales-invoices',            salesInvoiceRoutes);
+router.use('/debit-credit-notes',        debitCreditNoteRoutes);
+router.use('/payments',                  paymentRoutes);
+router.use('/copq-entries',              copqEntryRoutes);
+router.use('/tally-sync',               tallySyncRoutes);
 
 module.exports = router;
