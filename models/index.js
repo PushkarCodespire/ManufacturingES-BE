@@ -57,6 +57,14 @@ const PurchaseOrder          = require('../modules/procurement/model/PurchaseOrd
 const PurchaseOrderItem      = require('../modules/procurement/model/PurchaseOrderItem');
 const SubcontractChallan     = require('../modules/subcontracting/model/SubcontractChallan');
 const SubcontractChallanItem = require('../modules/subcontracting/model/SubcontractChallanItem');
+const TrainingTopic         = require('../modules/masters/model/TrainingTopic');
+const RoleRequirement       = require('../modules/masters/model/RoleRequirement');
+const TrainingRecord        = require('../modules/masters/model/TrainingRecord');
+const TrainingEffectiveness = require('../modules/masters/model/TrainingEffectiveness');
+const Transporter           = require('../modules/masters/model/Transporter');
+const DispatchOrder         = require('../modules/masters/model/DispatchOrder');
+const DispatchOrderItem     = require('../modules/masters/model/DispatchOrderItem');
+const DeliveryChallan       = require('../modules/masters/model/DeliveryChallan');
 
 // ─── Associations ────────────────────────────────────────────────────────────
 
@@ -352,6 +360,61 @@ Site.belongsToMany(User,      { through: 'user_sites',      foreignKey: 'site_id
 User.belongsToMany(Warehouse, { through: 'user_warehouses', foreignKey: 'user_id',      otherKey: 'warehouse_id' });
 Warehouse.belongsToMany(User, { through: 'user_warehouses', foreignKey: 'warehouse_id', otherKey: 'user_id' });
 
+// ── HR & Training associations ────────────────────────────────────────────────
+
+// TrainingTopic audit
+TrainingTopic.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
+TrainingTopic.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
+
+// RoleRequirement → Role + Topic
+RoleRequirement.belongsTo(Role,          { foreignKey: 'role_id',  as: 'Role'  });
+RoleRequirement.belongsTo(TrainingTopic, { foreignKey: 'topic_id', as: 'Topic' });
+Role.hasMany(RoleRequirement,            { foreignKey: 'role_id',  as: 'TrainingRequirements', onDelete: 'CASCADE' });
+TrainingTopic.hasMany(RoleRequirement,   { foreignKey: 'topic_id', as: 'Requirements',         onDelete: 'CASCADE' });
+
+// TrainingRecord → Employee, Topic, Trainer
+TrainingRecord.belongsTo(User,          { foreignKey: 'employee_id', as: 'Employee' });
+TrainingRecord.belongsTo(TrainingTopic, { foreignKey: 'topic_id',    as: 'Topic'    });
+TrainingRecord.belongsTo(User,          { foreignKey: 'trainer_id',  as: 'Trainer'  });
+TrainingRecord.belongsTo(User,          { foreignKey: 'created_by',  as: 'Creator'  });
+TrainingRecord.belongsTo(User,          { foreignKey: 'updated_by',  as: 'Updater'  });
+TrainingRecord.hasMany(TrainingEffectiveness, { foreignKey: 'training_record_id', as: 'Evaluations', onDelete: 'CASCADE' });
+
+// TrainingEffectiveness → TrainingRecord, Evaluator
+TrainingEffectiveness.belongsTo(TrainingRecord, { foreignKey: 'training_record_id', as: 'TrainingRecord' });
+TrainingEffectiveness.belongsTo(User,           { foreignKey: 'evaluator_id',        as: 'Evaluator'     });
+TrainingEffectiveness.belongsTo(User,           { foreignKey: 'created_by',          as: 'Creator'       });
+TrainingEffectiveness.belongsTo(User,           { foreignKey: 'updated_by',          as: 'Updater'       });
+
+// ── Dispatch & Logistics associations ─────────────────────────────────────────
+
+// Transporter audit
+Transporter.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
+Transporter.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
+
+// DispatchOrder → Customer (Vendor), Transporter, Warehouse
+DispatchOrder.belongsTo(Vendor,      { foreignKey: 'customer_id',       as: 'Customer'      });
+DispatchOrder.belongsTo(Transporter, { foreignKey: 'transporter_id',    as: 'Transporter'   });
+DispatchOrder.belongsTo(Warehouse,   { foreignKey: 'from_warehouse_id', as: 'FromWarehouse' });
+DispatchOrder.belongsTo(User,        { foreignKey: 'created_by',        as: 'Creator'       });
+DispatchOrder.belongsTo(User,        { foreignKey: 'updated_by',        as: 'Updater'       });
+DispatchOrder.hasMany(DispatchOrderItem, { foreignKey: 'dispatch_order_id', as: 'Items',    onDelete: 'CASCADE' });
+DispatchOrder.hasMany(DeliveryChallan,   { foreignKey: 'dispatch_order_id', as: 'Challans', onDelete: 'CASCADE' });
+
+// DispatchOrderItem → DispatchOrder, Item
+DispatchOrderItem.belongsTo(DispatchOrder, { foreignKey: 'dispatch_order_id', as: 'DispatchOrder' });
+DispatchOrderItem.belongsTo(Item,          { foreignKey: 'item_id',           as: 'Item'          });
+DispatchOrderItem.belongsTo(User,          { foreignKey: 'created_by',        as: 'Creator'       });
+DispatchOrderItem.belongsTo(User,          { foreignKey: 'updated_by',        as: 'Updater'       });
+
+// DeliveryChallan → DispatchOrder
+DeliveryChallan.belongsTo(DispatchOrder, { foreignKey: 'dispatch_order_id', as: 'DispatchOrder' });
+DeliveryChallan.belongsTo(User,          { foreignKey: 'created_by',        as: 'Creator'       });
+DeliveryChallan.belongsTo(User,          { foreignKey: 'updated_by',        as: 'Updater'       });
+
+// Transporter reverse
+Transporter.hasMany(DispatchOrder, { foreignKey: 'transporter_id', as: 'Orders', onDelete: 'SET NULL' });
+
 module.exports = {
   sequelize,
   Department,
@@ -412,4 +475,12 @@ module.exports = {
   PurchaseOrderItem,
   SubcontractChallan,
   SubcontractChallanItem,
+  TrainingTopic,
+  RoleRequirement,
+  TrainingRecord,
+  TrainingEffectiveness,
+  Transporter,
+  DispatchOrder,
+  DispatchOrderItem,
+  DeliveryChallan,
 };
