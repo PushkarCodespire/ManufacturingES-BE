@@ -1,0 +1,10 @@
+const router = require('express').Router();
+const { authenticate } = require('../config/middleware');
+const ctrl = require('../modules/subcontracting/controller/subcontractChallan.controller');
+router.get('/',                authenticate, ctrl.getAll);
+router.get('/:id',             authenticate, ctrl.getById);
+router.post('/',               authenticate, ctrl.create);
+router.patch('/:id/receive',   authenticate, ctrl.receive);
+router.patch('/:id/cancel',    authenticate, ctrl.cancel);
+router.delete('/:id',          authenticate, ctrl.delete);
+module.exports = router;
