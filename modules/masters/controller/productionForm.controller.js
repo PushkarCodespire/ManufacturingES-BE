@@ -18,7 +18,7 @@ exports.getAll = async (req, res) => {
       include: AUDIT_INCLUDE,
       order:   [['createdAt', 'DESC']],
     });
-    res.json(forms);
+    res.json({ success: true, data: forms });
   } catch (err) {
     console.error('productionForm.getAll:', err);
     res.status(500).json({ success: false, message: 'Failed to fetch production forms' });
@@ -30,7 +30,7 @@ exports.getById = async (req, res) => {
   try {
     const form = await ProductionForm.findByPk(req.params.id, { include: AUDIT_INCLUDE });
     if (!form) return res.status(404).json({ success: false, message: 'Production form not found' });
-    res.json(form);
+    res.json({ success: true, data: form });
   } catch (err) {
     console.error('productionForm.getById:', err);
     res.status(500).json({ success: false, message: 'Failed to fetch production form' });

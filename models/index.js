@@ -90,6 +90,11 @@ const CheckSheetDimension  = require('../modules/npd/model/CheckSheetDimension')
 const Pfmea                = require('../modules/npd/model/Pfmea')(sequelize);
 const PfmeaItem            = require('../modules/npd/model/PfmeaItem')(sequelize);
 const PfmeaAction          = require('../modules/npd/model/PfmeaAction')(sequelize);
+const SalesInvoice          = require('../modules/accounts/model/SalesInvoice');
+const DebitCreditNote       = require('../modules/accounts/model/DebitCreditNote');
+const Payment               = require('../modules/accounts/model/Payment');
+const CopqEntry             = require('../modules/accounts/model/CopqEntry');
+const TallySyncLog          = require('../modules/accounts/model/TallySyncLog');
 
 // ─── Associations ────────────────────────────────────────────────────────────
 
@@ -522,6 +527,36 @@ PfmeaItem.belongsTo(Pfmea,       { foreignKey: 'pfmea_id' });
 PfmeaItem.hasMany(PfmeaAction,   { foreignKey: 'pfmea_item_id', as: 'Actions', onDelete: 'CASCADE' });
 PfmeaAction.belongsTo(PfmeaItem, { foreignKey: 'pfmea_item_id' });
 PfmeaAction.belongsTo(User,      { foreignKey: 'responsible_id', as: 'Responsible' });
+// ── Accounts & Finance associations ─────────────────────────────────────────
+
+// SalesInvoice → Customer (Vendor), CustomerOrder, DispatchOrder, User
+SalesInvoice.belongsTo(Vendor,        { foreignKey: 'customer_id',       as: 'Customer'      });
+SalesInvoice.belongsTo(CustomerOrder, { foreignKey: 'customer_order_id', as: 'CustomerOrder'  });
+SalesInvoice.belongsTo(DispatchOrder, { foreignKey: 'dispatch_order_id', as: 'DispatchOrder'  });
+SalesInvoice.belongsTo(User,          { foreignKey: 'created_by',        as: 'Creator'        });
+SalesInvoice.belongsTo(User,          { foreignKey: 'updated_by',        as: 'Updater'        });
+
+// DebitCreditNote → Vendor (debit supplier), Customer (credit customer), User
+DebitCreditNote.belongsTo(Vendor, { foreignKey: 'vendor_id',   as: 'Vendor'     });
+DebitCreditNote.belongsTo(Vendor, { foreignKey: 'customer_id', as: 'Customer'   });
+DebitCreditNote.belongsTo(User,   { foreignKey: 'approved_by', as: 'ApprovedBy' });
+DebitCreditNote.belongsTo(User,   { foreignKey: 'created_by',  as: 'Creator'    });
+DebitCreditNote.belongsTo(User,   { foreignKey: 'updated_by',  as: 'Updater'    });
+
+// Payment → Vendor (payable), Customer (receivable), User
+Payment.belongsTo(Vendor, { foreignKey: 'vendor_id',   as: 'Vendor'   });
+Payment.belongsTo(Vendor, { foreignKey: 'customer_id', as: 'Customer' });
+Payment.belongsTo(User,   { foreignKey: 'created_by',  as: 'Creator'  });
+Payment.belongsTo(User,   { foreignKey: 'updated_by',  as: 'Updater'  });
+
+// CopqEntry → Item, Department, User
+CopqEntry.belongsTo(Item,       { foreignKey: 'item_id',       as: 'Item'       });
+CopqEntry.belongsTo(Department, { foreignKey: 'department_id', as: 'Department' });
+CopqEntry.belongsTo(User,       { foreignKey: 'created_by',    as: 'Creator'    });
+CopqEntry.belongsTo(User,       { foreignKey: 'updated_by',    as: 'Updater'    });
+
+// TallySyncLog — synced_by → User
+TallySyncLog.belongsTo(User, { foreignKey: 'synced_by', as: 'SyncedBy' });
 
 module.exports = {
   sequelize,
@@ -616,4 +651,9 @@ module.exports = {
   Pfmea,
   PfmeaItem,
   PfmeaAction,
+  SalesInvoice,
+  DebitCreditNote,
+  Payment,
+  CopqEntry,
+  TallySyncLog,
 };

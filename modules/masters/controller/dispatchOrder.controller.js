@@ -1,5 +1,5 @@
 const Joi = require('joi');
-const { DispatchOrder, DispatchOrderItem, DeliveryChallan, Transporter, Vendor, Warehouse, Item, User, sequelize } = require('../../../models');
+const { DispatchOrder, DispatchOrderItem, DeliveryChallan, Transporter, Vendor, Warehouse, Item, User, Site, SalesInvoice, sequelize } = require('../../../models');
 const { Op } = require('sequelize');
 
 const AUDIT_ATTRS = ['id', 'name', 'employee_id'];
@@ -196,4 +196,50 @@ const deleteOrder = async (req, res) => {
   }
 };
 
-module.exports = { getAllOrders, getOrderById, createOrder, updateOrder, deleteOrder };
+// ── Documents data — deep fetch for 11-document generation ─────────────────
+const getDocumentsData = async (req, res) => {
+  try {
+    const order = await DispatchOrder.findByPk(req.params.id, {
+      include: [
+        { model: Vendor,      as: 'Customer',     attributes: ['id', 'name', 'partner_code', 'gstin', 'address', 'shipping_address', 'email', 'mobile'] },
+        { model: Transporter, as: 'Transporter',  attributes: ['id', 'name', 'contact_person', 'phone', 'email', 'gstin', 'address', 'vehicle_types'] },
+        { model: Warehouse,   as: 'FromWarehouse', attributes: ['id', 'name', 'code', 'site_id'],
+          include: [{ model: Site, attributes: ['id', 'name', 'code'] }],
+        },
+        { model: User, as: 'Creator', attributes: AUDIT_ATTRS },
+        {
+          model: DispatchOrderItem, as: 'Items',
+          include: [{ model: Item, as: 'Item', attributes: ['id', 'name', 'code', 'unit', 'item_type', 'item_group', 'hsn_code', 'gst_rate'] }],
+        },
+        {
+          model: DeliveryChallan, as: 'Challans',
+          attributes: ['id', 'challan_number', 'status', 'issued_date', 'signed_date', 'receiver_name', 'receiver_phone', 'delivery_notes'],
+        },
+      ],
+    });
+    if (!order) return res.status(404).json({ success: false, message: 'Dispatch order not found' });
+
+    // Try to find linked sales invoice
+    let invoice = null;
+    try {
+      invoice = await SalesInvoice.findOne({ where: { dispatch_order_id: order.id } });
+    } catch { /* no invoice linked */ }
+
+    const company = {
+      name:    'Dynatech Engineering Pvt. Ltd.',
+      address: 'Plot No. 45, MIDC Industrial Area, Pune, Maharashtra 411026',
+      gstin:   '27AABCD1234E1Z5',
+      phone:   '+91 20 2712 3456',
+      email:   'info@dynatech.co.in',
+      cin:     'U29100MH2020PTC123456',
+      pan:     'AABCD1234E',
+    };
+
+    return res.json({ success: true, data: { order, invoice, company } });
+  } catch (err) {
+    console.error('[getDocumentsData]', err);
+    return res.status(500).json({ success: false, message: err.message || 'Server error' });
+  }
+};
+
+module.exports = { getAllOrders, getOrderById, createOrder, updateOrder, deleteOrder, getDocumentsData };

@@ -60,6 +60,11 @@ const complaintRoutes             = require('./complaint.routes');
 const drawingRoutes               = require('./drawing.routes');
 const checkSheetRoutes            = require('./checkSheet.routes');
 const pfmeaRoutes                 = require('./pfmea.routes');
+const salesInvoiceRoutes          = require('./salesInvoice.routes');
+const debitCreditNoteRoutes       = require('./debitCreditNote.routes');
+const paymentRoutes               = require('./payment.routes');
+const copqEntryRoutes             = require('./copqEntry.routes');
+const tallySyncRoutes             = require('./tallySync.routes');
 
 // Mount routes
 router.use('/auth',          authRoutes);
@@ -122,5 +127,10 @@ router.use('/quality/complaints',        complaintRoutes);
 router.use('/npd/drawings',              drawingRoutes);
 router.use('/npd/check-sheets',          checkSheetRoutes);
 router.use('/npd/pfmea',                 pfmeaRoutes);
+router.use('/sales-invoices',            salesInvoiceRoutes);
+router.use('/debit-credit-notes',        debitCreditNoteRoutes);
+router.use('/payments',                  paymentRoutes);
+router.use('/copq-entries',              copqEntryRoutes);
+router.use('/tally-sync',               tallySyncRoutes);
 
 module.exports = router;

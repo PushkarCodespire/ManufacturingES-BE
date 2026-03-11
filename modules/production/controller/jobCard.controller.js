@@ -82,6 +82,7 @@ const create = async (req, res) => {
       ...value,
       job_no,
       status: 'open',
+      start_time: new Date(),
       created_by: userId,
       updated_by: userId,
     });
@@ -132,6 +133,8 @@ const close = async (req, res) => {
     await record.update({
       status: 'closed',
       end_time: new Date(),
+      qty_produced: req.body.qty_produced || 0,
+      qty_rejected: req.body.qty_rejected || 0,
       updated_by: req.user.id,
     });
 
