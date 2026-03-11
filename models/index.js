@@ -82,6 +82,8 @@ const CapaEffectiveness  = require('../modules/quality/model/CapaEffectiveness')
 const Ncr                = require('../modules/quality/model/Ncr')(sequelize);
 const NcrDisposition     = require('../modules/quality/model/NcrDisposition')(sequelize);
 const Complaint          = require('../modules/quality/model/Complaint')(sequelize);
+const Instrument         = require('../modules/quality/model/Instrument')(sequelize);
+const CalibrationRecord  = require('../modules/quality/model/CalibrationRecord')(sequelize);
 // ── Sprint 4: NPD ─────────────────────────────────────────────────────────────
 const Drawing              = require('../modules/npd/model/Drawing')(sequelize);
 const DrawingVersion       = require('../modules/npd/model/DrawingVersion')(sequelize);
@@ -90,6 +92,14 @@ const CheckSheetDimension  = require('../modules/npd/model/CheckSheetDimension')
 const Pfmea                = require('../modules/npd/model/Pfmea')(sequelize);
 const PfmeaItem            = require('../modules/npd/model/PfmeaItem')(sequelize);
 const PfmeaAction          = require('../modules/npd/model/PfmeaAction')(sequelize);
+// ── Sprint 4b: Admin Control Room ────────────────────────────────────────────
+const ModuleSetting    = require('../modules/admin/model/ModuleSetting')(sequelize);
+const FeatureSetting   = require('../modules/admin/model/FeatureSetting')(sequelize);
+const FieldVisibility  = require('../modules/admin/model/FieldVisibility')(sequelize);
+const AiAgentSetting   = require('../modules/admin/model/AiAgentSetting')(sequelize);
+const AdminAuditLog    = require('../modules/admin/model/AdminAuditLog')(sequelize);
+// ── Sprint 4b: Madad Chat ────────────────────────────────────────────────────
+const MadadChat        = require('../modules/ai/model/MadadChat')(sequelize);
 const SalesInvoice          = require('../modules/accounts/model/SalesInvoice');
 const DebitCreditNote       = require('../modules/accounts/model/DebitCreditNote');
 const Payment               = require('../modules/accounts/model/Payment');
@@ -295,11 +305,12 @@ OrderItem.belongsTo(Item,          { foreignKey: 'item_id', as: 'Item' });
 
 // ── Store associations ────────────────────────────────────────────────────────
 
-// Grn — vendor + warehouse + audit + items
-Grn.belongsTo(Vendor,    { foreignKey: 'vendor_id',    as: 'Vendor'    });
-Grn.belongsTo(Warehouse, { foreignKey: 'warehouse_id', as: 'Warehouse' });
-Grn.belongsTo(User,      { foreignKey: 'created_by',   as: 'Creator'   });
-Grn.hasMany(GrnItem,     { foreignKey: 'grn_id',        as: 'Items', onDelete: 'CASCADE' });
+// Grn — vendor + warehouse + PO link + audit + items
+Grn.belongsTo(Vendor,        { foreignKey: 'vendor_id',    as: 'Vendor'        });
+Grn.belongsTo(Warehouse,     { foreignKey: 'warehouse_id', as: 'Warehouse'     });
+Grn.belongsTo(PurchaseOrder, { foreignKey: 'po_id',        as: 'PurchaseOrder' });
+Grn.belongsTo(User,          { foreignKey: 'created_by',   as: 'Creator'       });
+Grn.hasMany(GrnItem,         { foreignKey: 'grn_id',       as: 'Items', onDelete: 'CASCADE' });
 GrnItem.belongsTo(Grn,   { foreignKey: 'grn_id',        as: 'Grn'       });
 GrnItem.belongsTo(Item,  { foreignKey: 'item_id',       as: 'Item'      });
 
@@ -352,6 +363,8 @@ IqcInspection.belongsTo(Vendor, { foreignKey: 'vendor_id',    as: 'Vendor'    })
 IqcInspection.belongsTo(User,   { foreignKey: 'inspector_id', as: 'Inspector' });
 IqcInspection.belongsTo(User,   { foreignKey: 'created_by',   as: 'Creator'   });
 IqcInspection.belongsTo(Grn,    { foreignKey: 'grn_id',       as: 'Grn'       });
+IqcInspection.belongsTo(Ncr,    { foreignKey: 'ncr_id',        as: 'Ncr'       });
+IqcInspection.belongsTo(Scar,   { foreignKey: 'scar_id',       as: 'Scar'      });
 IqcInspection.hasMany(IqcInspectionResult, { foreignKey: 'inspection_id', as: 'Results', onDelete: 'CASCADE' });
 IqcInspectionResult.belongsTo(IqcInspection, { foreignKey: 'inspection_id', as: 'Inspection' });
 
@@ -367,6 +380,7 @@ PqcInspection.belongsTo(Item,      { foreignKey: 'item_id',       as: 'Item'    
 PqcInspection.belongsTo(User,      { foreignKey: 'inspector_id',  as: 'Inspector' });
 PqcInspection.belongsTo(User,      { foreignKey: 'created_by',    as: 'Creator'   });
 PqcInspection.belongsTo(WorkOrder, { foreignKey: 'work_order_id', as: 'WorkOrder' });
+PqcInspection.belongsTo(Package,   { foreignKey: 'package_id',    as: 'Package'   });
 PqcInspection.hasMany(PqcInspectionResult, { foreignKey: 'inspection_id', as: 'Results', onDelete: 'CASCADE' });
 PqcInspectionResult.belongsTo(PqcInspection, { foreignKey: 'inspection_id', as: 'Inspection' });
 
@@ -455,6 +469,9 @@ DispatchOrder.belongsTo(User,        { foreignKey: 'created_by',        as: 'Cre
 DispatchOrder.belongsTo(User,        { foreignKey: 'updated_by',        as: 'Updater'       });
 DispatchOrder.hasMany(DispatchOrderItem, { foreignKey: 'dispatch_order_id', as: 'Items',    onDelete: 'CASCADE' });
 DispatchOrder.hasMany(DeliveryChallan,   { foreignKey: 'dispatch_order_id', as: 'Challans', onDelete: 'CASCADE' });
+DispatchOrder.belongsTo(CustomerOrder,  { foreignKey: 'customer_order_id', as: 'CustomerOrder' });
+CustomerOrder.hasMany(DispatchOrder,    { foreignKey: 'customer_order_id', as: 'DispatchOrders' });
+CustomerOrder.hasMany(WorkOrder,        { foreignKey: 'customer_order_id', as: 'WorkOrders'     });
 
 // DispatchOrderItem → DispatchOrder, Item
 DispatchOrderItem.belongsTo(DispatchOrder, { foreignKey: 'dispatch_order_id', as: 'DispatchOrder' });
@@ -497,10 +514,28 @@ Ncr.hasOne(NcrDisposition, { foreignKey: 'ncr_id', as: 'Disposition', onDelete: 
 NcrDisposition.belongsTo(Ncr,  { foreignKey: 'ncr_id' });
 NcrDisposition.belongsTo(User, { foreignKey: 'decision_by', as: 'DecisionBy' });
 
-// Complaint — item + creator + capa link
+// Instrument — creator + calibration records
+Instrument.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
+Instrument.hasMany(CalibrationRecord, { foreignKey: 'instrument_id', as: 'CalibrationRecords', onDelete: 'CASCADE' });
+CalibrationRecord.belongsTo(Instrument, { foreignKey: 'instrument_id', as: 'Instrument' });
+CalibrationRecord.belongsTo(User, { foreignKey: 'performed_by', as: 'PerformedBy' });
+CalibrationRecord.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
+
+// Complaint — item + creator + capa + ncr chain links
 Complaint.belongsTo(Item, { foreignKey: 'item_id',    as: 'Item'    });
 Complaint.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
 Complaint.belongsTo(Capa, { foreignKey: 'capa_id',    as: 'Capa'    });
+Complaint.belongsTo(Ncr,  { foreignKey: 'ncr_id',     as: 'Ncr'     });
+
+// NCR chain — complaint → NCR → CAPA
+Ncr.belongsTo(Complaint, { foreignKey: 'complaint_id', as: 'Complaint' });
+Ncr.belongsTo(Capa,      { foreignKey: 'capa_id',      as: 'Capa'      });
+
+// AdminAuditLog — actor
+AdminAuditLog.belongsTo(User, { foreignKey: 'actor_id', as: 'Actor' });
+
+// MadadChat — user
+MadadChat.belongsTo(User, { foreignKey: 'user_id', as: 'User' });
 
 // ── Sprint 4: NPD associations ────────────────────────────────────────────────
 
@@ -643,6 +678,8 @@ module.exports = {
   Ncr,
   NcrDisposition,
   Complaint,
+  Instrument,
+  CalibrationRecord,
   // Sprint 4: NPD
   Drawing,
   DrawingVersion,
@@ -656,4 +693,11 @@ module.exports = {
   Payment,
   CopqEntry,
   TallySyncLog,
+  // Sprint 4b: Admin + AI
+  ModuleSetting,
+  FeatureSetting,
+  FieldVisibility,
+  AiAgentSetting,
+  AdminAuditLog,
+  MadadChat,
 };

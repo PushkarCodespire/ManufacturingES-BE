@@ -23,6 +23,9 @@ module.exports = (sequelize) => {
     // status: raised → under_review → dispositioned → closed
     status:          { type: DataTypes.STRING(30), defaultValue: 'raised' },
     raised_by:       { type: DataTypes.INTEGER, allowNull: true },
+    // chain FKs: complaint → NCR → CAPA
+    complaint_id:    { type: DataTypes.UUID, allowNull: true },
+    capa_id:         { type: DataTypes.UUID, allowNull: true },
     notes:           { type: DataTypes.TEXT, allowNull: true },
     created_by:      { type: DataTypes.INTEGER, allowNull: true },
     updated_by:      { type: DataTypes.INTEGER, allowNull: true },

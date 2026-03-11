@@ -4,7 +4,7 @@ const { getAllOrders, getOrderById, createOrder, updateOrder, deleteOrder, getDo
 const { authenticate, authorize } = require('../config/middleware');
 
 router.use(authenticate);
-router.use(authorize('dispatch_admin', 'it_admin', 'plant_head'));
+router.use(authorize('dispatch_manager', 'it_admin', 'plant_head'));
 
 router.get( '/',                    getAllOrders);
 router.get( '/:id/documents-data',  getDocumentsData);

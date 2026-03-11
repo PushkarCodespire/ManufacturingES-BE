@@ -1,11 +1,12 @@
 const Joi = require('joi');
-const { DispatchOrder, DispatchOrderItem, DeliveryChallan, Transporter, Vendor, Warehouse, Item, User, Site, SalesInvoice, sequelize } = require('../../../models');
+const { DispatchOrder, DispatchOrderItem, DeliveryChallan, Transporter, Vendor, Warehouse, Item, User, Site, SalesInvoice, OqcInspection, CustomerOrder, sequelize } = require('../../../models');
 const { Op } = require('sequelize');
 
 const AUDIT_ATTRS = ['id', 'name', 'employee_id'];
 
 const orderSchema = Joi.object({
   customer_id:            Joi.number().integer().allow(null).optional(),
+  customer_order_id:      Joi.number().integer().allow(null).optional(),
   transporter_id:         Joi.number().integer().allow(null).optional(),
   from_warehouse_id:      Joi.number().integer().allow(null).optional(),
   vehicle_number:         Joi.string().trim().max(30).allow('', null).optional(),
@@ -42,6 +43,7 @@ const generateOrderNumber = async () => {
 };
 
 const buildIncludes = () => [
+  { model: CustomerOrder, as: 'CustomerOrder', attributes: ['id', 'order_no', 'status', 'delivery_date'] },
   { model: Vendor,       as: 'Customer',      attributes: ['id', 'name', 'partner_code'] },
   { model: Transporter,  as: 'Transporter',   attributes: ['id', 'name', 'phone']        },
   { model: Warehouse,    as: 'FromWarehouse',  attributes: ['id', 'name', 'code']         },
@@ -150,6 +152,44 @@ const updateOrder = async (req, res) => {
     }
 
     const { items, ...orderData } = value;
+
+    // ── OQC gate: block dispatch if any item lacks OQC pass ─────────────────
+    if (orderData.status === 'dispatched' && order.status !== 'dispatched') {
+      const dispatchItems = items !== undefined
+        ? items
+        : (await DispatchOrderItem.findAll({ where: { dispatch_order_id: order.id }, raw: true }));
+
+      for (const di of dispatchItems) {
+        // Check latest OQC result for this item (not just any pass)
+        const latestOqc = await OqcInspection.findOne({
+          where: { item_id: di.item_id },
+          order: [['inspection_date', 'DESC'], ['created_at', 'DESC']],
+        });
+        if (!latestOqc || latestOqc.result !== 'pass') {
+          const item = await Item.findByPk(di.item_id, { attributes: ['name', 'code'] });
+          const reason = !latestOqc ? 'No OQC inspection found' : `Latest OQC result is "${latestOqc.result}"`;
+          await t.rollback();
+          return res.status(400).json({
+            success: false,
+            message: `DISPATCH BLOCKED: ${reason} for item ${item?.code || item?.name || di.item_id}. OQC pass is mandatory before dispatch.`,
+          });
+        }
+      }
+
+      // Also check CustomerOrder status if linked
+      const coId = orderData.customer_order_id || order.customer_order_id;
+      if (coId) {
+        const co = await CustomerOrder.findByPk(coId);
+        if (co && co.status === 'active') {
+          await t.rollback();
+          return res.status(400).json({
+            success: false,
+            message: `DISPATCH BLOCKED: Customer order ${co.order_no} is still in "active" status. Production and OQC must complete first.`,
+          });
+        }
+      }
+    }
+
     await order.update({ ...orderData, updated_by: req.user?.id || null }, { transaction: t });
 
     // Replace items if provided
@@ -172,6 +212,22 @@ const updateOrder = async (req, res) => {
     }
 
     await t.commit();
+
+    // Auto-transition CustomerOrder status on dispatch/delivery
+    const coId = orderData.customer_order_id || order.customer_order_id;
+    if (coId) {
+      try {
+        const co = await CustomerOrder.findByPk(coId);
+        if (co) {
+          if (orderData.status === 'dispatched' && ['ready', 'in_production'].includes(co.status)) {
+            await co.update({ status: 'dispatched', updated_by: req.user?.id });
+          } else if (orderData.status === 'delivered' && co.status === 'dispatched') {
+            await co.update({ status: 'closed', updated_by: req.user?.id });
+          }
+        }
+      } catch (e) { console.warn('[DispatchOrder] Auto status update (non-fatal):', e.message); }
+    }
+
     const full = await DispatchOrder.findByPk(order.id, { include: buildIncludes() });
     return res.json({ success: true, message: 'Dispatch order updated', data: full });
   } catch (err) {

@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
-const { Drawing, DrawingVersion, Item, User } = require('../../../models');
+const { Drawing, DrawingVersion, CheckSheetTemplate, Item, User } = require('../../../models');
+const { notifyByRoles } = require('../../../services/notification.service');
 const {
   validateCreateDrawing, validateUpdateDrawing, validateCreateVersion,
 } = require('../cred/drawing.cred');
@@ -104,7 +105,34 @@ exports.addVersion = async (req, res) => {
       status:             'uploaded',
     });
 
-    res.status(201).json({ success: true, data: version, message: `Version Rev ${value.revision} uploaded` });
+    // ── Drawing Revision Cascade — invalidate linked check-sheets ────────────
+    let cascadeCount = 0;
+    try {
+      const affected = await CheckSheetTemplate.findAll({
+        where: { drawing_id: drawing.id, sheet_status: 'active' },
+        attributes: ['id', 'name'],
+      });
+      cascadeCount = affected.length;
+      if (cascadeCount > 0) {
+        await CheckSheetTemplate.update(
+          { sheet_status: 'invalidated', invalidated_at: new Date() },
+          { where: { drawing_id: drawing.id, sheet_status: 'active' } },
+        );
+        notifyByRoles(
+          ['quality_manager', 'iqc_inspector'],
+          'DRAWING_REVISED',
+          'Drawing Revised',
+          `Drawing ${drawing.drawing_no} revised to Rev ${value.revision}. ${cascadeCount} check-sheet(s) invalidated.`,
+        );
+      }
+    } catch (cascadeErr) {
+      console.warn('[drawing.addVersion] cascade warning:', cascadeErr.message);
+    }
+
+    res.status(201).json({
+      success: true, data: version, cascade_count: cascadeCount,
+      message: `Version Rev ${value.revision} uploaded${cascadeCount ? ` — ${cascadeCount} check-sheet(s) invalidated` : ''}`,
+    });
   } catch (err) {
     console.error('[drawing.addVersion]', err);
     res.status(500).json({ success: false, message: 'Failed to upload drawing version' });
@@ -162,6 +190,24 @@ exports.obsolete = async (req, res) => {
   } catch (err) {
     console.error('[drawing.obsolete]', err);
     res.status(500).json({ success: false, message: 'Failed to obsolete drawing' });
+  }
+};
+
+// ── GET /npd/drawings/:id/cascade-check — Preview affected check-sheets ─────
+exports.checkCascade = async (req, res) => {
+  try {
+    const drawing = await Drawing.findByPk(req.params.id);
+    if (!drawing) return res.status(404).json({ success: false, message: 'Drawing not found' });
+
+    const affected = await CheckSheetTemplate.findAll({
+      where: { drawing_id: drawing.id, sheet_status: 'active' },
+      attributes: ['id', 'name', 'revision'],
+    });
+
+    res.json({ success: true, data: { count: affected.length, affected_check_sheets: affected } });
+  } catch (err) {
+    console.error('[drawing.checkCascade]', err);
+    res.status(500).json({ success: false, message: 'Failed to check cascade' });
   }
 };
 

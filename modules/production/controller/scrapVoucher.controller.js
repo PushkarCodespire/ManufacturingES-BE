@@ -5,6 +5,7 @@ const {
   Machine,
   WorkOrder,
   User,
+  CopqEntry,
 } = require('../../../models');
 const { validateCreateScrap, validateUpdateScrap } = require('../cred/scrapVoucher.cred');
 
@@ -129,7 +130,36 @@ const authorizeVoucher = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Only pending scrap vouchers can be authorized' });
     }
     await record.update({ status: 'authorized', authorized_by: req.user.id, updated_by: req.user.id });
-    return res.json({ success: true, data: record });
+
+    // Auto-create COPQ entry for authorized scrap
+    let copq_id = null;
+    try {
+      const year = new Date().getFullYear();
+      const prefix = `COPQ-${year}-`;
+      const lastCopq = await CopqEntry.findOne({ where: { entry_no: { [Op.like]: `${prefix}%` } }, order: [['entry_no', 'DESC']] });
+      let seq = 1;
+      if (lastCopq) { const parts = lastCopq.entry_no.split('-'); seq = parseInt(parts[parts.length - 1], 10) + 1; }
+      const copqNo = `${prefix}${String(seq).padStart(4, '0')}`;
+
+      const copq = await CopqEntry.create({
+        entry_no:    copqNo,
+        category:    'scrap',
+        ref_type:    'scrap_voucher',
+        ref_id:      record.id,
+        ref_no:      record.voucher_no,
+        item_id:     record.item_id,
+        cost_amount: record.total_cost || 0,
+        qty:         record.qty_scrapped || 0,
+        description: `Auto-created from scrap voucher ${record.voucher_no}. Reason: ${record.reason || 'N/A'}`,
+        entry_date:  record.scrap_date,
+        month_key:   record.scrap_date.substring(0, 7),
+        created_by:  req.user.id,
+        updated_by:  req.user.id,
+      });
+      copq_id = copq.id;
+    } catch (e) { console.warn('[ScrapVoucher.authorize] COPQ auto-create (non-fatal):', e.message); }
+
+    return res.json({ success: true, data: record, copq_id });
   } catch (err) {
     console.error('[ScrapVoucher.authorize]', err);
     return res.status(500).json({ success: false, message: 'Server error' });

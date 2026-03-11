@@ -13,6 +13,7 @@ router.get('/:id',                 ctrl.getById);
 router.post('/',                   authorize(...npdRoles), ctrl.create);
 router.patch('/:id',               authorize(...npdRoles), ctrl.update);
 router.post('/:id/versions',       authorize(...npdRoles), ctrl.addVersion);
+router.get('/:id/cascade-check',   ctrl.checkCascade);
 router.patch('/:id/approve',       authorize(...approveRoles), ctrl.approve);
 router.patch('/:id/obsolete',      authorize(...approveRoles), ctrl.obsolete);
 router.delete('/:id',              authorize(...npdRoles), ctrl.delete);

@@ -7,6 +7,11 @@ const QC_MANAGE = ['plant_head', 'it_admin', 'quality_manager'];
 
 router.use(authenticate);
 
+// AI endpoints (before /:id to avoid param conflict)
+router.get( '/ai/priority-queue',       ctrl.aiPriorityQueue);
+router.post('/ai/detect-standards',     ctrl.aiDetectStandards);
+router.get( '/:id/ai/iqc-comparison',   ctrl.aiIqcComparison);
+
 router.get('/',                  ctrl.getAll);
 router.get('/:id',               ctrl.getById);
 router.post('/',                 authorize(...QC_WRITE),  ctrl.create);

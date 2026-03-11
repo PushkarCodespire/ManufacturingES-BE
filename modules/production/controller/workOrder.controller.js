@@ -89,6 +89,17 @@ const create = async (req, res) => {
       created_by: userId,
       updated_by: userId,
     });
+
+    // Auto-transition CustomerOrder to in_production
+    if (value.customer_order_id) {
+      try {
+        const co = await CustomerOrder.findByPk(value.customer_order_id);
+        if (co && co.status === 'active') {
+          await co.update({ status: 'in_production', updated_by: userId });
+        }
+      } catch (e) { console.warn('[WorkOrder.create] Auto status update (non-fatal):', e.message); }
+    }
+
     return res.status(201).json({ success: true, data: record });
   } catch (err) {
     console.error('[WorkOrder.create]', err);
@@ -140,7 +151,22 @@ const updateStatus = async (req, res) => {
       });
     }
 
-    const updates = { status, updated_by: req.user.id };
+    // FPI gate: when opening a WO, set fpi_status to pending
+    if (status === 'open' && record.status === 'draft') {
+      record.fpi_status = 'pending';
+    }
+
+    // FPI gate: block in_progress if FPI not passed
+    if (status === 'in_progress') {
+      if (record.fpi_status === 'pending') {
+        return res.status(400).json({ success: false, message: 'Cannot start production: FPI inspection is pending' });
+      }
+      if (record.fpi_status === 'fail') {
+        return res.status(400).json({ success: false, message: 'Cannot start production: FPI inspection has failed' });
+      }
+    }
+
+    const updates = { status, fpi_status: record.fpi_status, updated_by: req.user.id };
     if (status === 'in_progress' && !record.actual_start) {
       updates.actual_start = new Date();
     }

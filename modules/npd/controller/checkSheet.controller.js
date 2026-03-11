@@ -131,6 +131,72 @@ exports.updateDimensions = async (req, res) => {
   }
 };
 
+// ── PATCH /npd/check-sheets/:id/revalidate — Reactivate after drawing review ─
+exports.revalidate = async (req, res) => {
+  try {
+    const template = await CheckSheetTemplate.findByPk(req.params.id);
+    if (!template) return res.status(404).json({ success: false, message: 'Check-sheet template not found' });
+    if (template.sheet_status !== 'invalidated') {
+      return res.status(400).json({ success: false, message: 'Only invalidated check-sheets can be revalidated' });
+    }
+
+    await template.update({ sheet_status: 'reviewed', invalidated_at: null });
+    res.json({ success: true, data: template, message: 'Check-sheet revalidated' });
+  } catch (err) {
+    console.error('[checkSheet.revalidate]', err);
+    res.status(500).json({ success: false, message: 'Failed to revalidate check-sheet' });
+  }
+};
+
+// ── POST /npd/check-sheets/ai/dimension-extraction ──────────────────────────
+exports.aiDimensionExtraction = async (req, res) => {
+  try {
+    const { drawing_id, check_sheet_id } = req.body;
+    const { dimensionExtraction } = require('../../../config/ai-prompts');
+    const { callClaudeVision } = require('../../../services/ai.service');
+
+    let drawingContext = 'Extract all dimensions from this engineering drawing.';
+    if (drawing_id) {
+      const drawing = await Drawing.findByPk(drawing_id);
+      if (drawing) {
+        drawingContext = `Drawing: ${drawing.drawing_no}, Rev: ${drawing.current_revision}, Title: ${drawing.title}. Extract all dimensions.`;
+      }
+    }
+
+    // If a file was uploaded (multipart), use vision
+    if (req.file) {
+      const base64Data = req.file.buffer.toString('base64');
+      const mediaType = req.file.mimetype || 'application/pdf';
+      const prompt = dimensionExtraction(drawingContext);
+
+      const result = await callClaudeVision(
+        'You are a metrology expert extracting dimensions from engineering drawings.',
+        base64Data,
+        mediaType,
+        prompt,
+      );
+      return res.json({ success: true, data: result, ai_available: true });
+    }
+
+    // Fallback: text-based extraction with context
+    const { callClaude } = require('../../../services/ai.service');
+    const prompt = dimensionExtraction(drawingContext);
+    const result = await callClaude(
+      'You are a metrology expert.',
+      prompt,
+      { cacheKey: `dims-${drawing_id || check_sheet_id}`, maxTokens: 2000 },
+    );
+
+    res.json({ success: true, data: result, ai_available: true });
+  } catch (err) {
+    console.error('[checkSheet.aiDimensionExtraction]', err);
+    if (err.message?.includes('budget') || err.message?.includes('unavailable')) {
+      return res.json({ success: true, data: null, ai_available: false, message: err.message });
+    }
+    res.status(500).json({ success: false, message: 'AI dimension extraction failed' });
+  }
+};
+
 // ── DELETE /npd/check-sheets/:id ──────────────────────────────────────────────
 exports.delete = async (req, res) => {
   try {

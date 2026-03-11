@@ -6,8 +6,8 @@ const { authenticate, authorize } = require('../config/middleware');
 router.use(authenticate);
 
 router.get( '/',      getAllTransporters);
-router.post('/',      authorize('dispatch_admin', 'it_admin', 'plant_head'), createTransporter);
-router.patch('/:id',  authorize('dispatch_admin', 'it_admin', 'plant_head'), updateTransporter);
-router.delete('/:id', authorize('dispatch_admin', 'it_admin', 'plant_head'), deleteTransporter);
+router.post('/',      authorize('dispatch_manager', 'it_admin', 'plant_head'), createTransporter);
+router.patch('/:id',  authorize('dispatch_manager', 'it_admin', 'plant_head'), updateTransporter);
+router.delete('/:id', authorize('dispatch_manager', 'it_admin', 'plant_head'), deleteTransporter);
 
 module.exports = router;

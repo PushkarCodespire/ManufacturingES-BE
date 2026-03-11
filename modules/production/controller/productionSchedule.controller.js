@@ -144,11 +144,111 @@ const deleteSchedule = async (req, res) => {
   }
 };
 
+// ── GET /production-schedules/ai/shortage-prediction ─────────────────────────
+const aiShortagePrediction = async (req, res) => {
+  try {
+    const { callClaude, isAvailable } = require('../../../services/ai.service');
+    if (!isAvailable()) return res.json({ success: true, ai_available: false, data: null });
+
+    const { productionShortageAlert } = require('../../../config/ai-prompts');
+    const { Inventory, Bom, BomLine } = require('../../../models');
+
+    // Load published schedules for next 30 days
+    const today = new Date();
+    const futureDate = new Date(today);
+    futureDate.setDate(futureDate.getDate() + 30);
+    const schedules = await ProductionSchedule.findAll({
+      where: { status: 'published', schedule_date: { [Op.gte]: today.toISOString().split('T')[0], [Op.lte]: futureDate.toISOString().split('T')[0] } },
+      include: [
+        { model: Item, as: 'Item', attributes: ['id', 'name', 'code'] },
+        { model: Machine, as: 'Machine', attributes: ['id', 'name'] },
+        { model: WorkOrder, as: 'WorkOrder', attributes: ['id', 'wo_no', 'planned_qty'] },
+      ],
+      order: [['schedule_date', 'ASC']],
+      limit: 100,
+    });
+
+    // Load inventory
+    const inventory = await Inventory.findAll({
+      include: [{ model: Item, as: 'Item', attributes: ['id', 'name', 'code'] }],
+    });
+
+    // Load BOMs for scheduled items
+    const itemIds = [...new Set(schedules.map((s) => s.item_id).filter(Boolean))];
+    const boms = await Bom.findAll({
+      where: { item_id: { [Op.in]: itemIds } },
+      include: [{ model: BomLine, as: 'Lines' }],
+    });
+
+    const prompt = productionShortageAlert(
+      schedules.map((s) => s.toJSON()),
+      inventory.map((i) => i.toJSON()),
+      boms.map((b) => b.toJSON()),
+    );
+    const result = await callClaude(prompt.system, prompt.user, { cacheKey: 'shortage-prediction' });
+    return res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[ProductionSchedule.aiShortagePrediction]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// ── GET /production-schedules/ai/bottleneck-detection ────────────────────────
+const aiBottleneckDetection = async (req, res) => {
+  try {
+    const { callClaude, isAvailable } = require('../../../services/ai.service');
+    if (!isAvailable()) return res.json({ success: true, ai_available: false, data: null });
+
+    const { productionBottleneckDetection } = require('../../../config/ai-prompts');
+
+    // Load schedules for next 14 days grouped by machine
+    const today = new Date();
+    const futureDate = new Date(today);
+    futureDate.setDate(futureDate.getDate() + 14);
+    const schedules = await ProductionSchedule.findAll({
+      where: { status: 'published', schedule_date: { [Op.gte]: today.toISOString().split('T')[0], [Op.lte]: futureDate.toISOString().split('T')[0] } },
+      include: [
+        { model: Item, as: 'Item', attributes: ['id', 'name', 'code'] },
+        { model: Machine, as: 'Machine', attributes: ['id', 'name'] },
+        { model: Shift, as: 'Shift', attributes: ['id', 'name'] },
+        { model: WorkOrder, as: 'WorkOrder', attributes: ['id', 'wo_no', 'planned_qty', 'priority'] },
+      ],
+      order: [['schedule_date', 'ASC']],
+      limit: 200,
+    });
+
+    // Load machine capacity info
+    const { Machine: MachineModel } = require('../../../models');
+    const machines = await MachineModel.findAll({ attributes: ['id', 'name'] });
+
+    // Active work orders
+    const activeWOs = await WorkOrder.findAll({
+      where: { status: { [Op.in]: ['open', 'in_progress'] } },
+      include: [{ model: Item, as: 'Item', attributes: ['id', 'name', 'code'] }],
+      attributes: ['id', 'wo_no', 'planned_qty', 'priority', 'planned_start', 'planned_end'],
+      limit: 50,
+    });
+
+    const prompt = productionBottleneckDetection(
+      schedules.map((s) => s.toJSON()),
+      machines.map((m) => m.toJSON()),
+      activeWOs.map((w) => w.toJSON()),
+    );
+    const result = await callClaude(prompt.system, prompt.user, { cacheKey: 'bottleneck-detection' });
+    return res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[ProductionSchedule.aiBottleneckDetection]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
 module.exports = {
   getAll,
   getById,
   create,
   update,
   publish,
+  aiShortagePrediction,
+  aiBottleneckDetection,
   delete: deleteSchedule,
 };

@@ -222,6 +222,47 @@ exports.updateAction = async (req, res) => {
   }
 };
 
+// ── POST /npd/pfmea/:id/ai/failure-mode-suggestion ──────────────────────────
+exports.aiFailureModeSuggestion = async (req, res) => {
+  try {
+    const pfmea = await Pfmea.findByPk(req.params.id, {
+      include: [
+        { model: Item, as: 'Item', attributes: ['id', 'name', 'code'] },
+        { model: PfmeaItem, as: 'Items', include: [{ model: PfmeaAction, as: 'Actions' }] },
+      ],
+    });
+    if (!pfmea) return res.status(404).json({ success: false, message: 'PFMEA not found' });
+
+    const { failureModeSuggestion } = require('../../../config/ai-prompts');
+    const { callClaude } = require('../../../services/ai.service');
+
+    const processStep = req.body.process_step || pfmea.process_name || '';
+    const material = pfmea.Item?.name || '';
+    const historicalItems = (pfmea.Items || []).map((i) => ({
+      process_step: i.process_step,
+      failure_mode: i.failure_mode,
+      severity: i.severity,
+      occurrence: i.occurrence,
+      detection: i.detection,
+    }));
+
+    const prompt = failureModeSuggestion(processStep, material, historicalItems);
+    const result = await callClaude(
+      'You are a PFMEA expert for automotive manufacturing.',
+      prompt,
+      { cacheKey: `pfmea-fm-${pfmea.id}-${processStep}`, maxTokens: 2000 },
+    );
+
+    res.json({ success: true, data: result, ai_available: true });
+  } catch (err) {
+    console.error('[pfmea.aiFailureModeSuggestion]', err);
+    if (err.message?.includes('budget') || err.message?.includes('unavailable')) {
+      return res.json({ success: true, data: null, ai_available: false, message: err.message });
+    }
+    res.status(500).json({ success: false, message: 'AI failure mode suggestion failed' });
+  }
+};
+
 // ── DELETE /npd/pfmea/:id ─────────────────────────────────────────────────────
 exports.delete = async (req, res) => {
   try {

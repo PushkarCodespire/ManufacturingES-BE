@@ -18,7 +18,8 @@ module.exports = (sequelize) => {
     photos:          { type: DataTypes.JSONB, defaultValue: [] },
     // auto-traceability data (populated by AI)
     traceability:    { type: DataTypes.JSONB, defaultValue: null, allowNull: true, comment: 'lot → supplier → machine → operator chain' },
-    // linked CAPA auto-created
+    // chain FKs: complaint → NCR → CAPA
+    ncr_id:          { type: DataTypes.UUID, allowNull: true },
     capa_id:         { type: DataTypes.UUID, allowNull: true },
     // status: received → acknowledged → 8d_initiated → closed
     status:          { type: DataTypes.STRING(30), defaultValue: 'received' },

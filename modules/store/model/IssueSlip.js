@@ -10,9 +10,11 @@ const IssueSlip = sequelize.define('IssueSlip', {
   department_id:       { type: DataTypes.INTEGER, allowNull: true },  // FK → departments.id (INTEGER)
   issued_date:         { type: DataTypes.DATEONLY, allowNull: false },
   status:              { type: DataTypes.STRING(20), defaultValue: 'issued', comment: 'issued|cancelled' },
-  notes:               { type: DataTypes.TEXT, allowNull: true },
-  created_by:          { type: DataTypes.INTEGER, allowNull: true },  // FK → users.id (INTEGER)
-  updated_by:          { type: DataTypes.INTEGER, allowNull: true },  // FK → users.id (INTEGER)
+  notes:                { type: DataTypes.TEXT, allowNull: true },
+  fifo_override:        { type: DataTypes.BOOLEAN, defaultValue: false },
+  fifo_override_reason: { type: DataTypes.STRING(500), allowNull: true },
+  created_by:           { type: DataTypes.INTEGER, allowNull: true },  // FK → users.id (INTEGER)
+  updated_by:           { type: DataTypes.INTEGER, allowNull: true },  // FK → users.id (INTEGER)
 }, {
   tableName: 'issue_slips',
   timestamps: true,

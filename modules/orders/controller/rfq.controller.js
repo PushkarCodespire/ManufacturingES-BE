@@ -1,6 +1,8 @@
 const { Op } = require('sequelize');
 const { Rfq, RfqItem, Vendor, Item, User, Notification, Role } = require('../../../models');
 const { validateCreateRfq, validateUpdateRfq } = require('../cred/rfq.cred');
+const aiService = require('../../../services/ai.service');
+const aiPrompts = require('../../../config/ai-prompts');
 
 // ── Shared includes ──────────────────────────────────────────────────────────
 const HEADER_INCLUDE = [
@@ -178,5 +180,36 @@ exports.remove = async (req, res) => {
   } catch (err) {
     console.error('rfq.remove:', err);
     res.status(500).json({ success: false, message: 'Failed to delete RFQ' });
+  }
+};
+
+// ── POST /rfqs/ai/suggest-fill — MGT-001 ────────────────────────────────
+exports.aiSuggestFill = async (req, res) => {
+  try {
+    const { customer_id } = req.body;
+    if (!customer_id) return res.status(400).json({ success: false, message: 'customer_id is required' });
+
+    const customer = await Vendor.findByPk(customer_id, { attributes: ['id', 'name', 'partner_code'], raw: true });
+    if (!customer) return res.status(404).json({ success: false, message: 'Customer not found' });
+
+    const pastRfqs = await Rfq.findAll({
+      where: { customer_id },
+      include: [{ model: RfqItem, as: 'Items', include: [{ model: Item, as: 'Item', attributes: ['id', 'name', 'code', 'unit'] }] }],
+      order: [['rfq_date', 'DESC']],
+      limit: 10,
+    });
+
+    const items = await Item.findAll({ attributes: ['id', 'name', 'code', 'unit', 'item_type'], limit: 200, raw: true });
+
+    const prompt = aiPrompts.rfqAutoFill(customer, pastRfqs, items);
+    const result = await aiService.callClaude(prompt.system, prompt.user, {
+      cacheKey: `rfq-fill-${customer_id}`,
+      cacheTtlMs: 30 * 60 * 1000,
+    });
+
+    return res.json({ success: true, data: result });
+  } catch (err) {
+    console.error('rfq.aiSuggestFill:', err);
+    return res.status(500).json({ success: false, message: 'AI suggestion failed' });
   }
 };

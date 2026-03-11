@@ -2,7 +2,7 @@ const Joi = require('joi');
 
 const SEVERITY   = ['critical', 'major', 'minor'];
 const STATUS     = ['created', 'sent', 'response_received', 'under_review', 'accepted', 'rejected', 'closed'];
-const SOURCE     = ['iqc', 'manual'];
+const SOURCE     = ['iqc', 'grn', 'complaint', 'audit', 'manual'];
 
 const validateCreateScar = (data) => Joi.object({
   vendor_id:              Joi.number().integer().required(),

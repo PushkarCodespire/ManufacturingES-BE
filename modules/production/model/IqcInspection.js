@@ -19,6 +19,8 @@ const IqcInspection = sequelize.define('IqcInspection', {
   disposition:     { type: DataTypes.STRING(30), allowNull: true },                           // use_as_is | rework | scrap | return_to_supplier | on_hold
   on_hold:         { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   capa_id:         { type: DataTypes.UUID, allowNull: true },
+  ncr_id:          { type: DataTypes.UUID, allowNull: true },
+  scar_id:         { type: DataTypes.UUID, allowNull: true },
   notes:           { type: DataTypes.TEXT, allowNull: true },
   created_by:      { type: DataTypes.INTEGER, allowNull: true },
 }, { tableName: 'iqc_inspections', underscored: true });

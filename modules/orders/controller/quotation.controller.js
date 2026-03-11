@@ -1,6 +1,8 @@
 const { Op } = require('sequelize');
 const { Quotation, QuotationItem, Rfq, Vendor, Item, User } = require('../../../models');
 const { validateCreateQuotation, validateUpdateQuotation } = require('../cred/quotation.cred');
+const aiService = require('../../../services/ai.service');
+const aiPrompts = require('../../../config/ai-prompts');
 
 // ── Shared includes ──────────────────────────────────────────────────────────
 const HEADER_INCLUDE = [
@@ -189,5 +191,40 @@ exports.remove = async (req, res) => {
   } catch (err) {
     console.error('quotation.remove:', err);
     res.status(500).json({ success: false, message: 'Failed to delete quotation' });
+  }
+};
+
+// ── POST /quotations/ai/suggest-price — MGT-002 ─────────────────────────
+exports.aiSuggestPrice = async (req, res) => {
+  try {
+    const { item_id, customer_id } = req.body;
+    if (!item_id) return res.status(400).json({ success: false, message: 'item_id is required' });
+
+    const item = await Item.findByPk(item_id, { attributes: ['id', 'name', 'code', 'unit', 'item_type', 'gst_rate'], raw: true });
+    if (!item) return res.status(404).json({ success: false, message: 'Item not found' });
+
+    // Past quotation items for this item
+    const pastQuotations = await QuotationItem.findAll({
+      where: { item_id },
+      include: [{
+        model: Quotation,
+        as: 'Quotation',
+        attributes: ['id', 'quotation_no', 'quotation_date', 'customer_id', 'status'],
+        include: [{ model: Vendor, as: 'Customer', attributes: ['id', 'name'] }],
+      }],
+      order: [[{ model: Quotation, as: 'Quotation' }, 'quotation_date', 'DESC']],
+      limit: 15,
+    });
+
+    const prompt = aiPrompts.priceSuggestion(item, pastQuotations, {});
+    const result = await aiService.callClaude(prompt.system, prompt.user, {
+      cacheKey: `price-${item_id}-${customer_id || 'all'}`,
+      cacheTtlMs: 60 * 60 * 1000,
+    });
+
+    return res.json({ success: true, data: result });
+  } catch (err) {
+    console.error('quotation.aiSuggestPrice:', err);
+    return res.status(500).json({ success: false, message: 'AI suggestion failed' });
   }
 };

@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
-const { Complaint, Item, User, Capa } = require('../../../models');
+const { Complaint, Item, User, Capa, Ncr } = require('../../../models');
+const { notifyByRoles } = require('../../../services/notification.service');
 const {
   validateCreateComplaint, validateUpdateComplaint, validateAcknowledge,
 } = require('../cred/complaint.cred');
@@ -114,17 +115,49 @@ exports.acknowledge = async (req, res) => {
     const { error, value } = validateAcknowledge(req.body);
     if (error) return res.status(400).json({ success: false, message: error.details[0].message });
 
-    const complaint = await Complaint.findByPk(req.params.id);
-    if (!complaint) return res.status(404).json({ success: false, message: 'Complaint not found' });
-    if (complaint.status !== 'received') return res.status(400).json({ success: false, message: 'Complaint is not in "received" status' });
+    const record = await Complaint.findByPk(req.params.id);
+    if (!record) return res.status(404).json({ success: false, message: 'Complaint not found' });
+    if (record.status !== 'received') return res.status(400).json({ success: false, message: 'Complaint is not in "received" status' });
 
-    await complaint.update({
+    await record.update({
       status:          'acknowledged',
       acknowledged_at: new Date(),
       response_due:    value.response_due,
     });
 
-    res.json({ success: true, data: complaint, message: `Complaint ${complaint.complaint_no} acknowledged` });
+    // ── Auto-create NCR from complaint ────────────────────────────────────
+    let ncr_no = null;
+    try {
+      // Generate next NCR number (same pattern as ncr.controller)
+      const lastNcr = await Ncr.findOne({ order: [['created_at', 'DESC']], attributes: ['ncr_no'] });
+      const year = new Date().getFullYear();
+      const seq = lastNcr ? parseInt(lastNcr.ncr_no.split('-').pop(), 10) + 1 : 1;
+      ncr_no = `NCR-${year}-${String(seq).padStart(4, '0')}`;
+
+      const ncr = await Ncr.create({
+        ncr_no,
+        defect_desc: record.defect_desc,
+        item_id: record.item_id,
+        qty_affected: record.qty_affected,
+        location_found: 'customer',
+        complaint_id: record.id,
+        status: 'raised',
+        raised_by: req.user.id,
+        created_by: req.user.id,
+      });
+      await record.update({ ncr_id: ncr.id });
+
+      notifyByRoles(
+        ['quality_manager'],
+        'NCR_AUTO_CREATED',
+        'NCR Auto-Created from Complaint',
+        `NCR ${ncr_no} auto-created from complaint ${record.complaint_no}`,
+      );
+    } catch (ncrErr) {
+      console.warn('[complaint.acknowledge] auto-NCR warning:', ncrErr.message);
+    }
+
+    res.json({ success: true, data: record, ncr_no, message: `Complaint ${record.complaint_no} acknowledged` });
   } catch (err) {
     console.error('[complaint.acknowledge]', err);
     res.status(500).json({ success: false, message: 'Failed to acknowledge complaint' });

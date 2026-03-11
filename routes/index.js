@@ -53,6 +53,7 @@ const trainingEffectivenessRoutes = require('./trainingEffectiveness.routes');
 const transporterRoutes           = require('./transporter.routes');
 const dispatchOrderRoutes         = require('./dispatchOrder.routes');
 const deliveryChallanRoutes       = require('./deliveryChallan.routes');
+const instrumentRoutes            = require('./instrument.routes');
 // Sprint 4
 const capaRoutes                  = require('./capa.routes');
 const ncrRoutes                   = require('./ncr.routes');
@@ -65,6 +66,10 @@ const debitCreditNoteRoutes       = require('./debitCreditNote.routes');
 const paymentRoutes               = require('./payment.routes');
 const copqEntryRoutes             = require('./copqEntry.routes');
 const tallySyncRoutes             = require('./tallySync.routes');
+const dashboardRoutes             = require('./dashboard.routes');
+// Sprint 5: Admin Control Room & Madad AI
+const adminControlRoomRoutes      = require('./admin.routes');
+const madadRoutes                 = require('./madad.routes');
 
 // Mount routes
 router.use('/auth',          authRoutes);
@@ -119,6 +124,7 @@ router.use('/hr/training-effectiveness',  trainingEffectivenessRoutes);
 router.use('/dispatch/transporters',      transporterRoutes);
 router.use('/dispatch/orders',            dispatchOrderRoutes);
 router.use('/dispatch/challans',          deliveryChallanRoutes);
+router.use('/quality/instruments',       instrumentRoutes);
 // Sprint 4: Quality
 router.use('/quality/capa',              capaRoutes);
 router.use('/quality/ncr',               ncrRoutes);
@@ -132,5 +138,9 @@ router.use('/debit-credit-notes',        debitCreditNoteRoutes);
 router.use('/payments',                  paymentRoutes);
 router.use('/copq-entries',              copqEntryRoutes);
 router.use('/tally-sync',               tallySyncRoutes);
+router.use('/dashboard',                dashboardRoutes);
+// Sprint 5: Admin Control Room & Madad AI
+router.use('/admin/control-room',        adminControlRoomRoutes);
+router.use('/madad',                     madadRoutes);
 
 module.exports = router;

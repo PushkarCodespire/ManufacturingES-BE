@@ -1,9 +1,12 @@
 const express = require('express');
 const router  = express.Router();
 const { authenticate, authorize } = require('../config/middleware');
-const { getAll, getById, create, update, remove } = require('../modules/orders/controller/quotation.controller');
+const { getAll, getById, create, update, remove, aiSuggestPrice } = require('../modules/orders/controller/quotation.controller');
 
 router.use(authenticate);
+
+// AI endpoints
+router.post('/ai/suggest-price', aiSuggestPrice);
 
 router.get('/',    getAll);
 router.get('/:id', getById);

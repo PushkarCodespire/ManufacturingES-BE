@@ -11,6 +11,9 @@ module.exports = (sequelize) => {
     // applicable gates: iqc | lqc | pqc | oqc (stored as array)
     applicable_gates: { type: DataTypes.JSONB, defaultValue: ['iqc', 'lqc', 'pqc', 'oqc'] },
     is_active:   { type: DataTypes.BOOLEAN, defaultValue: true },
+    // sheet_status: active | invalidated | reviewed — for drawing revision cascade
+    sheet_status:    { type: DataTypes.STRING(20), defaultValue: 'active' },
+    invalidated_at:  { type: DataTypes.DATE, allowNull: true },
     notes:       { type: DataTypes.TEXT, allowNull: true },
     created_by:  { type: DataTypes.INTEGER, allowNull: true },
     updated_by:  { type: DataTypes.INTEGER, allowNull: true },

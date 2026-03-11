@@ -14,6 +14,11 @@ router.put('/:id/results',            authorize(...QC_WRITE),  ctrl.updateResult
 router.patch('/:id/result',           authorize(...QC_WRITE),  ctrl.updateResult);
 router.patch('/:id/disposition',      authorize(...QC_WRITE),  ctrl.setDisposition);
 router.post('/:id/cascade-capa',      authorize(...QC_WRITE),  ctrl.cascadeCapa);
+router.post('/:id/cascade-rejection', authorize(...QC_WRITE),  ctrl.cascadeCapa); // alias
 router.delete('/:id',                 authorize(...QC_MANAGE), ctrl.delete);
+
+// AI endpoints
+router.post('/:id/ai/cascade-suggestion',        authorize(...QC_WRITE), ctrl.aiCascadeSuggestion);
+router.post('/:id/ai/disposition-recommendation', authorize(...QC_WRITE), ctrl.aiDispositionRecommendation);
 
 module.exports = router;

@@ -1,8 +1,10 @@
 const { Op } = require('sequelize');
 const {
-  Grn, GrnItem, Inventory, InventoryTxn, Vendor, Warehouse, Item, User,
+  Grn, GrnItem, Inventory, InventoryTxn, Vendor, Warehouse, Item, User, IqcInspection,
+  PurchaseOrder, PurchaseOrderItem,
 } = require('../../../models');
 const { validateCreateGrn, validateUpdateGrn } = require('../cred/grn.cred');
+const { notifyByRoles } = require('../../../services/notification.service');
 
 // ── Auto-number generator ─────────────────────────────────────────────────────
 async function nextGrnNo() {
@@ -50,11 +52,24 @@ async function updateInventory(items, warehouseId, refType, refId, refNo, userId
   }
 }
 
+// ── IQC auto-number generator ────────────────────────────────────────────────
+async function nextIqcNo() {
+  const year   = new Date().getFullYear();
+  const prefix = `IQC-${year}-`;
+  const last   = await IqcInspection.findOne({
+    where: { inspection_no: { [Op.like]: `${prefix}%` } },
+    order: [['inspection_no', 'DESC']],
+  });
+  const seq = last ? parseInt(last.inspection_no.split('-').pop(), 10) + 1 : 1;
+  return `${prefix}${String(seq).padStart(4, '0')}`;
+}
+
 // ── Shared includes ───────────────────────────────────────────────────────────
 const HEADER_INCLUDE = [
-  { model: Vendor,    as: 'Vendor',    attributes: ['id', 'name', 'partner_code'] },
-  { model: Warehouse, as: 'Warehouse', attributes: ['id', 'name'] },
-  { model: User,      as: 'Creator',   attributes: ['id', 'name'] },
+  { model: Vendor,        as: 'Vendor',        attributes: ['id', 'name', 'partner_code'] },
+  { model: Warehouse,     as: 'Warehouse',     attributes: ['id', 'name'] },
+  { model: PurchaseOrder, as: 'PurchaseOrder',  attributes: ['id', 'po_no', 'status', 'order_date', 'expected_date'] },
+  { model: User,          as: 'Creator',        attributes: ['id', 'name'] },
 ];
 
 // ── GET /grns ─────────────────────────────────────────────────────────────────
@@ -111,6 +126,39 @@ exports.create = async (req, res) => {
     if (!rest.warehouse_id)  return res.status(400).json({ success: false, message: 'warehouse_id is required' });
     if (!rest.received_date) return res.status(400).json({ success: false, message: 'received_date is required' });
 
+    // ── PO matching: validate items against PO if po_id provided ──
+    let po_warnings = [];
+    if (rest.po_id) {
+      const po = await PurchaseOrder.findByPk(rest.po_id, {
+        include: [{ model: PurchaseOrderItem, as: 'Items', include: [{ model: Item, as: 'Item', attributes: ['id', 'name', 'code'] }] }],
+      });
+      if (!po) {
+        return res.status(400).json({ success: false, message: 'Linked Purchase Order not found' });
+      }
+      if (po.status === 'cancelled') {
+        return res.status(400).json({ success: false, message: 'Cannot create GRN against a cancelled PO' });
+      }
+      // Auto-fill po_reference from PO number
+      if (!rest.po_reference) rest.po_reference = po.po_no;
+
+      // Check each GRN item against PO items
+      for (const grnIt of items) {
+        const poItem = po.Items?.find((p) => p.item_id === grnIt.item_id);
+        if (!poItem) {
+          po_warnings.push({ item_id: grnIt.item_id, message: `Item ${grnIt.item_name || grnIt.item_id} not found in PO ${po.po_no}` });
+          continue;
+        }
+        const remaining = parseFloat(poItem.qty_ordered) - parseFloat(poItem.qty_received || 0);
+        const receiving = parseFloat(grnIt.qty_received || 0);
+        if (receiving > remaining) {
+          po_warnings.push({
+            item_id: grnIt.item_id,
+            message: `Over-receipt: receiving ${receiving} but only ${remaining} remaining on PO (ordered ${poItem.qty_ordered}, already received ${poItem.qty_received || 0})`,
+          });
+        }
+      }
+    }
+
     const grn_no = await nextGrnNo();
     const grn    = await Grn.create({
       ...rest,
@@ -127,7 +175,7 @@ exports.create = async (req, res) => {
     const full = await Grn.findByPk(grn.id, {
       include: [...HEADER_INCLUDE, { model: GrnItem, as: 'Items' }],
     });
-    res.status(201).json({ success: true, data: full, message: `GRN ${grn_no} created` });
+    res.status(201).json({ success: true, data: full, po_warnings, message: `GRN ${grn_no} created` });
   } catch (err) {
     console.error('grn.create:', err);
     res.status(500).json({ success: false, message: 'Failed to create GRN' });
@@ -176,7 +224,63 @@ exports.approve = async (req, res) => {
     await updateInventory(grn.Items, grn.warehouse_id, 'grn', grn.id, grn.grn_no, req.user.id, 'grn_in', +1);
     await grn.update({ status: 'approved', updated_by: req.user.id });
 
-    res.json({ success: true, data: grn, message: `GRN ${grn.grn_no} approved and inventory updated` });
+    // ── PO receipt update: increment qty_received on PO items, update PO status ──
+    if (grn.po_id) {
+      try {
+        const po = await PurchaseOrder.findByPk(grn.po_id, {
+          include: [{ model: PurchaseOrderItem, as: 'Items' }],
+        });
+        if (po) {
+          for (const grnIt of grn.Items) {
+            if (!grnIt.item_id) continue;
+            const poItem = po.Items?.find((p) => p.item_id === grnIt.item_id);
+            if (poItem) {
+              const newQtyReceived = parseFloat(poItem.qty_received || 0) + parseFloat(grnIt.qty_received || 0);
+              await poItem.update({ qty_received: newQtyReceived });
+            }
+          }
+          // Refresh PO items to check if fully received
+          const refreshedItems = await PurchaseOrderItem.findAll({ where: { po_id: po.id }, raw: true });
+          const allReceived = refreshedItems.every((p) => parseFloat(p.qty_received || 0) >= parseFloat(p.qty_ordered));
+          const anyReceived = refreshedItems.some((p) => parseFloat(p.qty_received || 0) > 0);
+          const newStatus = allReceived ? 'received' : (anyReceived ? 'partial' : po.status);
+          if (newStatus !== po.status) await po.update({ status: newStatus });
+        }
+      } catch (poErr) {
+        console.warn('[grn.approve] PO update error (non-fatal):', poErr.message);
+      }
+    }
+
+    // ── GRN → IQC auto-trigger: create pending IQC inspection per line item ──
+    const iqcIds = [];
+    for (const it of grn.Items) {
+      if (!it.item_id) continue;
+      const inspection_no = await nextIqcNo();
+      const iqc = await IqcInspection.create({
+        inspection_no,
+        grn_id:          grn.id,
+        item_id:         it.item_id,
+        vendor_id:       grn.vendor_id,
+        batch_no:        it.batch_no || null,
+        qty_received:    parseFloat(it.qty_received || 0),
+        inspection_date: new Date().toISOString().split('T')[0],
+        result:          'pending',
+        created_by:      req.user.id,
+      });
+      iqcIds.push(iqc.id);
+    }
+
+    // Notify IQC team
+    if (iqcIds.length) {
+      await notifyByRoles(
+        ['quality_manager', 'iqc_inspector'],
+        'IQC_REQUIRED',
+        `IQC required for GRN ${grn.grn_no}`,
+        `GRN ${grn.grn_no} approved. ${iqcIds.length} item(s) need incoming inspection.`,
+      );
+    }
+
+    res.json({ success: true, data: grn, iqc_inspections: iqcIds, message: `GRN ${grn.grn_no} approved, inventory updated, ${iqcIds.length} IQC inspection(s) created` });
   } catch (err) {
     console.error('grn.approve:', err);
     res.status(500).json({ success: false, message: 'Failed to approve GRN' });

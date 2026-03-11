@@ -130,6 +130,25 @@ const updateResult = async (req, res) => {
     if (!record) return res.status(404).json({ success: false, message: 'LQC inspection not found' });
 
     await record.update({ result: value.result });
+
+    // FPI cascade: update parent WorkOrder fpi_status when FPI result changes
+    if (record.type === 'fpi' && record.work_order_id) {
+      try {
+        await WorkOrder.update(
+          { fpi_status: value.result },
+          { where: { id: record.work_order_id } },
+        );
+        const notifyByRoles = require('../../../services/notification.service');
+        const fpiLabel = value.result === 'pass' ? 'PASSED' : value.result === 'fail' ? 'FAILED' : value.result.toUpperCase();
+        await notifyByRoles(
+          ['production_supervisor', 'production_planner'],
+          'FPI_RESULT',
+          `FPI ${fpiLabel}`,
+          `FPI inspection ${record.inspection_no} for WO ${record.work_order_id} result: ${fpiLabel}`,
+        );
+      } catch (e) { console.warn('[LqcInspection.updateResult] FPI cascade (non-fatal):', e.message); }
+    }
+
     return res.json({ success: true, data: record });
   } catch (err) {
     console.error('[LqcInspection.updateResult]', err);

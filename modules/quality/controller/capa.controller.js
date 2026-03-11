@@ -5,8 +5,9 @@ const {
 const {
   validateCreateCapa, validateD4, validateD5D6, validateEffectiveness, validateUpdateCapa,
 } = require('../cred/capa.cred');
+const { notifyByRoles } = require('../../../services/notification.service');
 
-// ── Auto-number ───────────────────────────────────────────────────────────────
+// ── Auto-number ───────────────────────────────────────────────────────────────────
 async function nextCapaNo() {
   const year   = new Date().getFullYear();
   const prefix = `CAPA-${year}-`;
@@ -19,7 +20,7 @@ async function nextCapaNo() {
   return `${prefix}${String(seq).padStart(4, '0')}`;
 }
 
-// ── Full CAPA include ─────────────────────────────────────────────────────────
+// ── Full CAPA include ─────────────────────────────────────────────────────────────
 const FULL_INCLUDE = [
   { model: CapaTeam,          as: 'Team',        include: [{ model: User, as: 'TeamMember', attributes: ['id', 'name', 'employee_id'] }] },
   { model: CapaRootCause,     as: 'RootCauses',  order: [['why_level', 'ASC']] },
@@ -159,7 +160,7 @@ exports.updateD4 = async (req, res) => {
   }
 };
 
-// ── PUT /capa/:id/d5d6 — Actions ──────────────────────────────────────────────
+// ── PUT /capa/:id/d5d6 — Actions ──────────────────────────────────────────
 exports.updateD5D6 = async (req, res) => {
   try {
     const { error, value } = validateD5D6(req.body);
@@ -181,6 +182,31 @@ exports.updateD5D6 = async (req, res) => {
       }
     }
 
+    // ── Auto-schedule effectiveness checks (30, 60, 90 days) ──────────
+    try {
+      const existing = await CapaEffectiveness.count({ where: { capa_id: capa.id } });
+      if (existing === 0) {
+        const now = new Date();
+        const checks = [30, 60, 90].map((days) => ({
+          capa_id: capa.id,
+          check_period: days,
+          check_date: new Date(now.getTime() + days * 86400000).toISOString().split('T')[0],
+          status: 'scheduled',
+          is_effective: null,
+        }));
+        await CapaEffectiveness.bulkCreate(checks);
+
+        notifyByRoles(
+          ['quality_manager'],
+          'CAPA_EFFECTIVENESS_SCHEDULED',
+          'CAPA Effectiveness Checks Scheduled',
+          `3 effectiveness checks scheduled for CAPA ${capa.capa_no} at 30, 60, 90 days`,
+        );
+      }
+    } catch (effErr) {
+      console.warn('[capa.updateD5D6] effectiveness scheduling warning:', effErr.message);
+    }
+
     const full = await Capa.findByPk(capa.id, { include: FULL_INCLUDE });
     res.json({ success: true, data: full, message: 'D5/D6 actions saved' });
   } catch (err) {
@@ -189,7 +215,7 @@ exports.updateD5D6 = async (req, res) => {
   }
 };
 
-// ── POST /capa/:id/effectiveness ──────────────────────────────────────────────
+// ── POST /capa/:id/effectiveness ──────────────────────────────────────────
 exports.addEffectiveness = async (req, res) => {
   try {
     const { error, value } = validateEffectiveness(req.body);
@@ -211,7 +237,7 @@ exports.addEffectiveness = async (req, res) => {
   }
 };
 
-// ── PATCH /capa/:id/close ─────────────────────────────────────────────────────
+// ── PATCH /capa/:id/close ───────────────────────────────────────────────────
 exports.close = async (req, res) => {
   try {
     const capa = await Capa.findByPk(req.params.id);
@@ -233,7 +259,108 @@ exports.close = async (req, res) => {
   }
 };
 
-// ── DELETE /capa/:id ──────────────────────────────────────────────────────────
+// ── GET /quality/capa/effectiveness/overdue ──────────────────────────────────
+exports.getOverdueEffectiveness = async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const overdue = await CapaEffectiveness.findAll({
+      where: {
+        check_date: { [Op.lt]: today },
+        status: 'scheduled',
+      },
+      include: [{ model: Capa, attributes: ['id', 'capa_no', 'title', 'status'] }],
+      order: [['check_date', 'ASC']],
+    });
+    res.json({ success: true, data: overdue });
+  } catch (err) {
+    console.error('[capa.getOverdueEffectiveness]', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch overdue effectiveness checks' });
+  }
+};
+
+// ── POST /quality/capa/:id/ai/root-cause ────────────────────────────────────
+exports.aiRootCause = async (req, res) => {
+  try {
+    const record = await Capa.findByPk(req.params.id, {
+      include: [
+        { model: CapaRootCause, as: 'RootCauses' },
+        { model: CapaFishbone, as: 'Fishbone' },
+        { model: CapaAction, as: 'Actions', where: { action_type: 'containment' }, required: false },
+      ],
+    });
+    if (!record) return res.status(404).json({ success: false, message: 'CAPA not found' });
+
+    const { rootCauseSuggestion } = require('../../../config/ai-prompts');
+    const { callClaude } = require('../../../services/ai.service');
+
+    const containment = (record.Actions || []).map((a) => a.description).join('; ');
+    const prompt = rootCauseSuggestion(record.description, containment, {
+      title: record.title,
+      item_id: record.item_id,
+      source_type: record.source_type,
+    });
+
+    const result = await callClaude(
+      'You are a quality engineering AI assistant.',
+      prompt,
+      { cacheKey: `capa-root-cause-${record.id}`, maxTokens: 1500 },
+    );
+
+    res.json({ success: true, data: result, ai_available: true });
+  } catch (err) {
+    console.error('[capa.aiRootCause]', err);
+    if (err.message?.includes('budget') || err.message?.includes('unavailable')) {
+      return res.json({ success: true, data: null, ai_available: false, message: err.message });
+    }
+    res.status(500).json({ success: false, message: 'AI root cause analysis failed' });
+  }
+};
+
+// ── POST /quality/capa/:id/ai/effectiveness-prediction ──────────────────────
+exports.aiEffectivenessPrediction = async (req, res) => {
+  try {
+    const record = await Capa.findByPk(req.params.id, {
+      include: [
+        { model: CapaAction, as: 'Actions' },
+        { model: CapaRootCause, as: 'RootCauses' },
+        { model: CapaEffectiveness, as: 'Effectiveness' },
+      ],
+    });
+    if (!record) return res.status(404).json({ success: false, message: 'CAPA not found' });
+
+    const { capaEffectivenessPrediction } = require('../../../config/ai-prompts');
+    const { callClaude } = require('../../../services/ai.service');
+
+    const historical = await Capa.findAll({
+      where: { status: 'closed' },
+      attributes: ['id', 'capa_no', 'title', 'description', 'source_type'],
+      include: [{ model: CapaEffectiveness, as: 'Effectiveness' }],
+      order: [['created_at', 'DESC']],
+      limit: 20,
+    });
+
+    const prompt = capaEffectivenessPrediction(
+      { title: record.title, description: record.description, actions: record.Actions, root_causes: record.RootCauses },
+      historical.map((c) => ({ capa_no: c.capa_no, title: c.title, effectiveness: c.Effectiveness })),
+    );
+
+    const result = await callClaude(
+      'You are a quality management AI assistant.',
+      prompt,
+      { cacheKey: `capa-effectiveness-${record.id}`, maxTokens: 1000 },
+    );
+
+    res.json({ success: true, data: result, ai_available: true });
+  } catch (err) {
+    console.error('[capa.aiEffectivenessPrediction]', err);
+    if (err.message?.includes('budget') || err.message?.includes('unavailable')) {
+      return res.json({ success: true, data: null, ai_available: false, message: err.message });
+    }
+    res.status(500).json({ success: false, message: 'AI effectiveness prediction failed' });
+  }
+};
+
+// ── DELETE /capa/:id ────────────────────────────────────────────────────────────
 exports.delete = async (req, res) => {
   try {
     const capa = await Capa.findByPk(req.params.id);

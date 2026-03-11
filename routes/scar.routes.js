@@ -7,10 +7,13 @@ const PRC_MANAGE = ['plant_head', 'it_admin', 'procurement_manager'];
 
 router.use(authenticate);
 
-router.get('/',     ctrl.getAll);
-router.get('/:id',  ctrl.getById);
-router.post('/',    authorize(...PRC_WRITE),  ctrl.create);
-router.patch('/:id', authorize(...PRC_WRITE), ctrl.update);
-router.delete('/:id', authorize(...PRC_MANAGE), ctrl.delete);
+router.get('/overdue',         ctrl.getOverdue);
+router.get('/',                ctrl.getAll);
+router.get('/:id',             ctrl.getById);
+router.post('/',               authorize(...PRC_WRITE),  ctrl.create);
+router.patch('/:id',           authorize(...PRC_WRITE),  ctrl.update);
+router.patch('/:id/respond',   authorize(...PRC_WRITE),  ctrl.respond);
+router.patch('/:id/close',     authorize(...PRC_MANAGE), ctrl.close);
+router.delete('/:id',          authorize(...PRC_MANAGE), ctrl.delete);
 
 module.exports = router;

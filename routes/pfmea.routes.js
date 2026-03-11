@@ -12,6 +12,7 @@ router.get('/',                               ctrl.getAll);
 router.get('/:id',                            ctrl.getById);
 router.post('/',                              authorize(...npdRoles), ctrl.create);
 router.patch('/:id',                          authorize(...npdRoles), ctrl.update);
+router.post('/:id/ai/failure-mode-suggestion', authorize(...npdRoles), ctrl.aiFailureModeSuggestion);
 router.delete('/:id',                         authorize(...npdRoles), ctrl.delete);
 
 // Items (process steps) — NOTE: /items routes must come before /:id

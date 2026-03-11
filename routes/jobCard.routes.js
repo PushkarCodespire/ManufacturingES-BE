@@ -7,6 +7,7 @@ const JC_MANAGE = ['plant_head', 'it_admin', 'production_manager', 'production_i
 
 router.use(authenticate);
 
+router.get('/active-idle',   ctrl.getActiveIdle);
 router.get('/',             ctrl.getAll);
 router.get('/:id',          ctrl.getById);
 router.post('/',            authorize(...JC_WRITE),  ctrl.create);

@@ -1,7 +1,8 @@
 const { Op } = require('sequelize');
 const {
-  Ncr, NcrDisposition, Item, User, WorkOrder,
+  Ncr, NcrDisposition, Item, User, WorkOrder, Capa,
 } = require('../../../models');
+const { notifyByRoles } = require('../../../services/notification.service');
 const { validateCreateNcr, validateUpdateNcr, validateDisposition } = require('../cred/ncr.cred');
 
 // ── Auto-number ───────────────────────────────────────────────────────────────
@@ -119,12 +120,12 @@ exports.addDisposition = async (req, res) => {
     const { error, value } = validateDisposition(req.body);
     if (error) return res.status(400).json({ success: false, message: error.details[0].message });
 
-    const ncr = await Ncr.findByPk(req.params.id);
-    if (!ncr) return res.status(404).json({ success: false, message: 'NCR not found' });
-    if (ncr.status === 'closed') return res.status(400).json({ success: false, message: 'NCR is already closed' });
+    const record = await Ncr.findByPk(req.params.id);
+    if (!record) return res.status(404).json({ success: false, message: 'NCR not found' });
+    if (record.status === 'closed') return res.status(400).json({ success: false, message: 'NCR is already closed' });
 
     // Upsert disposition
-    const existing = await NcrDisposition.findOne({ where: { ncr_id: ncr.id } });
+    const existing = await NcrDisposition.findOne({ where: { ncr_id: record.id } });
     let disposition;
     if (existing) {
       await existing.update({ ...value, decision_by: req.user.id, decision_date: new Date() });
@@ -132,14 +133,48 @@ exports.addDisposition = async (req, res) => {
     } else {
       disposition = await NcrDisposition.create({
         ...value,
-        ncr_id:        ncr.id,
+        ncr_id:        record.id,
         decision_by:   req.user.id,
         decision_date: new Date(),
       });
     }
 
-    await ncr.update({ status: 'dispositioned' });
-    res.json({ success: true, data: disposition, message: `MRB decision recorded: ${value.decision}` });
+    await record.update({ status: 'dispositioned' });
+
+    // ── Auto-create CAPA from NCR disposition ─────────────────────────────
+    let capa_no = null;
+    const capaDispositions = ['rework', 'scrap', 'return_to_vendor'];
+    if (capaDispositions.includes(value.disposition_type)) {
+      try {
+        const lastCapa = await Capa.findOne({ order: [['created_at', 'DESC']], attributes: ['capa_no'] });
+        const year = new Date().getFullYear();
+        const seq = lastCapa ? parseInt(lastCapa.capa_no.split('-').pop(), 10) + 1 : 1;
+        capa_no = `CAPA-${year}-${String(seq).padStart(4, '0')}`;
+
+        const capa = await Capa.create({
+          capa_no,
+          title: `CAPA from NCR ${record.ncr_no}`,
+          description: record.defect_desc,
+          item_id: record.item_id,
+          source_type: 'ncr',
+          source_id: record.id,
+          status: 'draft',
+          created_by: req.user.id,
+        });
+        await record.update({ capa_id: capa.id });
+
+        notifyByRoles(
+          ['quality_manager'],
+          'CAPA_AUTO_CREATED',
+          'CAPA Auto-Created from NCR',
+          `CAPA ${capa_no} auto-created from NCR ${record.ncr_no} (disposition: ${value.disposition_type})`,
+        );
+      } catch (capaErr) {
+        console.warn('[ncr.addDisposition] auto-CAPA warning:', capaErr.message);
+      }
+    }
+
+    res.json({ success: true, data: disposition, capa_no, message: `MRB decision recorded: ${value.decision}` });
   } catch (err) {
     console.error('[ncr.addDisposition]', err);
     res.status(500).json({ success: false, message: 'Failed to record disposition' });

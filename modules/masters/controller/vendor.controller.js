@@ -1,5 +1,5 @@
 const { Op, fn, col } = require('sequelize');
-const { Vendor, User, IqcInspection, PurchaseOrder, Scar } = require('../../../models');
+const { Vendor, User, IqcInspection, PurchaseOrder, Scar, Grn, VendorCosting } = require('../../../models');
 
 const AUDIT_ATTRS = ['id', 'name', 'employee_id'];
 
@@ -187,9 +187,35 @@ const getVendorScorecard = async (req, res) => {
     const qualityPct  = iqcAll > 0 ? Math.round((iqcPass / iqcAll) * 100) : null;
     const qualityScore = qualityPct !== null ? Math.round(qualityPct * 0.4) : null;
 
-    // ── Delivery score (25%): PO on-time rate (received vs expected_date) ──
-    const poAll      = await PurchaseOrder.count({ where: { vendor_id: vendor.id, status: { [Op.in]: ['received'] }, order_date: { [Op.gte]: since } } });
-    const deliveryScore = poAll > 0 ? Math.round(85 * 0.25) : null; // Placeholder — actual GRN date comparison needs GRN model
+    // ── Delivery score (25%): PO on-time rate (GRN received_date vs PO expected_date) ──
+    let deliveryPct = null;
+    let deliveryScore = null;
+    let poOnTime = 0;
+    let poWithDelivery = 0;
+    const receivedPOs = await PurchaseOrder.findAll({
+      where: { vendor_id: vendor.id, status: { [Op.in]: ['received', 'closed'] }, order_date: { [Op.gte]: since }, expected_date: { [Op.ne]: null } },
+      attributes: ['id', 'expected_date'],
+      raw: true,
+    });
+    if (receivedPOs.length > 0) {
+      const poIds = receivedPOs.map((p) => p.id);
+      const grns = await Grn.findAll({
+        where: { po_id: { [Op.in]: poIds }, status: { [Op.ne]: 'cancelled' } },
+        attributes: ['po_id', 'received_date'],
+        raw: true,
+      });
+      const grnByPo = {};
+      for (const g of grns) { if (g.po_id) grnByPo[g.po_id] = g.received_date; }
+      for (const po of receivedPOs) {
+        const grnDate = grnByPo[po.id];
+        if (grnDate) {
+          poWithDelivery++;
+          if (grnDate <= po.expected_date) poOnTime++;
+        }
+      }
+      deliveryPct   = poWithDelivery > 0 ? Math.round((poOnTime / poWithDelivery) * 100) : null;
+      deliveryScore = deliveryPct !== null ? Math.round(deliveryPct * 0.25) : null;
+    }
 
     // ── SCAR score (20%): fewer / resolved SCARs = better ──────────────────
     const scarTotal    = await Scar.count({ where: { vendor_id: vendor.id } });
@@ -203,16 +229,58 @@ const getVendorScorecard = async (req, res) => {
     const docsPct   = Math.round((filled / fields.length) * 100);
     const docsScore = Math.round(docsPct * 0.1);
 
-    // ── Price score (5%): fixed 80% baseline (vendor costing data needed for real calc) ──
-    const pricePct   = 80;
-    const priceScore = Math.round(pricePct * 0.05);
+    // ── Price score (5%): compare vendor prices vs avg across all vendors per item ──
+    let pricePct   = null;
+    let priceScore = null;
+    let priceDetail = 'No pricing data';
+    const vendorCostings = await VendorCosting.findAll({
+      where: { vendor_id: vendor.id, type: 'purchase', is_active: true },
+      attributes: ['item_id', 'price_per_unit'],
+      raw: true,
+    });
+    if (vendorCostings.length > 0) {
+      const itemIds = vendorCostings.map((c) => c.item_id);
+      const allCostings = await VendorCosting.findAll({
+        where: { item_id: { [Op.in]: itemIds }, type: 'purchase', is_active: true },
+        attributes: ['item_id', 'price_per_unit'],
+        raw: true,
+      });
+      // Group avg price per item across all vendors
+      const avgByItem = {};
+      for (const c of allCostings) {
+        if (!avgByItem[c.item_id]) avgByItem[c.item_id] = { sum: 0, count: 0 };
+        avgByItem[c.item_id].sum   += parseFloat(c.price_per_unit);
+        avgByItem[c.item_id].count += 1;
+      }
+      // For each vendor item, ratio = avg / vendor_price (lower price = higher score)
+      let totalRatio = 0;
+      let compared = 0;
+      for (const vc of vendorCostings) {
+        const avg = avgByItem[vc.item_id];
+        if (avg && avg.count > 1) {
+          const avgPrice = avg.sum / avg.count;
+          const vp = parseFloat(vc.price_per_unit);
+          if (vp > 0) {
+            totalRatio += Math.min(avgPrice / vp, 1.5); // cap at 150%
+            compared++;
+          }
+        }
+      }
+      if (compared > 0) {
+        pricePct   = Math.min(100, Math.round((totalRatio / compared) * 100));
+        priceScore = Math.round(pricePct * 0.05);
+        priceDetail = `${compared} items compared vs market avg`;
+      } else {
+        priceDetail = `${vendorCostings.length} items priced, no peer comparison`;
+      }
+    }
 
     const components = [
       { key: 'quality',  label: 'Quality',          weight: 40, pct: qualityPct,   score: qualityScore,  detail: `${iqcPass}/${iqcAll} IQC passes (last 12 months)` },
-      { key: 'delivery', label: 'On-Time Delivery',  weight: 25, pct: null,         score: deliveryScore, detail: `${poAll} received POs (last 12 months)` },
+      { key: 'delivery', label: 'On-Time Delivery',  weight: 25, pct: deliveryPct,   score: deliveryScore, detail: poWithDelivery > 0 ? `${poOnTime}/${poWithDelivery} POs delivered on time (last 12 months)` : `${receivedPOs.length} POs, no GRN data` },
       { key: 'scar',     label: 'SCAR Resolution',   weight: 20, pct: scarPct,      score: scarScore,     detail: `${scarTotal} total SCARs, ${scarOpen} open` },
       { key: 'docs',     label: 'Documentation',     weight: 10, pct: docsPct,      score: docsScore,     detail: `${filled}/${fields.length} profile fields complete` },
-      { key: 'price',    label: 'Price Competitiveness', weight: 5, pct: pricePct, score: priceScore,    detail: 'Baseline score' },
+      { key: 'price',    label: 'Price Competitiveness', weight: 5, pct: pricePct, score: priceScore,    detail: priceDetail },
     ];
 
     const totalScore = components.reduce((sum, c) => sum + (c.score ?? 0), 0);

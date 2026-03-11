@@ -17,6 +17,7 @@ const WorkOrder = sequelize.define('WorkOrder', {
   actual_end:        { type: DataTypes.DATE, allowNull: true },
   priority:          { type: DataTypes.STRING(20), defaultValue: 'normal' },
   status:            { type: DataTypes.STRING(20), defaultValue: 'draft' },
+  fpi_status:        { type: DataTypes.STRING(20), defaultValue: 'not_required' }, // not_required | pending | pass | fail
   notes:             { type: DataTypes.TEXT, allowNull: true },
   created_by:        { type: DataTypes.INTEGER, allowNull: true },
   updated_by:        { type: DataTypes.INTEGER, allowNull: true },

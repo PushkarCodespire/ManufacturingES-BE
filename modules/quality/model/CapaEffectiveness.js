@@ -7,6 +7,8 @@ module.exports = (sequelize) => {
     capa_id:         { type: DataTypes.UUID, allowNull: false },
     check_period:    { type: DataTypes.INTEGER, allowNull: false, comment: '30 | 60 | 90 days' },
     check_date:      { type: DataTypes.DATEONLY, allowNull: false },
+    // status: scheduled | completed | overdue
+    status:          { type: DataTypes.STRING(20), defaultValue: 'scheduled' },
     is_effective:    { type: DataTypes.BOOLEAN, allowNull: true }, // null = pending
     recurrence_found:{ type: DataTypes.BOOLEAN, defaultValue: false },
     evidence:        { type: DataTypes.TEXT, allowNull: true },

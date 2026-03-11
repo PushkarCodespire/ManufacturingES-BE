@@ -7,6 +7,7 @@ const DispatchOrder = sequelize.define(
     id:                     { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
     order_number:           { type: DataTypes.STRING(50), allowNull: false },
     customer_id:            { type: DataTypes.INTEGER, allowNull: true },
+    customer_order_id:      { type: DataTypes.INTEGER, allowNull: true },
     transporter_id:         { type: DataTypes.INTEGER, allowNull: true },
     from_warehouse_id:      { type: DataTypes.INTEGER, allowNull: true },
     vehicle_number:         { type: DataTypes.STRING(30), allowNull: true },

@@ -7,6 +7,7 @@ const Grn = sequelize.define('Grn', {
   vendor_id:     { type: DataTypes.INTEGER, allowNull: true },    // FK → vendors.id (INTEGER)
   warehouse_id:  { type: DataTypes.INTEGER, allowNull: false },   // FK → warehouses.id (INTEGER)
   received_date: { type: DataTypes.DATEONLY, allowNull: false },
+  po_id:         { type: DataTypes.UUID, allowNull: true },          // FK → purchase_orders.id
   po_reference:  { type: DataTypes.STRING(100), allowNull: true },
   invoice_no:    { type: DataTypes.STRING(100), allowNull: true },
   status:        { type: DataTypes.STRING(20), defaultValue: 'pending', comment: 'pending | approved | cancelled' },

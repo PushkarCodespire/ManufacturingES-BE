@@ -1,12 +1,34 @@
 const express = require('express');
 const router  = express.Router();
+const multer  = require('multer');
+const path    = require('path');
+const fs      = require('fs');
 const { authenticate, authorize } = require('../config/middleware');
-const { getAll, getById, getTracking, create, update, remove } = require('../modules/orders/controller/customerOrder.controller');
+const { getAll, getById, getDetail, getTracking, create, update, remove, aiExtractPo, aiDeliveryRisk, aiHealthSummary } = require('../modules/orders/controller/customerOrder.controller');
+
+// Multer for PO PDF upload (temp storage, cleaned up after extraction)
+const PO_TMP = path.join(__dirname, '..', 'uploads', 'po-tmp');
+if (!fs.existsSync(PO_TMP)) fs.mkdirSync(PO_TMP, { recursive: true });
+const poUpload = multer({
+  dest: PO_TMP,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (['.pdf', '.png', '.jpg', '.jpeg'].includes(ext)) return cb(null, true);
+    cb(new Error('Only PDF and image files are allowed'));
+  },
+});
 
 router.use(authenticate);
 
+// AI endpoints (before /:id to avoid param conflict)
+router.post('/ai/extract-po',        poUpload.single('file'), aiExtractPo);
+router.get( '/ai/delivery-risk',     aiDeliveryRisk);
+router.get( '/:id/ai/health-summary', aiHealthSummary);
+
 // Tracking dashboard — any authenticated user can view
-router.get('/tracking', getTracking);
+router.get('/tracking',    getTracking);
+router.get('/:id/detail',  getDetail);
 
 router.get('/',    getAll);
 router.get('/:id', getById);

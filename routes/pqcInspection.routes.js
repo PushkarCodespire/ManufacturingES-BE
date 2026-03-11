@@ -7,6 +7,9 @@ const QC_MANAGE = ['plant_head', 'it_admin', 'quality_manager'];
 
 router.use(authenticate);
 
+// AI endpoints
+router.get('/ai/defect-patterns', ctrl.aiDefectPatterns);
+
 router.get('/',             ctrl.getAll);
 router.get('/:id',          ctrl.getById);
 router.post('/',            authorize(...QC_WRITE),  ctrl.create);

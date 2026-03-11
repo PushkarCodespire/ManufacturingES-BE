@@ -11,8 +11,13 @@ const PqcInspection = sequelize.define('PqcInspection', {
   qty_inspected:    { type: DataTypes.DECIMAL(12, 3), allowNull: true, defaultValue: 0 },
   qty_rejected:     { type: DataTypes.DECIMAL(12, 3), allowNull: true, defaultValue: 0 },
   qty_accepted:     { type: DataTypes.DECIMAL(12, 3), allowNull: true, defaultValue: 0 },
+  package_id:       { type: DataTypes.INTEGER, allowNull: true },
   packing_standard: { type: DataTypes.TEXT, allowNull: true },
   label_verified:   { type: DataTypes.BOOLEAN, allowNull: true, defaultValue: false },
+  box_type:         { type: DataTypes.STRING(50), allowNull: true },
+  qty_per_box:      { type: DataTypes.INTEGER, allowNull: true },
+  gross_weight:     { type: DataTypes.DECIMAL(12, 3), allowNull: true },
+  net_weight:       { type: DataTypes.DECIMAL(12, 3), allowNull: true },
   inspector_id:     { type: DataTypes.INTEGER, allowNull: true },
   inspection_date:  { type: DataTypes.DATEONLY, allowNull: false },
   result:           { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'pending' }, // pending | pass | fail | conditional

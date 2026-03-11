@@ -8,10 +8,12 @@ const npdRoles = ['plant_head', 'it_admin', 'quality_manager', 'quality_incharge
 router.use(authenticate);
 
 router.get('/',                      ctrl.getAll);
+router.post('/ai/dimension-extraction', authorize(...npdRoles), ctrl.aiDimensionExtraction);
 router.get('/:id',                   ctrl.getById);
 router.post('/',                     authorize(...npdRoles), ctrl.create);
 router.patch('/:id',                 authorize(...npdRoles), ctrl.update);
 router.put('/:id/dimensions',        authorize(...npdRoles), ctrl.updateDimensions);
+router.patch('/:id/revalidate',      authorize('plant_head', 'it_admin', 'quality_manager'), ctrl.revalidate);
 router.delete('/:id',                authorize(...npdRoles), ctrl.delete);
 
 module.exports = router;

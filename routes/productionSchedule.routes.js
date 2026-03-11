@@ -7,6 +7,8 @@ const SCHED_MANAGE = ['plant_head', 'it_admin', 'production_manager', 'planning_
 
 router.use(authenticate);
 
+router.get('/ai/shortage-prediction',   ctrl.aiShortagePrediction);
+router.get('/ai/bottleneck-detection',  ctrl.aiBottleneckDetection);
 router.get('/',              ctrl.getAll);
 router.get('/:id',           ctrl.getById);
 router.post('/',             authorize(...SCHED_WRITE),  ctrl.create);

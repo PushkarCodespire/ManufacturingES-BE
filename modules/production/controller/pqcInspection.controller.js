@@ -4,9 +4,29 @@ const {
   PqcInspectionResult,
   Item,
   User,
+  Role,
   WorkOrder,
+  Package,
+  Notification,
 } = require('../../../models');
 const { validateCreatePqc, validateUpdateResult } = require('../cred/pqcInspection.cred');
+const aiService = require('../../../services/ai.service');
+const aiPrompts = require('../../../config/ai-prompts');
+
+// ── Notify users by role (non-fatal) ────────────────────────────────────────
+async function notifyByRoles(roleNames, type, title, message) {
+  try {
+    const targets = await User.findAll({
+      include: [{ model: Role, where: { name: { [Op.in]: roleNames } } }],
+      attributes: ['id'],
+    });
+    if (targets.length) {
+      await Notification.bulkCreate(targets.map((u) => ({ user_id: u.id, type, title, message })));
+    }
+  } catch (err) {
+    console.warn('PQC notification error (non-fatal):', err.message);
+  }
+}
 
 // ── Auto-number generator ────────────────────────────────────────────────────
 async function nextInspectionNo() {
@@ -44,6 +64,7 @@ const getAll = async (req, res) => {
         { model: Item,      as: 'Item',      attributes: ['id', 'name', 'code'] },
         { model: User,      as: 'Inspector', attributes: ['id', 'name'] },
         { model: WorkOrder, as: 'WorkOrder', attributes: ['id', 'wo_no'] },
+        { model: Package,   as: 'Package',   attributes: ['id', 'name', 'type_of_package'] },
         { model: PqcInspectionResult, as: 'Results' },
       ],
       order: [['inspection_date', 'DESC'], ['created_at', 'DESC']],
@@ -63,6 +84,7 @@ const getById = async (req, res) => {
         { model: Item,      as: 'Item',      attributes: ['id', 'name', 'code', 'part_no'] },
         { model: User,      as: 'Inspector', attributes: ['id', 'name'] },
         { model: WorkOrder, as: 'WorkOrder', attributes: ['id', 'wo_no'] },
+        { model: Package,   as: 'Package',   attributes: ['id', 'name', 'type_of_package', 'tare_weight', 'pack_length', 'pack_width', 'pack_height'] },
         { model: PqcInspectionResult, as: 'Results' },
       ],
     });
@@ -101,6 +123,10 @@ const create = async (req, res) => {
         notes:          r.notes          || null,
       }));
       await PqcInspectionResult.bulkCreate(rows);
+
+      // Auto-verdict: if all pass → pass, if any fail → fail
+      const hasFail = rows.some((r) => r.result === 'fail');
+      await record.update({ result: hasFail ? 'fail' : 'pass' });
     }
 
     const created = await PqcInspection.findByPk(record.id, {
@@ -123,6 +149,19 @@ const updateResult = async (req, res) => {
     if (!record) return res.status(404).json({ success: false, message: 'PQC inspection not found' });
 
     await record.update({ result: value.result });
+
+    // Notify on failure
+    if (value.result === 'fail') {
+      const item = await Item.findByPk(record.item_id, { attributes: ['name'] });
+      const itemName = item?.name || record.inspection_no;
+      await notifyByRoles(
+        ['quality_manager'],
+        'PQC_FAIL',
+        `PQC Failed: ${record.inspection_no}`,
+        `PQC inspection ${record.inspection_no} for ${itemName} has FAILED. Review required.`,
+      );
+    }
+
     return res.json({ success: true, data: record });
   } catch (err) {
     console.error('[PqcInspection.updateResult]', err);
@@ -146,4 +185,42 @@ const deletePqcInspection = async (req, res) => {
   }
 };
 
-module.exports = { getAll, getById, create, updateResult, delete: deletePqcInspection };
+// ── GET /pqc-inspections/ai/defect-patterns — PQC-001 ────────────────────
+const aiDefectPatterns = async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    const where = {};
+    if (from || to) {
+      where.inspection_date = {};
+      if (from) where.inspection_date[Op.gte] = from;
+      if (to)   where.inspection_date[Op.lte] = to;
+    }
+
+    const inspections = await PqcInspection.findAll({
+      where,
+      include: [
+        { model: Item, as: 'Item', attributes: ['id', 'name', 'code'] },
+        { model: PqcInspectionResult, as: 'Results' },
+      ],
+      order: [['inspection_date', 'DESC']],
+      limit: 100,
+    });
+
+    if (!inspections.length) {
+      return res.json({ success: true, data: { ai_available: true, data: { pareto: [], root_cause_suggestions: [], trend: 'stable', summary_hinglish: 'Koi PQC inspection data nahi mila.' } } });
+    }
+
+    const prompt = aiPrompts.defectPatterns(inspections);
+    const result = await aiService.callClaude(prompt.system, prompt.user, {
+      cacheKey: `pqc-defects-${from || 'all'}-${to || 'all'}`,
+      cacheTtlMs: 60 * 60 * 1000,
+    });
+
+    return res.json({ success: true, data: result });
+  } catch (err) {
+    console.error('[PqcInspection.aiDefectPatterns]', err);
+    return res.status(500).json({ success: false, message: 'Defect pattern analysis failed' });
+  }
+};
+
+module.exports = { getAll, getById, create, updateResult, delete: deletePqcInspection, aiDefectPatterns };

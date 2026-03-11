@@ -1,9 +1,12 @@
 const express = require('express');
 const router  = express.Router();
 const { authenticate, authorize } = require('../config/middleware');
-const { getAll, getById, create, update, remove } = require('../modules/orders/controller/rfq.controller');
+const { getAll, getById, create, update, remove, aiSuggestFill } = require('../modules/orders/controller/rfq.controller');
 
 router.use(authenticate);
+
+// AI endpoints (before /:id to avoid param conflict)
+router.post('/ai/suggest-fill', aiSuggestFill);
 
 router.get('/',    getAll);
 router.get('/:id', getById);

@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const {
   IssueSlip, IssueSlipItem, MaterialRequest, Inventory, InventoryTxn, Warehouse, Item, User,
+  Grn, GrnItem,
 } = require('../../../models');
 const { validateCreateIssueSlip } = require('../cred/issueSlip.cred');
 
@@ -47,6 +48,43 @@ async function deductInventory(items, warehouseId, refId, refNo, userId) {
       created_by:   userId,
     });
   }
+}
+
+// ── FIFO check helper (warning only, non-fatal) ─────────────────────────────
+async function checkFifo(items, warehouseId) {
+  const warnings = [];
+  try {
+    for (const it of items) {
+      if (!it.item_id || !it.lot_no) continue;
+      // Find oldest GRN batch for this item in this warehouse that still has stock
+      const oldestGrn = await GrnItem.findOne({
+        where: { item_id: it.item_id, lot_no: { [Op.ne]: null } },
+        include: [{
+          model: Grn,
+          as: 'Grn',
+          where: { warehouse_id: warehouseId, status: 'approved' },
+          attributes: ['received_date', 'grn_no'],
+        }],
+        order: [[{ model: Grn, as: 'Grn' }, 'received_date', 'ASC']],
+        attributes: ['lot_no', 'qty_received'],
+      });
+      if (oldestGrn && oldestGrn.lot_no !== it.lot_no) {
+        warnings.push({
+          item_id: it.item_id,
+          issued_lot: it.lot_no,
+          message: `FIFO Warning: Older batch "${oldestGrn.lot_no}" (GRN ${oldestGrn.Grn?.grn_no}, received ${oldestGrn.Grn?.received_date}) exists for this item.`,
+          oldest_batch: {
+            lot_no: oldestGrn.lot_no,
+            received_date: oldestGrn.Grn?.received_date,
+            grn_no: oldestGrn.Grn?.grn_no,
+          },
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('[issueSlip] FIFO check error (non-fatal):', err.message);
+  }
+  return warnings;
 }
 
 // ── Shared includes ───────────────────────────────────────────────────────────
@@ -105,16 +143,29 @@ exports.create = async (req, res) => {
     const { error } = validateCreateIssueSlip(req.body);
     if (error) return res.status(400).json({ success: false, message: error.details[0].message });
 
-    const { items = [], ...rest } = req.body;
+    const { items = [], fifo_override = false, fifo_override_reason, ...rest } = req.body;
 
     if (!rest.warehouse_id) return res.status(400).json({ success: false, message: 'warehouse_id is required' });
     if (!rest.issued_date)  return res.status(400).json({ success: false, message: 'issued_date is required' });
     if (!items.length)      return res.status(400).json({ success: false, message: 'At least one item is required' });
 
+    // ── STR-002: Enforce FIFO before issuing ──
+    const fifo_warnings = await checkFifo(items, rest.warehouse_id);
+
+    if (fifo_warnings.length > 0 && !fifo_override) {
+      return res.status(400).json({
+        success: false,
+        message: `FIFO violation: ${fifo_warnings.length} item(s) not issued from oldest batch. Provide fifo_override=true with fifo_override_reason to proceed.`,
+        fifo_warnings,
+      });
+    }
+
     const slip_no = await nextSlipNo();
     const slip    = await IssueSlip.create({
       ...rest,
       slip_no,
+      fifo_override: fifo_override && fifo_warnings.length > 0,
+      fifo_override_reason: fifo_override && fifo_warnings.length > 0 ? fifo_override_reason : null,
       created_by: req.user.id,
       updated_by: req.user.id,
       status:     'issued',
@@ -141,7 +192,7 @@ exports.create = async (req, res) => {
     const full = await IssueSlip.findByPk(slip.id, {
       include: [...HEADER_INCLUDE, { model: IssueSlipItem, as: 'Items' }],
     });
-    res.status(201).json({ success: true, data: full, message: `Issue slip ${slip_no} created` });
+    res.status(201).json({ success: true, data: full, fifo_warnings, message: `Issue slip ${slip_no} created` });
   } catch (err) {
     console.error('issueSlip.create:', err);
     res.status(500).json({ success: false, message: 'Failed to create issue slip' });

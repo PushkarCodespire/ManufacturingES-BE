@@ -1,0 +1,10 @@
+const router = require('express').Router();
+const { authenticate } = require('../config/middleware');
+const ctrl = require('../modules/production/controller/dashboard.controller');
+
+router.use(authenticate);
+
+router.get('/kpis',             ctrl.getKpis);
+router.get('/role-stats/:role', ctrl.getRoleStats);
+
+module.exports = router;

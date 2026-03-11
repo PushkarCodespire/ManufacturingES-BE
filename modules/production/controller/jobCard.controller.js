@@ -75,6 +75,17 @@ const create = async (req, res) => {
     const { error, value } = validateCreateJobCard(req.body);
     if (error) return res.status(400).json({ success: false, message: error.details[0].message });
 
+    // FPI gate: check if parent WO has passed FPI
+    if (value.work_order_id) {
+      const wo = await WorkOrder.findByPk(value.work_order_id);
+      if (wo && wo.fpi_status === 'pending') {
+        return res.status(400).json({ success: false, message: 'FPI not yet completed for this Work Order' });
+      }
+      if (wo && wo.fpi_status === 'fail') {
+        return res.status(400).json({ success: false, message: 'FPI failed — resolve before starting production' });
+      }
+    }
+
     const job_no = await nextJobNo();
     const userId = req.user.id;
 
@@ -130,11 +141,26 @@ const close = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Job card is already closed' });
     }
 
+    const endTime      = new Date();
+    const qtyProduced  = parseFloat(req.body.qty_produced || 0);
+    const qtyRejected  = parseFloat(req.body.qty_rejected || 0);
+    const breakMin     = parseInt(req.body.break_minutes || 0, 10);
+
+    // Calculate actual cycle time (minutes per piece)
+    let cycleTimeActual = null;
+    if (record.start_time && qtyProduced > 0) {
+      const totalMin = (endTime - new Date(record.start_time)) / 60000;
+      const netMin   = totalMin - breakMin;
+      cycleTimeActual = Math.round((netMin / qtyProduced) * 100) / 100;
+    }
+
     await record.update({
       status: 'closed',
-      end_time: new Date(),
-      qty_produced: req.body.qty_produced || 0,
-      qty_rejected: req.body.qty_rejected || 0,
+      end_time: endTime,
+      qty_produced: qtyProduced,
+      qty_rejected: qtyRejected,
+      break_minutes: breakMin,
+      cycle_time_actual: cycleTimeActual,
       updated_by: req.user.id,
     });
 
@@ -178,11 +204,40 @@ const deleteJobCard = async (req, res) => {
   }
 };
 
+// ── GET /job-cards/active-idle ─────────────────────────────────────────────
+const getActiveIdle = async (req, res) => {
+  try {
+    const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
+    const records = await JobCard.findAll({
+      where: {
+        status: 'open',
+        start_time: { [Op.lte]: thirtyMinAgo },
+        qty_produced: { [Op.lte]: 0 },
+      },
+      include: [
+        { model: WorkOrder, as: 'WorkOrder', attributes: ['id', 'wo_no'] },
+        { model: Machine,   as: 'Machine',   attributes: ['id', 'name'] },
+        { model: User,      as: 'Operator',  attributes: ['id', 'name'] },
+      ],
+      order: [['start_time', 'ASC']],
+    });
+    const data = records.map((r) => ({
+      ...r.toJSON(),
+      idle_minutes: Math.round((Date.now() - new Date(r.start_time)) / 60000),
+    }));
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error('[JobCard.getActiveIdle]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
 module.exports = {
   getAll,
   getById,
   create,
   update,
   close,
+  getActiveIdle,
   delete: deleteJobCard,
 };

@@ -8,6 +8,7 @@ const quotationItemSchema = Joi.object({
   unit_price:  Joi.number().min(0).optional().default(0),
   discount:    Joi.number().min(0).max(100).optional().default(0),
   gst_rate:    Joi.number().min(0).max(100).optional().default(0),
+  total_price: Joi.number().min(0).optional().allow(null),
   sort_order:  Joi.number().integer().min(0).optional(),
 });
 
