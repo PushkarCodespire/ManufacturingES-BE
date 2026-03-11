@@ -8,6 +8,7 @@ const {
   CustomerOrder,
   User,
 } = require('../../../models');
+const { validateCreateWorkOrder, validateUpdateWorkOrder, validateUpdateStatus } = require('../cred/workOrder.cred');
 
 // ── Auto-number generator ────────────────────────────────────────────────────
 async function nextWoNo() {
@@ -76,10 +77,13 @@ const getById = async (req, res) => {
 // ── POST /work-orders ────────────────────────────────────────────────────────
 const create = async (req, res) => {
   try {
+    const { error, value } = validateCreateWorkOrder(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
     const wo_no = await nextWoNo();
     const userId = req.user.id;
     const record = await WorkOrder.create({
-      ...req.body,
+      ...value,
       wo_no,
       status: 'draft',
       created_by: userId,
@@ -95,23 +99,13 @@ const create = async (req, res) => {
 // ── PATCH /work-orders/:id ───────────────────────────────────────────────────
 const update = async (req, res) => {
   try {
+    const { error, value } = validateUpdateWorkOrder(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
     const record = await WorkOrder.findByPk(req.params.id);
     if (!record) return res.status(404).json({ success: false, message: 'Work order not found' });
 
-    const {
-      customer_order_id, item_id, machine_id, shift_id,
-      planned_qty, produced_qty, rejected_qty,
-      planned_start, planned_end, actual_start, actual_end,
-      priority, notes,
-    } = req.body;
-
-    await record.update({
-      customer_order_id, item_id, machine_id, shift_id,
-      planned_qty, produced_qty, rejected_qty,
-      planned_start, planned_end, actual_start, actual_end,
-      priority, notes,
-      updated_by: req.user.id,
-    });
+    await record.update({ ...value, updated_by: req.user.id });
     return res.json({ success: true, data: record });
   } catch (err) {
     console.error('[WorkOrder.update]', err);
@@ -131,9 +125,10 @@ const VALID_TRANSITIONS = {
 
 const updateStatus = async (req, res) => {
   try {
-    const { status } = req.body;
-    if (!status) return res.status(400).json({ success: false, message: 'status is required' });
+    const { error, value } = validateUpdateStatus(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
 
+    const { status } = value;
     const record = await WorkOrder.findByPk(req.params.id);
     if (!record) return res.status(404).json({ success: false, message: 'Work order not found' });
 

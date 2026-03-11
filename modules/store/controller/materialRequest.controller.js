@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const { MaterialRequest, MaterialRequestItem, Warehouse, Item, User } = require('../../../models');
+const { validateCreateMr, validateUpdateMr } = require('../cred/materialRequest.cred');
 
 // ── Auto-number generator ─────────────────────────────────────────────────────
 async function nextRequestNo() {
@@ -66,6 +67,9 @@ exports.getById = async (req, res) => {
 // ── POST /material-requests ───────────────────────────────────────────────────
 exports.create = async (req, res) => {
   try {
+    const { error } = validateCreateMr(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
     const { items = [], ...rest } = req.body;
     const request_no = await nextRequestNo();
 
@@ -100,6 +104,9 @@ exports.create = async (req, res) => {
 // ── PATCH /material-requests/:id ──────────────────────────────────────────────
 exports.update = async (req, res) => {
   try {
+    const { error } = validateUpdateMr(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
     const mr = await MaterialRequest.findByPk(req.params.id);
     if (!mr) return res.status(404).json({ success: false, message: 'Material request not found' });
     if (mr.status !== 'pending') return res.status(400).json({ success: false, message: `Cannot edit a ${mr.status} request` });

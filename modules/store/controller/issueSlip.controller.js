@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const {
   IssueSlip, IssueSlipItem, MaterialRequest, Inventory, InventoryTxn, Warehouse, Item, User,
 } = require('../../../models');
+const { validateCreateIssueSlip } = require('../cred/issueSlip.cred');
 
 // ── Auto-number generator ─────────────────────────────────────────────────────
 async function nextSlipNo() {
@@ -100,6 +101,9 @@ exports.getById = async (req, res) => {
 // ── POST /issue-slips ─────────────────────────────────────────────────────────
 exports.create = async (req, res) => {
   try {
+    const { error } = validateCreateIssueSlip(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
     const { items = [], ...rest } = req.body;
 
     if (!rest.warehouse_id) return res.status(400).json({ success: false, message: 'warehouse_id is required' });

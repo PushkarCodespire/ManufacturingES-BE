@@ -37,10 +37,14 @@ const issueSlipRoutes            = require('./issueSlip.routes');
 const stockAdjustmentRoutes      = require('./stockAdjustment.routes');
 const workOrderRoutes            = require('./workOrder.routes');
 const jobCardRoutes              = require('./jobCard.routes');
+const iqcInspectionRoutes        = require('./iqcInspection.routes');
 const lqcInspectionRoutes        = require('./lqcInspection.routes');
+const pqcInspectionRoutes        = require('./pqcInspection.routes');
+const oqcInspectionRoutes        = require('./oqcInspection.routes');
 const productionScheduleRoutes   = require('./productionSchedule.routes');
 const scrapVoucherRoutes         = require('./scrapVoucher.routes');
 const purchaseOrderRoutes        = require('./purchaseOrder.routes');
+const scarRoutes                 = require('./scar.routes');
 const subcontractChallanRoutes   = require('./subcontractChallan.routes');
 const trainingTopicRoutes         = require('./trainingTopic.routes');
 const roleRequirementRoutes       = require('./roleRequirement.routes');
@@ -49,6 +53,13 @@ const trainingEffectivenessRoutes = require('./trainingEffectiveness.routes');
 const transporterRoutes           = require('./transporter.routes');
 const dispatchOrderRoutes         = require('./dispatchOrder.routes');
 const deliveryChallanRoutes       = require('./deliveryChallan.routes');
+// Sprint 4
+const capaRoutes                  = require('./capa.routes');
+const ncrRoutes                   = require('./ncr.routes');
+const complaintRoutes             = require('./complaint.routes');
+const drawingRoutes               = require('./drawing.routes');
+const checkSheetRoutes            = require('./checkSheet.routes');
+const pfmeaRoutes                 = require('./pfmea.routes');
 
 // Mount routes
 router.use('/auth',          authRoutes);
@@ -87,10 +98,14 @@ router.use('/issue-slips',           issueSlipRoutes);
 router.use('/stock-adjustments',     stockAdjustmentRoutes);
 router.use('/work-orders',           workOrderRoutes);
 router.use('/job-cards',             jobCardRoutes);
+router.use('/iqc-inspections',       iqcInspectionRoutes);
 router.use('/lqc-inspections',       lqcInspectionRoutes);
+router.use('/pqc-inspections',       pqcInspectionRoutes);
+router.use('/oqc-inspections',       oqcInspectionRoutes);
 router.use('/production-schedules',  productionScheduleRoutes);
 router.use('/scrap-vouchers',        scrapVoucherRoutes);
 router.use('/purchase-orders',       purchaseOrderRoutes);
+router.use('/scars',                 scarRoutes);
 router.use('/subcontract-challans',  subcontractChallanRoutes);
 router.use('/hr/training-topics',         trainingTopicRoutes);
 router.use('/hr/role-requirements',       roleRequirementRoutes);
@@ -99,5 +114,13 @@ router.use('/hr/training-effectiveness',  trainingEffectivenessRoutes);
 router.use('/dispatch/transporters',      transporterRoutes);
 router.use('/dispatch/orders',            dispatchOrderRoutes);
 router.use('/dispatch/challans',          deliveryChallanRoutes);
+// Sprint 4: Quality
+router.use('/quality/capa',              capaRoutes);
+router.use('/quality/ncr',               ncrRoutes);
+router.use('/quality/complaints',        complaintRoutes);
+// Sprint 4: NPD
+router.use('/npd/drawings',              drawingRoutes);
+router.use('/npd/check-sheets',          checkSheetRoutes);
+router.use('/npd/pfmea',                 pfmeaRoutes);
 
 module.exports = router;

@@ -1,5 +1,5 @@
-const { Op }   = require('sequelize');
-const { Bom, BomLine, Item, User } = require('../../../models');
+const { Op, fn, col } = require('sequelize');
+const { Bom, BomLine, Item, User, Inventory } = require('../../../models');
 
 const AUDIT_USER_ATTRS = ['id', 'name', 'employee_id'];
 
@@ -171,4 +171,71 @@ const deleteBom = async (req, res) => {
   }
 };
 
-module.exports = { getAllBoms, getBomByItemId, createOrUpdateBom, finalizeBom, deleteBom };
+// ── POST /boms/explode  (PRC-001) ─────────────────────────────────────────────
+// Body: { item_id, planned_qty }  — explode BOM, calculate net requirement per component
+const explodeBom = async (req, res) => {
+  try {
+    const { item_id, planned_qty = 1 } = req.body;
+    if (!item_id) return res.status(400).json({ success: false, message: 'item_id is required' });
+
+    const bom = await Bom.findOne({
+      where: { item_id },
+      include: [{
+        model: BomLine,
+        as: 'Lines',
+        include: [{ model: Item, as: 'Component', attributes: ['id', 'name', 'code', 'unit'] }],
+        order: [['sort_order', 'ASC']],
+      }],
+    });
+
+    if (!bom) return res.status(404).json({ success: false, message: 'No BOM found for this item' });
+
+    // For each BOM line, fetch current stock across all warehouses
+    const lines = bom.Lines || [];
+    const componentIds = lines.map((l) => l.component_item_id);
+
+    const stocks = await Inventory.findAll({
+      where: { item_id: { [Op.in]: componentIds } },
+      attributes: ['item_id', [fn('SUM', col('qty_on_hand')), 'total_stock']],
+      group: ['item_id'],
+      raw: true,
+    });
+
+    const stockMap = {};
+    stocks.forEach((s) => { stockMap[s.item_id] = parseFloat(s.total_stock) || 0; });
+
+    const explosion = lines.map((line) => {
+      const gross_req = parseFloat(line.quantity) * parseFloat(planned_qty);
+      const current_stock = stockMap[line.component_item_id] || 0;
+      const net_req = Math.max(0, gross_req - current_stock);
+      return {
+        component_item_id: line.component_item_id,
+        item:              line.Component,
+        bom_qty_per_unit:  parseFloat(line.quantity),
+        unit:              line.unit,
+        gross_req:         Math.round(gross_req * 1000) / 1000,
+        current_stock:     Math.round(current_stock * 1000) / 1000,
+        net_req:           Math.round(net_req * 1000) / 1000,
+        shortage:          net_req > 0,
+      };
+    });
+
+    const parentItem = await Item.findByPk(item_id, { attributes: ['id', 'name', 'code'] });
+
+    return res.json({
+      success: true,
+      data: {
+        item: parentItem,
+        planned_qty: parseFloat(planned_qty),
+        bom_status: bom.status,
+        explosion,
+        has_shortage: explosion.some((e) => e.shortage),
+      },
+    });
+  } catch (err) {
+    console.error('[explodeBom]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+module.exports = { getAllBoms, getBomByItemId, createOrUpdateBom, finalizeBom, deleteBom, explodeBom };

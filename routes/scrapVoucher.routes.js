@@ -1,11 +1,18 @@
 const router = require('express').Router();
-const { authenticate } = require('../config/middleware');
+const { authenticate, authorize } = require('../config/middleware');
 const ctrl = require('../modules/production/controller/scrapVoucher.controller');
-router.get('/',                 authenticate, ctrl.getAll);
-router.get('/:id',              authenticate, ctrl.getById);
-router.post('/',                authenticate, ctrl.create);
-router.patch('/:id',            authenticate, ctrl.update);
-router.patch('/:id/authorize',  authenticate, ctrl.authorize);
-router.patch('/:id/reject',     authenticate, ctrl.reject);
-router.delete('/:id',           authenticate, ctrl.delete);
+
+const SCRAP_WRITE   = ['plant_head', 'it_admin', 'production_manager', 'production_incharge'];
+const SCRAP_APPROVE = ['plant_head', 'it_admin', 'production_manager'];
+
+router.use(authenticate);
+
+router.get('/',                 ctrl.getAll);
+router.get('/:id',              ctrl.getById);
+router.post('/',                authorize(...SCRAP_WRITE),   ctrl.create);
+router.patch('/:id',            authorize(...SCRAP_WRITE),   ctrl.update);
+router.patch('/:id/authorize',  authorize(...SCRAP_APPROVE), ctrl.authorize);
+router.patch('/:id/reject',     authorize(...SCRAP_APPROVE), ctrl.reject);
+router.delete('/:id',           authorize(...SCRAP_WRITE),   ctrl.delete);
+
 module.exports = router;

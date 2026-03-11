@@ -7,6 +7,7 @@ const {
   WorkOrder,
   User,
 } = require('../../../models');
+const { validateCreateSchedule, validateUpdateSchedule } = require('../cred/productionSchedule.cred');
 
 // ── Auto-number generator ────────────────────────────────────────────────────
 async function nextScheduleNo() {
@@ -75,10 +76,13 @@ const getById = async (req, res) => {
 // ── POST /production-schedules ────────────────────────────────────────────────
 const create = async (req, res) => {
   try {
+    const { error, value } = validateCreateSchedule(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
     const schedule_no = await nextScheduleNo();
     const userId = req.user.id;
     const record = await ProductionSchedule.create({
-      ...req.body,
+      ...value,
       schedule_no,
       status: 'draft',
       created_by: userId,
@@ -94,19 +98,13 @@ const create = async (req, res) => {
 // ── PATCH /production-schedules/:id ──────────────────────────────────────────
 const update = async (req, res) => {
   try {
+    const { error, value } = validateUpdateSchedule(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
     const record = await ProductionSchedule.findByPk(req.params.id);
     if (!record) return res.status(404).json({ success: false, message: 'Production schedule not found' });
 
-    const {
-      schedule_date, shift_id, machine_id, item_id,
-      work_order_id, planned_qty, notes,
-    } = req.body;
-
-    await record.update({
-      schedule_date, shift_id, machine_id, item_id,
-      work_order_id, planned_qty, notes,
-      updated_by: req.user.id,
-    });
+    await record.update({ ...value, updated_by: req.user.id });
     return res.json({ success: true, data: record });
   } catch (err) {
     console.error('[ProductionSchedule.update]', err);

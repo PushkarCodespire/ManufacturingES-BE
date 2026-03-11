@@ -1,5 +1,6 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { CustomerOrder, OrderItem, Quotation, Vendor, Item, User } = require('../../../models');
+const { validateCreateOrder, validateUpdateOrder } = require('../cred/customerOrder.cred');
 
 // ── Shared includes ──────────────────────────────────────────────────────────
 const HEADER_INCLUDE = [
@@ -111,6 +112,9 @@ exports.getById = async (req, res) => {
 // ── POST /customer-orders ────────────────────────────────────────────────────
 exports.create = async (req, res) => {
   try {
+    const { error, value } = validateCreateOrder(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
     const {
       customer_id, customer_po_no, quotation_id,
       order_date, delivery_date, terms, notes, items = [],
@@ -170,6 +174,9 @@ exports.create = async (req, res) => {
 // ── PATCH /customer-orders/:id ───────────────────────────────────────────────
 exports.update = async (req, res) => {
   try {
+    const { error, value } = validateUpdateOrder(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
     const order = await CustomerOrder.findByPk(req.params.id);
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
     if (order.status === 'closed' || order.status === 'cancelled') {

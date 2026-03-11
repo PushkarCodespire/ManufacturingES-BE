@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const { Quotation, QuotationItem, Rfq, Vendor, Item, User } = require('../../../models');
+const { validateCreateQuotation, validateUpdateQuotation } = require('../cred/quotation.cred');
 
 // ── Shared includes ──────────────────────────────────────────────────────────
 const HEADER_INCLUDE = [
@@ -63,6 +64,9 @@ exports.getById = async (req, res) => {
 // ── POST /quotations ─────────────────────────────────────────────────────────
 exports.create = async (req, res) => {
   try {
+    const { error, value } = validateCreateQuotation(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
     const { customer_id, rfq_id, quotation_date, valid_till, terms, notes, items = [] } = req.body;
 
     if (!customer_id)    return res.status(400).json({ success: false, message: 'Customer is required' });
@@ -116,6 +120,9 @@ exports.create = async (req, res) => {
 // ── PATCH /quotations/:id ────────────────────────────────────────────────────
 exports.update = async (req, res) => {
   try {
+    const { error, value } = validateUpdateQuotation(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
     const q = await Quotation.findByPk(req.params.id);
     if (!q) return res.status(404).json({ success: false, message: 'Quotation not found' });
 

@@ -1,0 +1,20 @@
+const express = require('express');
+const router  = express.Router();
+const { authenticate, authorize } = require('../config/middleware');
+const ctrl = require('../modules/npd/controller/drawing.controller');
+
+const npdRoles   = ['plant_head', 'it_admin', 'quality_manager', 'quality_incharge'];
+const approveRoles = ['plant_head', 'it_admin', 'quality_manager'];
+
+router.use(authenticate);
+
+router.get('/',                    ctrl.getAll);
+router.get('/:id',                 ctrl.getById);
+router.post('/',                   authorize(...npdRoles), ctrl.create);
+router.patch('/:id',               authorize(...npdRoles), ctrl.update);
+router.post('/:id/versions',       authorize(...npdRoles), ctrl.addVersion);
+router.patch('/:id/approve',       authorize(...approveRoles), ctrl.approve);
+router.patch('/:id/obsolete',      authorize(...approveRoles), ctrl.obsolete);
+router.delete('/:id',              authorize(...npdRoles), ctrl.delete);
+
+module.exports = router;

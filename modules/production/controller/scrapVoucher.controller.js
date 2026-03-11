@@ -6,8 +6,8 @@ const {
   WorkOrder,
   User,
 } = require('../../../models');
+const { validateCreateScrap, validateUpdateScrap } = require('../cred/scrapVoucher.cred');
 
-// ── Auto-number generator ────────────────────────────────────────────────────
 async function nextVoucherNo() {
   const year = new Date().getFullYear();
   const prefix = `SV-${year}-`;
@@ -23,12 +23,11 @@ async function nextVoucherNo() {
   return `${prefix}${String(seq).padStart(4, '0')}`;
 }
 
-// ── GET /scrap-vouchers ───────────────────────────────────────────────────────
 const getAll = async (req, res) => {
   try {
     const { search, work_order_id, item_id, status } = req.query;
     const where = {};
-    if (search)        where.voucher_no   = { [Op.iLike]: `%${search}%` };
+    if (search)        where.voucher_no    = { [Op.iLike]: `%${search}%` };
     if (work_order_id) where.work_order_id = work_order_id;
     if (item_id)       where.item_id       = item_id;
     if (status)        where.status        = status;
@@ -51,7 +50,6 @@ const getAll = async (req, res) => {
   }
 };
 
-// ── GET /scrap-vouchers/:id ────────────────────────────────────────────────────
 const getById = async (req, res) => {
   try {
     const record = await ScrapVoucher.findByPk(req.params.id, {
@@ -71,18 +69,20 @@ const getById = async (req, res) => {
   }
 };
 
-// ── POST /scrap-vouchers ──────────────────────────────────────────────────────
 const create = async (req, res) => {
   try {
+    const { error, value } = validateCreateScrap(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
     const voucher_no = await nextVoucherNo();
     const userId = req.user.id;
 
-    const qty_scrapped   = parseFloat(req.body.qty_scrapped   || 0);
-    const cost_per_unit  = parseFloat(req.body.cost_per_unit  || 0);
-    const total_cost     = qty_scrapped * cost_per_unit;
+    const qty_scrapped  = parseFloat(value.qty_scrapped);
+    const cost_per_unit = parseFloat(value.cost_per_unit || 0);
+    const total_cost    = qty_scrapped * cost_per_unit;
 
     const record = await ScrapVoucher.create({
-      ...req.body,
+      ...value,
       voucher_no,
       qty_scrapped,
       cost_per_unit,
@@ -98,32 +98,22 @@ const create = async (req, res) => {
   }
 };
 
-// ── PATCH /scrap-vouchers/:id ─────────────────────────────────────────────────
 const update = async (req, res) => {
   try {
+    const { error, value } = validateUpdateScrap(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
     const record = await ScrapVoucher.findByPk(req.params.id);
     if (!record) return res.status(404).json({ success: false, message: 'Scrap voucher not found' });
     if (record.status !== 'pending') {
       return res.status(400).json({ success: false, message: 'Only pending scrap vouchers can be updated' });
     }
 
-    const qty_scrapped  = parseFloat(req.body.qty_scrapped  !== undefined ? req.body.qty_scrapped  : record.qty_scrapped);
-    const cost_per_unit = parseFloat(req.body.cost_per_unit !== undefined ? req.body.cost_per_unit : record.cost_per_unit);
+    const qty_scrapped  = parseFloat(value.qty_scrapped  !== undefined ? value.qty_scrapped  : record.qty_scrapped);
+    const cost_per_unit = parseFloat(value.cost_per_unit !== undefined ? value.cost_per_unit : record.cost_per_unit);
     const total_cost    = qty_scrapped * cost_per_unit;
 
-    const {
-      work_order_id, item_id, machine_id, scrap_date,
-      reason, notes,
-    } = req.body;
-
-    await record.update({
-      work_order_id, item_id, machine_id, scrap_date,
-      reason, notes,
-      qty_scrapped,
-      cost_per_unit,
-      total_cost,
-      updated_by: req.user.id,
-    });
+    await record.update({ ...value, qty_scrapped, cost_per_unit, total_cost, updated_by: req.user.id });
     return res.json({ success: true, data: record });
   } catch (err) {
     console.error('[ScrapVoucher.update]', err);
@@ -131,19 +121,14 @@ const update = async (req, res) => {
   }
 };
 
-// ── PATCH /scrap-vouchers/:id/authorize ───────────────────────────────────────
-const authorize = async (req, res) => {
+const authorizeVoucher = async (req, res) => {
   try {
     const record = await ScrapVoucher.findByPk(req.params.id);
     if (!record) return res.status(404).json({ success: false, message: 'Scrap voucher not found' });
     if (record.status !== 'pending') {
       return res.status(400).json({ success: false, message: 'Only pending scrap vouchers can be authorized' });
     }
-    await record.update({
-      status: 'authorized',
-      authorized_by: req.user.id,
-      updated_by: req.user.id,
-    });
+    await record.update({ status: 'authorized', authorized_by: req.user.id, updated_by: req.user.id });
     return res.json({ success: true, data: record });
   } catch (err) {
     console.error('[ScrapVoucher.authorize]', err);
@@ -151,7 +136,6 @@ const authorize = async (req, res) => {
   }
 };
 
-// ── PATCH /scrap-vouchers/:id/reject ──────────────────────────────────────────
 const reject = async (req, res) => {
   try {
     const record = await ScrapVoucher.findByPk(req.params.id);
@@ -167,7 +151,6 @@ const reject = async (req, res) => {
   }
 };
 
-// ── DELETE /scrap-vouchers/:id ────────────────────────────────────────────────
 const deleteScrapVoucher = async (req, res) => {
   try {
     const record = await ScrapVoucher.findByPk(req.params.id);
@@ -188,7 +171,7 @@ module.exports = {
   getById,
   create,
   update,
-  authorize,
+  authorize: authorizeVoucher,
   reject,
   delete: deleteScrapVoucher,
 };

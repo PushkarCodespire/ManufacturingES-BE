@@ -6,7 +6,8 @@ const {
   Item,
   WorkOrder,
   User,
-} = require('../../../models');
+}= require('../../../models');
+const { validateCreateChallan } = require('../cred/subcontractChallan.cred');
 
 // ── Auto-number generator ────────────────────────────────────────────────────
 async function nextChallanNo(type) {
@@ -80,15 +81,14 @@ const getById = async (req, res) => {
 // ── POST /subcontract-challans ────────────────────────────────────────────────
 const create = async (req, res) => {
   try {
-    const { type } = req.body;
-    if (!type || !['outward', 'inward'].includes(type)) {
-      return res.status(400).json({ success: false, message: "type must be 'outward' or 'inward'" });
-    }
+    const { error, value } = validateCreateChallan(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
 
-    const challan_no = await nextChallanNo(type);
+
+    const challan_no = await nextChallanNo(value.type);
     const userId = req.user.id;
 
-    const { items, ...challanData } = req.body;
+    const { items, ...challanData } = value;
 
     const record = await SubcontractChallan.create({
       ...challanData,

@@ -1,11 +1,18 @@
 const router = require('express').Router();
-const { authenticate } = require('../config/middleware');
+const { authenticate, authorize } = require('../config/middleware');
 const ctrl = require('../modules/procurement/controller/purchaseOrder.controller');
-router.get('/',              authenticate, ctrl.getAll);
-router.get('/:id',           authenticate, ctrl.getById);
-router.post('/',             authenticate, ctrl.create);
-router.patch('/:id',         authenticate, ctrl.update);
-router.patch('/:id/send',    authenticate, ctrl.send);
-router.patch('/:id/receive', authenticate, ctrl.receive);
-router.delete('/:id',        authenticate, ctrl.delete);
+
+const PO_WRITE   = ['plant_head', 'it_admin', 'procurement_manager'];
+const PO_RECEIVE = ['plant_head', 'it_admin', 'procurement_manager', 'store_manager', 'store_incharge'];
+
+router.use(authenticate);
+
+router.get('/',              ctrl.getAll);
+router.get('/:id',           ctrl.getById);
+router.post('/',             authorize(...PO_WRITE),   ctrl.create);
+router.patch('/:id',         authorize(...PO_WRITE),   ctrl.update);
+router.patch('/:id/send',    authorize(...PO_WRITE),   ctrl.send);
+router.patch('/:id/receive', authorize(...PO_RECEIVE), ctrl.receive);
+router.delete('/:id',        authorize(...PO_WRITE),   ctrl.delete);
+
 module.exports = router;

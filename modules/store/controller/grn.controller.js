@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const {
   Grn, GrnItem, Inventory, InventoryTxn, Vendor, Warehouse, Item, User,
 } = require('../../../models');
+const { validateCreateGrn, validateUpdateGrn } = require('../cred/grn.cred');
 
 // ── Auto-number generator ─────────────────────────────────────────────────────
 async function nextGrnNo() {
@@ -102,6 +103,9 @@ exports.getById = async (req, res) => {
 // ── POST /grns ────────────────────────────────────────────────────────────────
 exports.create = async (req, res) => {
   try {
+    const { error } = validateCreateGrn(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
     const { items = [], ...rest } = req.body;
 
     if (!rest.warehouse_id)  return res.status(400).json({ success: false, message: 'warehouse_id is required' });
@@ -133,6 +137,9 @@ exports.create = async (req, res) => {
 // ── PATCH /grns/:id ───────────────────────────────────────────────────────────
 exports.update = async (req, res) => {
   try {
+    const { error } = validateUpdateGrn(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
     const grn = await Grn.findByPk(req.params.id);
     if (!grn) return res.status(404).json({ success: false, message: 'GRN not found' });
     if (grn.status === 'approved') return res.status(400).json({ success: false, message: 'Cannot edit an approved GRN' });

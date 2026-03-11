@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const {
   StockAdjustment, StockAdjustmentItem, Inventory, InventoryTxn, Warehouse, Item, User,
 } = require('../../../models');
+const { validateCreateAdj, validateUpdateAdj } = require('../cred/stockAdjustment.cred');
 
 // ── Auto-number generator ─────────────────────────────────────────────────────
 async function nextAdjNo() {
@@ -67,6 +68,9 @@ exports.getById = async (req, res) => {
 // ── POST /stock-adjustments ───────────────────────────────────────────────────
 exports.create = async (req, res) => {
   try {
+    const { error } = validateCreateAdj(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
     const { items = [], ...rest } = req.body;
 
     if (!rest.warehouse_id) return res.status(400).json({ success: false, message: 'warehouse_id is required' });
@@ -98,6 +102,9 @@ exports.create = async (req, res) => {
 // ── PATCH /stock-adjustments/:id ──────────────────────────────────────────────
 exports.update = async (req, res) => {
   try {
+    const { error } = validateUpdateAdj(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
     const adj = await StockAdjustment.findByPk(req.params.id);
     if (!adj) return res.status(404).json({ success: false, message: 'Stock adjustment not found' });
     if (adj.status !== 'pending') return res.status(400).json({ success: false, message: 'Cannot edit a non-pending adjustment' });

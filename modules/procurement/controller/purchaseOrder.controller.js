@@ -5,7 +5,8 @@ const {
   Vendor,
   Item,
   User,
-} = require('../../../models');
+}= require('../../../models');
+const { validateCreatePo, validateUpdatePo, validateReceivePo } = require('../cred/purchaseOrder.cred');
 
 // ── Auto-number generator ────────────────────────────────────────────────────
 async function nextPoNo() {
@@ -73,10 +74,13 @@ const getById = async (req, res) => {
 // ── POST /purchase-orders ─────────────────────────────────────────────────────
 const create = async (req, res) => {
   try {
+    const { error, value } = validateCreatePo(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
     const po_no = await nextPoNo();
     const userId = req.user.id;
 
-    const { items, ...poData } = req.body;
+    const { items, ...poData } = value;
 
     const record = await PurchaseOrder.create({
       ...poData,
@@ -121,13 +125,16 @@ const create = async (req, res) => {
 // ── PATCH /purchase-orders/:id ────────────────────────────────────────────────
 const update = async (req, res) => {
   try {
+    const { error, value } = validateUpdatePo(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
     const record = await PurchaseOrder.findByPk(req.params.id);
     if (!record) return res.status(404).json({ success: false, message: 'Purchase order not found' });
     if (record.status !== 'draft') {
       return res.status(400).json({ success: false, message: 'Only draft purchase orders can be updated' });
     }
 
-    const { items, ...poData } = req.body;
+    const { items, ...poData } = value;
     const { vendor_id, order_date, expected_date, notes } = poData;
 
     await record.update({
@@ -189,12 +196,15 @@ const send = async (req, res) => {
 // ── PATCH /purchase-orders/:id/receive ───────────────────────────────────────
 const receive = async (req, res) => {
   try {
+    const { error, value } = validateReceivePo(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
     const record = await PurchaseOrder.findByPk(req.params.id, {
       include: [{ model: PurchaseOrderItem, as: 'Items' }],
     });
     if (!record) return res.status(404).json({ success: false, message: 'Purchase order not found' });
 
-    const { items } = req.body;
+    const { items } = value;
 
     // Update qty_received per item line if provided
     if (Array.isArray(items) && items.length > 0) {

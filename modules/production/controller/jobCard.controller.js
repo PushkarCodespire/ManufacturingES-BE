@@ -5,6 +5,7 @@ const {
   Machine,
   User,
 } = require('../../../models');
+const { validateCreateJobCard, validateUpdateJobCard } = require('../cred/jobCard.cred');
 
 // ── Auto-number generator ────────────────────────────────────────────────────
 async function nextJobNo() {
@@ -71,11 +72,14 @@ const getById = async (req, res) => {
 // ── POST /job-cards ───────────────────────────────────────────────────────────
 const create = async (req, res) => {
   try {
+    const { error, value } = validateCreateJobCard(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
     const job_no = await nextJobNo();
     const userId = req.user.id;
 
     const record = await JobCard.create({
-      ...req.body,
+      ...value,
       job_no,
       status: 'open',
       created_by: userId,
@@ -102,21 +106,13 @@ const create = async (req, res) => {
 // ── PATCH /job-cards/:id ──────────────────────────────────────────────────────
 const update = async (req, res) => {
   try {
+    const { error, value } = validateUpdateJobCard(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
     const record = await JobCard.findByPk(req.params.id);
     if (!record) return res.status(404).json({ success: false, message: 'Job card not found' });
 
-    const {
-      machine_id, operator_id, shift_id,
-      start_time, end_time,
-      qty_produced, qty_rejected, notes,
-    } = req.body;
-
-    await record.update({
-      machine_id, operator_id, shift_id,
-      start_time, end_time,
-      qty_produced, qty_rejected, notes,
-      updated_by: req.user.id,
-    });
+    await record.update({ ...value, updated_by: req.user.id });
     return res.json({ success: true, data: record });
   } catch (err) {
     console.error('[JobCard.update]', err);

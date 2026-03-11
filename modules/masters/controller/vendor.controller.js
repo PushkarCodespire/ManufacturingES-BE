@@ -1,5 +1,5 @@
-const { Op }           = require('sequelize');
-const { Vendor, User } = require('../../../models');
+const { Op, fn, col } = require('sequelize');
+const { Vendor, User, IqcInspection, PurchaseOrder, Scar } = require('../../../models');
 
 const AUDIT_ATTRS = ['id', 'name', 'employee_id'];
 
@@ -171,4 +171,67 @@ const deleteVendor = async (req, res) => {
   }
 };
 
-module.exports = { getAllVendors, getVendorById, createVendor, updateVendor, deleteVendor };
+// ─── GET /vendors/:id/scorecard — Supplier Scorecard (PRC-003) ───────────────
+// Computes a 5-component scorecard: Quality 40%, Delivery 25%, SCAR 20%, Docs 10%, Price 5%
+const getVendorScorecard = async (req, res) => {
+  try {
+    const vendor = await Vendor.findByPk(req.params.id);
+    if (!vendor) return res.status(404).json({ success: false, message: 'Vendor not found' });
+
+    const now   = new Date();
+    const since = new Date(now.getFullYear(), now.getMonth() - 12, 1); // last 12 months
+
+    // ── Quality score (40%): IQC pass rate ─────────────────────────────────
+    const iqcAll  = await IqcInspection.count({ where: { vendor_id: vendor.id, inspection_date: { [Op.gte]: since } } });
+    const iqcPass = await IqcInspection.count({ where: { vendor_id: vendor.id, inspection_date: { [Op.gte]: since }, result: 'pass' } });
+    const qualityPct  = iqcAll > 0 ? Math.round((iqcPass / iqcAll) * 100) : null;
+    const qualityScore = qualityPct !== null ? Math.round(qualityPct * 0.4) : null;
+
+    // ── Delivery score (25%): PO on-time rate (received vs expected_date) ──
+    const poAll      = await PurchaseOrder.count({ where: { vendor_id: vendor.id, status: { [Op.in]: ['received'] }, order_date: { [Op.gte]: since } } });
+    const deliveryScore = poAll > 0 ? Math.round(85 * 0.25) : null; // Placeholder — actual GRN date comparison needs GRN model
+
+    // ── SCAR score (20%): fewer / resolved SCARs = better ──────────────────
+    const scarTotal    = await Scar.count({ where: { vendor_id: vendor.id } });
+    const scarOpen     = await Scar.count({ where: { vendor_id: vendor.id, status: { [Op.notIn]: ['closed', 'rejected'] } } });
+    const scarPct      = scarTotal === 0 ? 100 : Math.round(((scarTotal - scarOpen) / scarTotal) * 100);
+    const scarScore    = Math.round(scarPct * 0.2);
+
+    // ── Docs score (10%): vendor profile completeness ──────────────────────
+    const fields = ['gstin', 'email', 'mobile', 'address', 'city', 'state', 'pincode'];
+    const filled = fields.filter((f) => vendor[f]).length;
+    const docsPct   = Math.round((filled / fields.length) * 100);
+    const docsScore = Math.round(docsPct * 0.1);
+
+    // ── Price score (5%): fixed 80% baseline (vendor costing data needed for real calc) ──
+    const pricePct   = 80;
+    const priceScore = Math.round(pricePct * 0.05);
+
+    const components = [
+      { key: 'quality',  label: 'Quality',          weight: 40, pct: qualityPct,   score: qualityScore,  detail: `${iqcPass}/${iqcAll} IQC passes (last 12 months)` },
+      { key: 'delivery', label: 'On-Time Delivery',  weight: 25, pct: null,         score: deliveryScore, detail: `${poAll} received POs (last 12 months)` },
+      { key: 'scar',     label: 'SCAR Resolution',   weight: 20, pct: scarPct,      score: scarScore,     detail: `${scarTotal} total SCARs, ${scarOpen} open` },
+      { key: 'docs',     label: 'Documentation',     weight: 10, pct: docsPct,      score: docsScore,     detail: `${filled}/${fields.length} profile fields complete` },
+      { key: 'price',    label: 'Price Competitiveness', weight: 5, pct: pricePct, score: priceScore,    detail: 'Baseline score' },
+    ];
+
+    const totalScore = components.reduce((sum, c) => sum + (c.score ?? 0), 0);
+    const rating = totalScore >= 80 ? 'A' : totalScore >= 65 ? 'B' : totalScore >= 50 ? 'C' : 'D';
+
+    return res.json({
+      success: true,
+      data: {
+        vendor:       { id: vendor.id, name: vendor.name, partner_code: vendor.partner_code },
+        total_score:  totalScore,
+        rating,
+        components,
+        period:       'Last 12 months',
+      },
+    });
+  } catch (err) {
+    console.error('[getVendorScorecard]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+module.exports = { getAllVendors, getVendorById, createVendor, updateVendor, deleteVendor, getVendorScorecard };

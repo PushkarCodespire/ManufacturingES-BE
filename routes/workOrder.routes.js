@@ -1,10 +1,17 @@
 const router = require('express').Router();
-const { authenticate } = require('../config/middleware');
+const { authenticate, authorize } = require('../config/middleware');
 const ctrl = require('../modules/production/controller/workOrder.controller');
-router.get('/',              authenticate, ctrl.getAll);
-router.get('/:id',           authenticate, ctrl.getById);
-router.post('/',             authenticate, ctrl.create);
-router.patch('/:id',         authenticate, ctrl.update);
-router.patch('/:id/status',  authenticate, ctrl.updateStatus);
-router.delete('/:id',        authenticate, ctrl.delete);
+
+const PROD_WRITE  = ['plant_head', 'it_admin', 'production_manager', 'production_incharge'];
+const PROD_MANAGE = ['plant_head', 'it_admin', 'production_manager'];
+
+router.use(authenticate);
+
+router.get('/',              ctrl.getAll);
+router.get('/:id',           ctrl.getById);
+router.post('/',             authorize(...PROD_WRITE),  ctrl.create);
+router.patch('/:id',         authorize(...PROD_WRITE),  ctrl.update);
+router.patch('/:id/status',  authorize(...PROD_WRITE),  ctrl.updateStatus);
+router.delete('/:id',        authorize(...PROD_MANAGE), ctrl.delete);
+
 module.exports = router;

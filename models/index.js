@@ -49,12 +49,19 @@ const StockAdjustment      = require('../modules/store/model/StockAdjustment');
 const StockAdjustmentItem  = require('../modules/store/model/StockAdjustmentItem');
 const WorkOrder              = require('../modules/production/model/WorkOrder');
 const JobCard                = require('../modules/production/model/JobCard');
+const IqcInspection          = require('../modules/production/model/IqcInspection');
+const IqcInspectionResult    = require('../modules/production/model/IqcInspectionResult');
 const LqcInspection          = require('../modules/production/model/LqcInspection');
 const LqcInspectionResult    = require('../modules/production/model/LqcInspectionResult');
+const PqcInspection          = require('../modules/production/model/PqcInspection');
+const PqcInspectionResult    = require('../modules/production/model/PqcInspectionResult');
+const OqcInspection          = require('../modules/production/model/OqcInspection');
+const OqcInspectionResult    = require('../modules/production/model/OqcInspectionResult');
 const ProductionSchedule     = require('../modules/production/model/ProductionSchedule');
 const ScrapVoucher           = require('../modules/production/model/ScrapVoucher');
 const PurchaseOrder          = require('../modules/procurement/model/PurchaseOrder');
 const PurchaseOrderItem      = require('../modules/procurement/model/PurchaseOrderItem');
+const Scar                   = require('../modules/procurement/model/Scar');
 const SubcontractChallan     = require('../modules/subcontracting/model/SubcontractChallan');
 const SubcontractChallanItem = require('../modules/subcontracting/model/SubcontractChallanItem');
 const TrainingTopic         = require('../modules/masters/model/TrainingTopic');
@@ -65,6 +72,24 @@ const Transporter           = require('../modules/masters/model/Transporter');
 const DispatchOrder         = require('../modules/masters/model/DispatchOrder');
 const DispatchOrderItem     = require('../modules/masters/model/DispatchOrderItem');
 const DeliveryChallan       = require('../modules/masters/model/DeliveryChallan');
+// ── Sprint 4: Quality ─────────────────────────────────────────────────────────
+const Capa               = require('../modules/quality/model/Capa')(sequelize);
+const CapaTeam           = require('../modules/quality/model/CapaTeam')(sequelize);
+const CapaRootCause      = require('../modules/quality/model/CapaRootCause')(sequelize);
+const CapaFishbone       = require('../modules/quality/model/CapaFishbone')(sequelize);
+const CapaAction         = require('../modules/quality/model/CapaAction')(sequelize);
+const CapaEffectiveness  = require('../modules/quality/model/CapaEffectiveness')(sequelize);
+const Ncr                = require('../modules/quality/model/Ncr')(sequelize);
+const NcrDisposition     = require('../modules/quality/model/NcrDisposition')(sequelize);
+const Complaint          = require('../modules/quality/model/Complaint')(sequelize);
+// ── Sprint 4: NPD ─────────────────────────────────────────────────────────────
+const Drawing              = require('../modules/npd/model/Drawing')(sequelize);
+const DrawingVersion       = require('../modules/npd/model/DrawingVersion')(sequelize);
+const CheckSheetTemplate   = require('../modules/npd/model/CheckSheetTemplate')(sequelize);
+const CheckSheetDimension  = require('../modules/npd/model/CheckSheetDimension')(sequelize);
+const Pfmea                = require('../modules/npd/model/Pfmea')(sequelize);
+const PfmeaItem            = require('../modules/npd/model/PfmeaItem')(sequelize);
+const PfmeaAction          = require('../modules/npd/model/PfmeaAction')(sequelize);
 
 // ─── Associations ────────────────────────────────────────────────────────────
 
@@ -317,6 +342,14 @@ JobCard.belongsTo(Machine,   { foreignKey: 'machine_id',   as: 'Machine'   });
 JobCard.belongsTo(User,      { foreignKey: 'operator_id',  as: 'Operator'  });
 JobCard.belongsTo(User,      { foreignKey: 'created_by',   as: 'Creator'   });
 
+IqcInspection.belongsTo(Item,   { foreignKey: 'item_id',      as: 'Item'      });
+IqcInspection.belongsTo(Vendor, { foreignKey: 'vendor_id',    as: 'Vendor'    });
+IqcInspection.belongsTo(User,   { foreignKey: 'inspector_id', as: 'Inspector' });
+IqcInspection.belongsTo(User,   { foreignKey: 'created_by',   as: 'Creator'   });
+IqcInspection.belongsTo(Grn,    { foreignKey: 'grn_id',       as: 'Grn'       });
+IqcInspection.hasMany(IqcInspectionResult, { foreignKey: 'inspection_id', as: 'Results', onDelete: 'CASCADE' });
+IqcInspectionResult.belongsTo(IqcInspection, { foreignKey: 'inspection_id', as: 'Inspection' });
+
 LqcInspection.belongsTo(Item,      { foreignKey: 'item_id',       as: 'Item'      });
 LqcInspection.belongsTo(Machine,   { foreignKey: 'machine_id',    as: 'Machine'   });
 LqcInspection.belongsTo(User,      { foreignKey: 'inspector_id',  as: 'Inspector' });
@@ -324,6 +357,21 @@ LqcInspection.belongsTo(WorkOrder, { foreignKey: 'work_order_id', as: 'WorkOrder
 LqcInspection.belongsTo(JobCard,   { foreignKey: 'job_card_id',   as: 'JobCard'   });
 LqcInspection.hasMany(LqcInspectionResult, { foreignKey: 'inspection_id', as: 'Results', onDelete: 'CASCADE' });
 LqcInspectionResult.belongsTo(LqcInspection, { foreignKey: 'inspection_id', as: 'Inspection' });
+
+PqcInspection.belongsTo(Item,      { foreignKey: 'item_id',       as: 'Item'      });
+PqcInspection.belongsTo(User,      { foreignKey: 'inspector_id',  as: 'Inspector' });
+PqcInspection.belongsTo(User,      { foreignKey: 'created_by',    as: 'Creator'   });
+PqcInspection.belongsTo(WorkOrder, { foreignKey: 'work_order_id', as: 'WorkOrder' });
+PqcInspection.hasMany(PqcInspectionResult, { foreignKey: 'inspection_id', as: 'Results', onDelete: 'CASCADE' });
+PqcInspectionResult.belongsTo(PqcInspection, { foreignKey: 'inspection_id', as: 'Inspection' });
+
+OqcInspection.belongsTo(Item,   { foreignKey: 'item_id',      as: 'Item'      });
+OqcInspection.belongsTo(Vendor, { foreignKey: 'customer_id',  as: 'Customer'  });
+OqcInspection.belongsTo(User,   { foreignKey: 'inspector_id', as: 'Inspector' });
+OqcInspection.belongsTo(User,   { foreignKey: 'created_by',   as: 'Creator'   });
+OqcInspection.belongsTo(WorkOrder, { foreignKey: 'work_order_id', as: 'WorkOrder' });
+OqcInspection.hasMany(OqcInspectionResult, { foreignKey: 'inspection_id', as: 'Results', onDelete: 'CASCADE' });
+OqcInspectionResult.belongsTo(OqcInspection, { foreignKey: 'inspection_id', as: 'Inspection' });
 
 ProductionSchedule.belongsTo(Item,      { foreignKey: 'item_id',       as: 'Item'      });
 ProductionSchedule.belongsTo(Machine,   { foreignKey: 'machine_id',    as: 'Machine'   });
@@ -343,6 +391,8 @@ PurchaseOrder.belongsTo(User,   { foreignKey: 'created_by', as: 'Creator' });
 PurchaseOrder.hasMany(PurchaseOrderItem, { foreignKey: 'po_id', as: 'Items', onDelete: 'CASCADE' });
 PurchaseOrderItem.belongsTo(PurchaseOrder, { foreignKey: 'po_id',    as: 'PurchaseOrder' });
 PurchaseOrderItem.belongsTo(Item,          { foreignKey: 'item_id',  as: 'Item'          });
+Scar.belongsTo(Vendor, { foreignKey: 'vendor_id',  as: 'Vendor'  });
+Scar.belongsTo(User,   { foreignKey: 'created_by', as: 'Creator' });
 
 // ── Subcontracting module associations ───────────────────────────────────────
 SubcontractChallan.belongsTo(Vendor,    { foreignKey: 'vendor_id',     as: 'Vendor'     });
@@ -415,6 +465,64 @@ DeliveryChallan.belongsTo(User,          { foreignKey: 'updated_by',        as: 
 // Transporter reverse
 Transporter.hasMany(DispatchOrder, { foreignKey: 'transporter_id', as: 'Orders', onDelete: 'SET NULL' });
 
+// ── Sprint 4: Quality associations ───────────────────────────────────────────
+
+// Capa — champion + creator + child collections
+Capa.belongsTo(User,    { foreignKey: 'champion_id', as: 'Champion' });
+Capa.belongsTo(User,    { foreignKey: 'created_by',  as: 'Creator'  });
+Capa.hasMany(CapaTeam,          { foreignKey: 'capa_id', as: 'Team',         onDelete: 'CASCADE' });
+Capa.hasMany(CapaRootCause,     { foreignKey: 'capa_id', as: 'RootCauses',   onDelete: 'CASCADE' });
+Capa.hasMany(CapaFishbone,      { foreignKey: 'capa_id', as: 'Fishbone',     onDelete: 'CASCADE' });
+Capa.hasMany(CapaAction,        { foreignKey: 'capa_id', as: 'Actions',      onDelete: 'CASCADE' });
+Capa.hasMany(CapaEffectiveness, { foreignKey: 'capa_id', as: 'Effectiveness',onDelete: 'CASCADE' });
+
+CapaTeam.belongsTo(Capa, { foreignKey: 'capa_id' });
+CapaTeam.belongsTo(User, { foreignKey: 'user_id', as: 'TeamMember' });
+
+CapaRootCause.belongsTo(Capa, { foreignKey: 'capa_id' });
+CapaFishbone.belongsTo(Capa,  { foreignKey: 'capa_id' });
+CapaAction.belongsTo(Capa,    { foreignKey: 'capa_id' });
+CapaEffectiveness.belongsTo(Capa, { foreignKey: 'capa_id' });
+CapaEffectiveness.belongsTo(User, { foreignKey: 'checked_by', as: 'CheckedBy' });
+
+// Ncr — item + raised_by + disposition
+Ncr.belongsTo(Item, { foreignKey: 'item_id',    as: 'Item'      });
+Ncr.belongsTo(User, { foreignKey: 'raised_by',  as: 'RaisedBy'  });
+Ncr.hasOne(NcrDisposition, { foreignKey: 'ncr_id', as: 'Disposition', onDelete: 'CASCADE' });
+NcrDisposition.belongsTo(Ncr,  { foreignKey: 'ncr_id' });
+NcrDisposition.belongsTo(User, { foreignKey: 'decision_by', as: 'DecisionBy' });
+
+// Complaint — item + creator + capa link
+Complaint.belongsTo(Item, { foreignKey: 'item_id',    as: 'Item'    });
+Complaint.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
+Complaint.belongsTo(Capa, { foreignKey: 'capa_id',    as: 'Capa'    });
+
+// ── Sprint 4: NPD associations ────────────────────────────────────────────────
+
+// Drawing — item + creator + approver + versions
+Drawing.belongsTo(Item,          { foreignKey: 'item_id',             as: 'Item'     });
+Drawing.belongsTo(User,          { foreignKey: 'created_by',          as: 'Creator'  });
+Drawing.belongsTo(User,          { foreignKey: 'approved_by',         as: 'Approver' });
+Drawing.hasMany(DrawingVersion,  { foreignKey: 'drawing_id',          as: 'Versions', onDelete: 'CASCADE' });
+DrawingVersion.belongsTo(Drawing,{ foreignKey: 'drawing_id' });
+
+// CheckSheetTemplate — drawing + item + creator + dimensions
+CheckSheetTemplate.belongsTo(Drawing, { foreignKey: 'drawing_id', as: 'Drawing' });
+CheckSheetTemplate.belongsTo(Item,    { foreignKey: 'item_id',    as: 'Item'    });
+CheckSheetTemplate.belongsTo(User,    { foreignKey: 'created_by', as: 'Creator' });
+CheckSheetTemplate.hasMany(CheckSheetDimension, { foreignKey: 'template_id', as: 'Dimensions', onDelete: 'CASCADE' });
+CheckSheetDimension.belongsTo(CheckSheetTemplate, { foreignKey: 'template_id' });
+
+// Pfmea — item + drawing + creator + items + actions
+Pfmea.belongsTo(Item,    { foreignKey: 'item_id',    as: 'Item'    });
+Pfmea.belongsTo(Drawing, { foreignKey: 'drawing_id', as: 'Drawing' });
+Pfmea.belongsTo(User,    { foreignKey: 'created_by', as: 'Creator' });
+Pfmea.hasMany(PfmeaItem, { foreignKey: 'pfmea_id',   as: 'Items',  onDelete: 'CASCADE' });
+PfmeaItem.belongsTo(Pfmea,       { foreignKey: 'pfmea_id' });
+PfmeaItem.hasMany(PfmeaAction,   { foreignKey: 'pfmea_item_id', as: 'Actions', onDelete: 'CASCADE' });
+PfmeaAction.belongsTo(PfmeaItem, { foreignKey: 'pfmea_item_id' });
+PfmeaAction.belongsTo(User,      { foreignKey: 'responsible_id', as: 'Responsible' });
+
 module.exports = {
   sequelize,
   Department,
@@ -467,12 +575,19 @@ module.exports = {
   StockAdjustmentItem,
   WorkOrder,
   JobCard,
+  IqcInspection,
+  IqcInspectionResult,
   LqcInspection,
   LqcInspectionResult,
+  PqcInspection,
+  PqcInspectionResult,
+  OqcInspection,
+  OqcInspectionResult,
   ProductionSchedule,
   ScrapVoucher,
   PurchaseOrder,
   PurchaseOrderItem,
+  Scar,
   SubcontractChallan,
   SubcontractChallanItem,
   TrainingTopic,
@@ -483,4 +598,22 @@ module.exports = {
   DispatchOrder,
   DispatchOrderItem,
   DeliveryChallan,
+  // Sprint 4: Quality
+  Capa,
+  CapaTeam,
+  CapaRootCause,
+  CapaFishbone,
+  CapaAction,
+  CapaEffectiveness,
+  Ncr,
+  NcrDisposition,
+  Complaint,
+  // Sprint 4: NPD
+  Drawing,
+  DrawingVersion,
+  CheckSheetTemplate,
+  CheckSheetDimension,
+  Pfmea,
+  PfmeaItem,
+  PfmeaAction,
 };

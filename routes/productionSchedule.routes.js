@@ -1,10 +1,17 @@
 const router = require('express').Router();
-const { authenticate } = require('../config/middleware');
+const { authenticate, authorize } = require('../config/middleware');
 const ctrl = require('../modules/production/controller/productionSchedule.controller');
-router.get('/',              authenticate, ctrl.getAll);
-router.get('/:id',           authenticate, ctrl.getById);
-router.post('/',             authenticate, ctrl.create);
-router.patch('/:id',         authenticate, ctrl.update);
-router.patch('/:id/publish', authenticate, ctrl.publish);
-router.delete('/:id',        authenticate, ctrl.delete);
+
+const SCHED_WRITE  = ['plant_head', 'it_admin', 'production_manager', 'planning_manager', 'planning_incharge'];
+const SCHED_MANAGE = ['plant_head', 'it_admin', 'production_manager', 'planning_manager'];
+
+router.use(authenticate);
+
+router.get('/',              ctrl.getAll);
+router.get('/:id',           ctrl.getById);
+router.post('/',             authorize(...SCHED_WRITE),  ctrl.create);
+router.patch('/:id',         authorize(...SCHED_WRITE),  ctrl.update);
+router.patch('/:id/publish', authorize(...SCHED_MANAGE), ctrl.publish);
+router.delete('/:id',        authorize(...SCHED_MANAGE), ctrl.delete);
+
 module.exports = router;

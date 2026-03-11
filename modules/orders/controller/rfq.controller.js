@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const { Rfq, RfqItem, Vendor, Item, User, Notification, Role } = require('../../../models');
+const { validateCreateRfq, validateUpdateRfq } = require('../cred/rfq.cred');
 
 // ── Shared includes ──────────────────────────────────────────────────────────
 const HEADER_INCLUDE = [
@@ -62,11 +63,10 @@ exports.getById = async (req, res) => {
 // ── POST /rfqs ───────────────────────────────────────────────────────────────
 exports.create = async (req, res) => {
   try {
-    const { customer_id, rfq_date, subject, notes, items = [] } = req.body;
+    const { error, value } = validateCreateRfq(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
 
-    if (!customer_id) return res.status(400).json({ success: false, message: 'Customer is required' });
-    if (!rfq_date)    return res.status(400).json({ success: false, message: 'RFQ date is required' });
-    if (!items.length) return res.status(400).json({ success: false, message: 'At least one item is required' });
+    const { customer_id, rfq_date, subject, notes, items = [] } = req.body;
 
     const rfq_no = await nextRfqNo();
 
@@ -120,6 +120,9 @@ exports.create = async (req, res) => {
 // ── PATCH /rfqs/:id ──────────────────────────────────────────────────────────
 exports.update = async (req, res) => {
   try {
+    const { error, value } = validateUpdateRfq(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
     const rfq = await Rfq.findByPk(req.params.id);
     if (!rfq) return res.status(404).json({ success: false, message: 'RFQ not found' });
 
