@@ -100,6 +100,75 @@ const AiAgentSetting   = require('../modules/admin/model/AiAgentSetting')(sequel
 const AdminAuditLog    = require('../modules/admin/model/AdminAuditLog')(sequelize);
 // ── Sprint 4b: Madad Chat ────────────────────────────────────────────────────
 const MadadChat        = require('../modules/ai/model/MadadChat')(sequelize);
+// ── Mold Management Module ───────────────────────────────────────────────────
+const MoldCategory          = require('../modules/mold/model/MoldCategory')(sequelize);
+const MoldStorageLocation   = require('../modules/mold/model/MoldStorageLocation')(sequelize);
+const Mold                  = require('../modules/mold/model/Mold')(sequelize);
+const MoldPartMapping       = require('../modules/mold/model/MoldPartMapping')(sequelize);
+const MoldMachineCompat     = require('../modules/mold/model/MoldMachineCompat')(sequelize);
+const MoldDocument          = require('../modules/mold/model/MoldDocument')(sequelize);
+const MoldQrRegistry        = require('../modules/mold/model/MoldQrRegistry')(sequelize);
+const MoldCavity            = require('../modules/mold/model/MoldCavity')(sequelize);
+const CavityHistory         = require('../modules/mold/model/CavityHistory')(sequelize);
+const MoldShotLog           = require('../modules/mold/model/MoldShotLog')(sequelize);
+const MoldShotSummary       = require('../modules/mold/model/MoldShotSummary')(sequelize);
+const MoldLifeConfig        = require('../modules/mold/model/MoldLifeConfig')(sequelize);
+const MoldLifeAlert         = require('../modules/mold/model/MoldLifeAlert')(sequelize);
+const MoldLifeExtension     = require('../modules/mold/model/MoldLifeExtension')(sequelize);
+const MoldIssueReturn       = require('../modules/mold/model/MoldIssueReturn')(sequelize);
+const MoldVerificationLog   = require('../modules/mold/model/MoldVerificationLog')(sequelize);
+const MoldInspection        = require('../modules/mold/model/MoldInspection')(sequelize);
+const MoldInspectionPhoto   = require('../modules/mold/model/MoldInspectionPhoto')(sequelize);
+// ── Mold Management — Sprint 5 ───────────────────────────────────────────────
+const MoldPmTemplate        = require('../modules/mold/model/MoldPmTemplate')(sequelize);
+const MoldPmTemplateItem    = require('../modules/mold/model/MoldPmTemplateItem')(sequelize);
+const MoldPmSchedule        = require('../modules/mold/model/MoldPmSchedule')(sequelize);
+const MoldPmWorkOrder       = require('../modules/mold/model/MoldPmWorkOrder')(sequelize);
+const MoldPmChecklistResult = require('../modules/mold/model/MoldPmChecklistResult')(sequelize);
+const MoldPmPhoto           = require('../modules/mold/model/MoldPmPhoto')(sequelize);
+const MoldRepairType        = require('../modules/mold/model/MoldRepairType')(sequelize);
+const MoldRepairRequest     = require('../modules/mold/model/MoldRepairRequest')(sequelize);
+const MoldRepairTracking    = require('../modules/mold/model/MoldRepairTracking')(sequelize);
+const MoldRepairCost        = require('../modules/mold/model/MoldRepairCost')(sequelize);
+const MoldTrialProtocol     = require('../modules/mold/model/MoldTrialProtocol')(sequelize);
+const MoldTrial             = require('../modules/mold/model/MoldTrial')(sequelize);
+const MoldTrialParameter    = require('../modules/mold/model/MoldTrialParameter')(sequelize);
+const MoldTrialReading      = require('../modules/mold/model/MoldTrialReading')(sequelize);
+const MoldTrialPhoto        = require('../modules/mold/model/MoldTrialPhoto')(sequelize);
+const MoldCost              = require('../modules/mold/model/MoldCost')(sequelize);
+// ── Maintenance Sprint 3 ──────────────────────────────────────────────────────
+const EquipmentCategory     = require('../modules/maintenance/model/EquipmentCategory')(sequelize);
+const Equipment             = require('../modules/maintenance/model/Equipment')(sequelize);
+const EquipmentHierarchy    = require('../modules/maintenance/model/EquipmentHierarchy')(sequelize);
+const EquipmentDocument     = require('../modules/maintenance/model/EquipmentDocument')(sequelize);
+const EquipmentWarranty     = require('../modules/maintenance/model/EquipmentWarranty')(sequelize);
+const MaintenanceType       = require('../modules/maintenance/model/MaintenanceType')(sequelize);
+const FailureCode           = require('../modules/maintenance/model/FailureCode')(sequelize);
+const MntDowntimeReason     = require('../modules/maintenance/model/DowntimeReason')(sequelize);
+const MaintenancePriority   = require('../modules/maintenance/model/MaintenancePriority')(sequelize);
+const BreakdownRequest      = require('../modules/maintenance/model/BreakdownRequest')(sequelize);
+const MaintenanceWorkOrder  = require('../modules/maintenance/model/MaintenanceWorkOrder')(sequelize);
+const MwoTask               = require('../modules/maintenance/model/MwoTask')(sequelize);
+const MwoAssignment         = require('../modules/maintenance/model/MwoAssignment')(sequelize);
+const MwoDiagnosis          = require('../modules/maintenance/model/MwoDiagnosis')(sequelize);
+const DowntimeLog           = require('../modules/maintenance/model/DowntimeLog')(sequelize);
+const TechnicianSkill       = require('../modules/maintenance/model/TechnicianSkill')(sequelize);
+const TechnicianSkillMapping= require('../modules/maintenance/model/TechnicianSkillMapping')(sequelize);
+const EquipmentHealthScore  = require('../modules/maintenance/model/EquipmentHealthScore')(sequelize);
+const MachineStatus         = require('../modules/maintenance/model/MachineStatus')(sequelize);
+// ── Maintenance Sprint 5 ──────────────────────────────────────────────────────
+const PmTemplate            = require('../modules/maintenance/model/PmTemplate')(sequelize);
+const PmTemplateItem        = require('../modules/maintenance/model/PmTemplateItem')(sequelize);
+const PmSchedule            = require('../modules/maintenance/model/PmSchedule')(sequelize);
+const PmWorkOrder           = require('../modules/maintenance/model/PmWorkOrder')(sequelize);
+const PmWoChecklist         = require('../modules/maintenance/model/PmWoChecklist')(sequelize);
+const SparePart             = require('../modules/maintenance/model/SparePart')(sequelize);
+const SparePartBom          = require('../modules/maintenance/model/SparePartBom')(sequelize);
+const SparePartConsumption  = require('../modules/maintenance/model/SparePartConsumption')(sequelize);
+const LotoProcedure         = require('../modules/maintenance/model/LotoProcedure')(sequelize);
+const LotoExecution         = require('../modules/maintenance/model/LotoExecution')(sequelize);
+const LotoPermit            = require('../modules/maintenance/model/LotoPermit')(sequelize);
+const MaintenanceCost       = require('../modules/maintenance/model/MaintenanceCost')(sequelize);
 const SalesInvoice          = require('../modules/accounts/model/SalesInvoice');
 const DebitCreditNote       = require('../modules/accounts/model/DebitCreditNote');
 const Payment               = require('../modules/accounts/model/Payment');
@@ -562,6 +631,176 @@ PfmeaItem.belongsTo(Pfmea,       { foreignKey: 'pfmea_id' });
 PfmeaItem.hasMany(PfmeaAction,   { foreignKey: 'pfmea_item_id', as: 'Actions', onDelete: 'CASCADE' });
 PfmeaAction.belongsTo(PfmeaItem, { foreignKey: 'pfmea_item_id' });
 PfmeaAction.belongsTo(User,      { foreignKey: 'responsible_id', as: 'Responsible' });
+// ── Mold Management associations ────────────────────────────────────────────
+
+// Mold → Category, Customer (Vendor), StorageLocation, audit
+Mold.belongsTo(MoldCategory,        { foreignKey: 'category_id',         as: 'Category'        });
+Mold.belongsTo(Vendor,              { foreignKey: 'customer_id',         as: 'Customer'         });
+Mold.belongsTo(MoldStorageLocation, { foreignKey: 'storage_location_id', as: 'StorageLocation'  });
+Mold.belongsTo(User,                { foreignKey: 'created_by',          as: 'Creator'          });
+Mold.belongsTo(User,                { foreignKey: 'updated_by',          as: 'Updater'          });
+MoldCategory.hasMany(Mold,          { foreignKey: 'category_id',         as: 'Molds'            });
+
+// Mold hasMany children
+Mold.hasMany(MoldPartMapping,   { foreignKey: 'mold_id', as: 'PartMappings',   onDelete: 'CASCADE' });
+Mold.hasMany(MoldMachineCompat, { foreignKey: 'mold_id', as: 'MachineCompats', onDelete: 'CASCADE' });
+Mold.hasMany(MoldDocument,      { foreignKey: 'mold_id', as: 'Documents',      onDelete: 'CASCADE' });
+Mold.hasMany(MoldCavity,        { foreignKey: 'mold_id', as: 'Cavities',       onDelete: 'CASCADE' });
+Mold.hasMany(MoldShotLog,       { foreignKey: 'mold_id', as: 'ShotLogs',       onDelete: 'CASCADE' });
+Mold.hasMany(MoldLifeAlert,     { foreignKey: 'mold_id', as: 'LifeAlerts',     onDelete: 'CASCADE' });
+Mold.hasMany(MoldLifeExtension, { foreignKey: 'mold_id', as: 'LifeExtensions', onDelete: 'CASCADE' });
+Mold.hasMany(MoldIssueReturn,   { foreignKey: 'mold_id', as: 'IssueReturns',   onDelete: 'CASCADE' });
+Mold.hasMany(MoldInspection,    { foreignKey: 'mold_id', as: 'Inspections',    onDelete: 'CASCADE' });
+
+// Mold hasOne children (1:1)
+Mold.hasOne(MoldQrRegistry,   { foreignKey: 'mold_id', as: 'QrRegistry',  onDelete: 'CASCADE' });
+Mold.hasOne(MoldShotSummary,  { foreignKey: 'mold_id', as: 'ShotSummary', onDelete: 'CASCADE' });
+Mold.hasOne(MoldLifeConfig,   { foreignKey: 'mold_id', as: 'LifeConfig',  onDelete: 'CASCADE' });
+
+// MoldPartMapping → Item
+MoldPartMapping.belongsTo(Mold, { foreignKey: 'mold_id', as: 'Mold' });
+MoldPartMapping.belongsTo(Item, { foreignKey: 'item_id', as: 'Item' });
+
+// MoldMachineCompat → Machine
+MoldMachineCompat.belongsTo(Mold,    { foreignKey: 'mold_id',    as: 'Mold'    });
+MoldMachineCompat.belongsTo(Machine, { foreignKey: 'machine_id', as: 'Machine' });
+MoldMachineCompat.belongsTo(User,    { foreignKey: 'verified_by', as: 'VerifiedBy' });
+
+// MoldDocument → Mold
+MoldDocument.belongsTo(Mold, { foreignKey: 'mold_id', as: 'Mold' });
+
+// MoldQrRegistry → Mold
+MoldQrRegistry.belongsTo(Mold, { foreignKey: 'mold_id', as: 'Mold' });
+
+// MoldCavity → Mold + history
+MoldCavity.belongsTo(Mold, { foreignKey: 'mold_id', as: 'Mold' });
+MoldCavity.hasMany(CavityHistory, { foreignKey: 'cavity_id', as: 'History', onDelete: 'CASCADE' });
+CavityHistory.belongsTo(MoldCavity, { foreignKey: 'cavity_id', as: 'Cavity' });
+CavityHistory.belongsTo(Mold,       { foreignKey: 'mold_id',   as: 'Mold' });
+CavityHistory.belongsTo(User,       { foreignKey: 'performed_by', as: 'PerformedBy' });
+
+// MoldShotLog → Mold, JobCard, WorkOrder, Machine, User
+MoldShotLog.belongsTo(Mold,    { foreignKey: 'mold_id',    as: 'Mold' });
+MoldShotLog.belongsTo(Machine, { foreignKey: 'machine_id', as: 'Machine' });
+MoldShotLog.belongsTo(User,    { foreignKey: 'logged_by',  as: 'LoggedBy' });
+
+// MoldShotSummary → Mold
+MoldShotSummary.belongsTo(Mold, { foreignKey: 'mold_id', as: 'Mold' });
+
+// MoldLifeConfig → Mold + audit
+MoldLifeConfig.belongsTo(Mold, { foreignKey: 'mold_id', as: 'Mold' });
+
+// MoldLifeAlert → Mold + acknowledged_by
+MoldLifeAlert.belongsTo(Mold, { foreignKey: 'mold_id',        as: 'Mold' });
+MoldLifeAlert.belongsTo(User, { foreignKey: 'acknowledged_by', as: 'AcknowledgedBy' });
+
+// MoldLifeExtension → Mold + approved_by + quality_signoff_by
+MoldLifeExtension.belongsTo(Mold, { foreignKey: 'mold_id',            as: 'Mold' });
+MoldLifeExtension.belongsTo(User, { foreignKey: 'approved_by',        as: 'ApprovedBy' });
+MoldLifeExtension.belongsTo(User, { foreignKey: 'quality_signoff_by', as: 'QualitySignoff' });
+
+// MoldIssueReturn → Mold, WorkOrder, Machine, StorageLocation, Users
+MoldIssueReturn.belongsTo(Mold,                { foreignKey: 'mold_id',             as: 'Mold'            });
+MoldIssueReturn.belongsTo(WorkOrder,           { foreignKey: 'work_order_id',       as: 'WorkOrder'       });
+MoldIssueReturn.belongsTo(Machine,             { foreignKey: 'machine_id',          as: 'Machine'         });
+MoldIssueReturn.belongsTo(User,                { foreignKey: 'issued_by',           as: 'IssuedBy'        });
+MoldIssueReturn.belongsTo(User,                { foreignKey: 'returned_by',         as: 'ReturnedBy'      });
+MoldIssueReturn.belongsTo(MoldStorageLocation, { foreignKey: 'storage_location_id', as: 'StorageLocation' });
+MoldIssueReturn.hasMany(MoldVerificationLog,   { foreignKey: 'issue_return_id',     as: 'Verifications',  onDelete: 'CASCADE' });
+
+// MoldVerificationLog → IssueReturn, override_by
+MoldVerificationLog.belongsTo(MoldIssueReturn, { foreignKey: 'issue_return_id', as: 'IssueReturn' });
+MoldVerificationLog.belongsTo(User,            { foreignKey: 'override_by',      as: 'OverrideBy'  });
+
+// MoldInspection → Mold, IssueReturn, inspector
+MoldInspection.belongsTo(Mold,            { foreignKey: 'mold_id',         as: 'Mold'        });
+MoldInspection.belongsTo(MoldIssueReturn, { foreignKey: 'issue_return_id', as: 'IssueReturn' });
+MoldInspection.belongsTo(User,            { foreignKey: 'inspected_by',    as: 'InspectedBy' });
+MoldInspection.hasMany(MoldInspectionPhoto, { foreignKey: 'inspection_id', as: 'Photos', onDelete: 'CASCADE' });
+
+// MoldInspectionPhoto → Inspection
+MoldInspectionPhoto.belongsTo(MoldInspection, { foreignKey: 'inspection_id', as: 'Inspection' });
+
+// MoldStorageLocation → current mold
+MoldStorageLocation.belongsTo(Mold, { foreignKey: 'current_mold_id', as: 'CurrentMold', constraints: false });
+
+// MoldCategory audit
+MoldCategory.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
+MoldCategory.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
+
+// MoldStorageLocation audit
+MoldStorageLocation.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
+MoldStorageLocation.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
+
+// ── Mold Sprint 5 Associations ───────────────────────────────────────────────
+
+// MoldPmTemplate → MoldCategory + items
+MoldPmTemplate.belongsTo(MoldCategory,      { foreignKey: 'category_id', as: 'Category' });
+MoldPmTemplate.hasMany(MoldPmTemplateItem,  { foreignKey: 'template_id', as: 'Items', onDelete: 'CASCADE' });
+MoldPmTemplateItem.belongsTo(MoldPmTemplate,{ foreignKey: 'template_id', as: 'Template' });
+
+// MoldPmSchedule → Mold + Template
+MoldPmSchedule.belongsTo(Mold,           { foreignKey: 'mold_id',     as: 'Mold'     });
+MoldPmSchedule.belongsTo(MoldPmTemplate, { foreignKey: 'template_id', as: 'Template' });
+Mold.hasMany(MoldPmSchedule,             { foreignKey: 'mold_id',     as: 'PmSchedules', onDelete: 'CASCADE' });
+
+// MoldPmWorkOrder → Schedule + Mold + User (assigned_to)
+MoldPmWorkOrder.belongsTo(MoldPmSchedule, { foreignKey: 'schedule_id', as: 'Schedule' });
+MoldPmWorkOrder.belongsTo(Mold,           { foreignKey: 'mold_id',     as: 'Mold'     });
+MoldPmWorkOrder.belongsTo(User,           { foreignKey: 'assigned_to', as: 'AssignedTo' });
+MoldPmWorkOrder.hasMany(MoldPmChecklistResult, { foreignKey: 'pm_work_order_id', as: 'ChecklistResults', onDelete: 'CASCADE' });
+MoldPmWorkOrder.hasMany(MoldPmPhoto,           { foreignKey: 'pm_work_order_id', as: 'Photos',           onDelete: 'CASCADE' });
+
+// MoldPmChecklistResult → WorkOrder + TemplateItem
+MoldPmChecklistResult.belongsTo(MoldPmWorkOrder,  { foreignKey: 'pm_work_order_id', as: 'WorkOrder'    });
+MoldPmChecklistResult.belongsTo(MoldPmTemplateItem,{ foreignKey: 'template_item_id', as: 'TemplateItem' });
+
+// MoldPmPhoto → WorkOrder
+MoldPmPhoto.belongsTo(MoldPmWorkOrder, { foreignKey: 'pm_work_order_id', as: 'WorkOrder' });
+
+// MoldRepairRequest → Mold + RepairType + Vendor + Users
+MoldRepairRequest.belongsTo(Mold,           { foreignKey: 'mold_id',        as: 'Mold'        });
+MoldRepairRequest.belongsTo(MoldRepairType, { foreignKey: 'repair_type_id', as: 'RepairType'  });
+MoldRepairRequest.belongsTo(Vendor,         { foreignKey: 'vendor_id',      as: 'Vendor'      });
+MoldRepairRequest.belongsTo(User,           { foreignKey: 'requested_by',   as: 'RequestedBy' });
+MoldRepairRequest.belongsTo(User,           { foreignKey: 'approved_by',    as: 'ApprovedBy'  });
+MoldRepairRequest.hasMany(MoldRepairTracking, { foreignKey: 'repair_request_id', as: 'TrackingEvents', onDelete: 'CASCADE' });
+MoldRepairRequest.hasMany(MoldRepairCost,     { foreignKey: 'repair_request_id', as: 'Costs',          onDelete: 'CASCADE' });
+Mold.hasMany(MoldRepairRequest, { foreignKey: 'mold_id', as: 'RepairRequests', onDelete: 'CASCADE' });
+
+// MoldRepairTracking → RepairRequest + performer
+MoldRepairTracking.belongsTo(MoldRepairRequest, { foreignKey: 'repair_request_id', as: 'RepairRequest' });
+MoldRepairTracking.belongsTo(User,              { foreignKey: 'performed_by',      as: 'PerformedBy'   });
+
+// MoldRepairCost → RepairRequest + Vendor
+MoldRepairCost.belongsTo(MoldRepairRequest, { foreignKey: 'repair_request_id', as: 'RepairRequest' });
+MoldRepairCost.belongsTo(Vendor,            { foreignKey: 'vendor_id',         as: 'Vendor'        });
+
+// MoldTrial → Mold + Protocol + Machine + User + RepairRequest
+MoldTrial.belongsTo(Mold,              { foreignKey: 'mold_id',           as: 'Mold'        });
+MoldTrial.belongsTo(MoldTrialProtocol, { foreignKey: 'protocol_id',       as: 'Protocol'    });
+MoldTrial.belongsTo(Machine,           { foreignKey: 'machine_id',        as: 'Machine'     });
+MoldTrial.belongsTo(User,              { foreignKey: 'conducted_by',      as: 'ConductedBy' });
+MoldTrial.belongsTo(MoldRepairRequest, { foreignKey: 'repair_request_id', as: 'RepairRequest' });
+MoldTrial.hasMany(MoldTrialParameter,  { foreignKey: 'trial_id', as: 'Parameters', onDelete: 'CASCADE' });
+MoldTrial.hasMany(MoldTrialReading,    { foreignKey: 'trial_id', as: 'Readings',   onDelete: 'CASCADE' });
+MoldTrial.hasMany(MoldTrialPhoto,      { foreignKey: 'trial_id', as: 'Photos',     onDelete: 'CASCADE' });
+Mold.hasMany(MoldTrial, { foreignKey: 'mold_id', as: 'Trials', onDelete: 'CASCADE' });
+
+// MoldTrialProtocol → MoldCategory
+MoldTrialProtocol.belongsTo(MoldCategory, { foreignKey: 'mold_category_id', as: 'MoldCategory' });
+
+// MoldTrialParameter / MoldTrialReading / MoldTrialPhoto → Trial
+MoldTrialParameter.belongsTo(MoldTrial, { foreignKey: 'trial_id', as: 'Trial' });
+MoldTrialReading.belongsTo(MoldTrial,   { foreignKey: 'trial_id', as: 'Trial' });
+MoldTrialPhoto.belongsTo(MoldTrial,     { foreignKey: 'trial_id', as: 'Trial' });
+
+// MoldCost → Mold + Vendor + User
+MoldCost.belongsTo(Mold,   { foreignKey: 'mold_id',    as: 'Mold'    });
+MoldCost.belongsTo(Vendor, { foreignKey: 'vendor_id',  as: 'Vendor'  });
+MoldCost.belongsTo(User,   { foreignKey: 'created_by', as: 'Creator' });
+Mold.hasMany(MoldCost,     { foreignKey: 'mold_id',    as: 'Costs',  onDelete: 'CASCADE' });
+
 // ── Accounts & Finance associations ─────────────────────────────────────────
 
 // SalesInvoice → Customer (Vendor), CustomerOrder, DispatchOrder, User
@@ -592,6 +831,139 @@ CopqEntry.belongsTo(User,       { foreignKey: 'updated_by',    as: 'Updater'    
 
 // TallySyncLog — synced_by → User
 TallySyncLog.belongsTo(User, { foreignKey: 'synced_by', as: 'SyncedBy' });
+
+// ── Maintenance Sprint 3 Associations ────────────────────────────────────────
+// EquipmentCategory
+EquipmentCategory.hasMany(Equipment,   { foreignKey: 'category_id', as: 'Equipment' });
+EquipmentCategory.hasMany(FailureCode, { foreignKey: 'equipment_category_id', as: 'FailureCodes' });
+
+// Equipment (self-referencing hierarchy)
+Equipment.belongsTo(EquipmentCategory, { foreignKey: 'category_id',  as: 'Category' });
+Equipment.belongsTo(Equipment,         { foreignKey: 'parent_id',     as: 'Parent' });
+Equipment.hasMany(Equipment,           { foreignKey: 'parent_id',     as: 'Children' });
+Equipment.hasMany(EquipmentDocument,   { foreignKey: 'equipment_id',  as: 'Documents',    onDelete: 'CASCADE' });
+Equipment.hasOne(EquipmentWarranty,    { foreignKey: 'equipment_id',  as: 'Warranty',     onDelete: 'CASCADE' });
+Equipment.hasOne(MachineStatus,        { foreignKey: 'equipment_id',  as: 'CurrentStatus',onDelete: 'CASCADE' });
+Equipment.hasMany(EquipmentHealthScore,{ foreignKey: 'equipment_id',  as: 'HealthScores', onDelete: 'CASCADE' });
+Equipment.hasMany(BreakdownRequest,    { foreignKey: 'equipment_id',  as: 'Breakdowns' });
+Equipment.hasMany(MaintenanceWorkOrder,{ foreignKey: 'equipment_id',  as: 'WorkOrders' });
+Equipment.hasMany(DowntimeLog,         { foreignKey: 'equipment_id',  as: 'DowntimeLogs' });
+
+// EquipmentDocument, EquipmentWarranty, EquipmentHealthScore, MachineStatus → Equipment
+EquipmentDocument.belongsTo(Equipment,    { foreignKey: 'equipment_id', as: 'Equipment' });
+EquipmentWarranty.belongsTo(Equipment,    { foreignKey: 'equipment_id', as: 'Equipment' });
+EquipmentHealthScore.belongsTo(Equipment, { foreignKey: 'equipment_id', as: 'Equipment' });
+MachineStatus.belongsTo(Equipment,        { foreignKey: 'equipment_id', as: 'Equipment' });
+
+// FailureCode → EquipmentCategory
+FailureCode.belongsTo(EquipmentCategory, { foreignKey: 'equipment_category_id', as: 'EquipmentCategory' });
+
+// BreakdownRequest → Equipment, User, MaintenancePriority, FailureCode
+BreakdownRequest.belongsTo(Equipment,          { foreignKey: 'equipment_id',                 as: 'Equipment' });
+BreakdownRequest.belongsTo(User,               { foreignKey: 'reported_by',                  as: 'ReportedBy' });
+BreakdownRequest.belongsTo(MaintenancePriority,{ foreignKey: 'priority_id',                  as: 'Priority' });
+BreakdownRequest.belongsTo(FailureCode,        { foreignKey: 'ai_suggested_failure_code_id', as: 'AiFailureCode' });
+BreakdownRequest.hasMany(MaintenanceWorkOrder, { foreignKey: 'breakdown_request_id',          as: 'WorkOrders' });
+
+// MaintenanceWorkOrder
+MaintenanceWorkOrder.belongsTo(Equipment,          { foreignKey: 'equipment_id',          as: 'Equipment' });
+MaintenanceWorkOrder.belongsTo(BreakdownRequest,   { foreignKey: 'breakdown_request_id',  as: 'Breakdown' });
+MaintenanceWorkOrder.belongsTo(MaintenancePriority,{ foreignKey: 'priority_id',           as: 'Priority' });
+MaintenanceWorkOrder.belongsTo(User,               { foreignKey: 'assigned_to',           as: 'AssignedTo' });
+MaintenanceWorkOrder.belongsTo(User,               { foreignKey: 'assigned_by',           as: 'AssignedBy' });
+MaintenanceWorkOrder.belongsTo(User,               { foreignKey: 'created_by',            as: 'CreatedBy' });
+MaintenanceWorkOrder.belongsTo(FailureCode,        { foreignKey: 'failure_code_id',       as: 'FailureCode' });
+MaintenanceWorkOrder.hasMany(MwoTask,              { foreignKey: 'work_order_id',         as: 'Tasks',       onDelete: 'CASCADE' });
+MaintenanceWorkOrder.hasMany(MwoAssignment,        { foreignKey: 'work_order_id',         as: 'Assignments', onDelete: 'CASCADE' });
+MaintenanceWorkOrder.hasOne(MwoDiagnosis,          { foreignKey: 'work_order_id',         as: 'Diagnosis',   onDelete: 'CASCADE' });
+
+// MwoTask, MwoAssignment, MwoDiagnosis → MaintenanceWorkOrder
+MwoTask.belongsTo(MaintenanceWorkOrder,       { foreignKey: 'work_order_id', as: 'WorkOrder' });
+MwoAssignment.belongsTo(MaintenanceWorkOrder, { foreignKey: 'work_order_id', as: 'WorkOrder' });
+MwoDiagnosis.belongsTo(MaintenanceWorkOrder,  { foreignKey: 'work_order_id', as: 'WorkOrder' });
+MwoDiagnosis.belongsTo(FailureCode,           { foreignKey: 'failure_code_id', as: 'FailureCode' });
+MwoTask.belongsTo(User,                       { foreignKey: 'completed_by',  as: 'CompletedBy' });
+MwoAssignment.belongsTo(User,                 { foreignKey: 'assigned_to',   as: 'AssignedTo' });
+MwoAssignment.belongsTo(User,                 { foreignKey: 'assigned_by',   as: 'AssignedBy' });
+
+// DowntimeLog
+DowntimeLog.belongsTo(Equipment,            { foreignKey: 'equipment_id',          as: 'Equipment' });
+DowntimeLog.belongsTo(MntDowntimeReason,    { foreignKey: 'reason_id',             as: 'Reason' });
+DowntimeLog.belongsTo(MaintenanceWorkOrder, { foreignKey: 'work_order_id',         as: 'WorkOrder' });
+DowntimeLog.belongsTo(BreakdownRequest,     { foreignKey: 'breakdown_request_id',  as: 'Breakdown' });
+DowntimeLog.belongsTo(User,                 { foreignKey: 'logged_by',             as: 'LoggedBy' });
+
+// TechnicianSkillMapping → User, TechnicianSkill
+TechnicianSkillMapping.belongsTo(User,            { foreignKey: 'user_id',  as: 'User' });
+TechnicianSkillMapping.belongsTo(TechnicianSkill, { foreignKey: 'skill_id', as: 'Skill' });
+TechnicianSkill.hasMany(TechnicianSkillMapping,   { foreignKey: 'skill_id', as: 'Technicians' });
+
+// EquipmentHierarchy → Equipment (ancestor + descendant)
+EquipmentHierarchy.belongsTo(Equipment, { foreignKey: 'ancestor_id',   as: 'Ancestor' });
+EquipmentHierarchy.belongsTo(Equipment, { foreignKey: 'descendant_id', as: 'Descendant' });
+
+// ── Maintenance Sprint 5 Associations ─────────────────────────────────────────
+// PmTemplate
+PmTemplate.belongsTo(EquipmentCategory, { foreignKey: 'category_id',        as: 'Category' });
+PmTemplate.belongsTo(MaintenanceType,   { foreignKey: 'maintenance_type_id', as: 'MaintenanceType' });
+PmTemplate.hasMany(PmTemplateItem,      { foreignKey: 'template_id',         as: 'Items' });
+PmTemplateItem.belongsTo(PmTemplate,    { foreignKey: 'template_id',         as: 'Template' });
+
+// PmSchedule
+PmSchedule.belongsTo(Equipment,  { foreignKey: 'equipment_id', as: 'Equipment' });
+PmSchedule.belongsTo(PmTemplate, { foreignKey: 'template_id',  as: 'Template' });
+PmSchedule.hasMany(PmWorkOrder,  { foreignKey: 'schedule_id',  as: 'WorkOrders' });
+
+// PmWorkOrder
+PmWorkOrder.belongsTo(PmSchedule, { foreignKey: 'schedule_id',  as: 'Schedule' });
+PmWorkOrder.belongsTo(Equipment,  { foreignKey: 'equipment_id', as: 'Equipment' });
+PmWorkOrder.belongsTo(PmTemplate, { foreignKey: 'template_id',  as: 'Template' });
+PmWorkOrder.belongsTo(User,       { foreignKey: 'assigned_to',  as: 'AssignedTo' });
+PmWorkOrder.hasMany(PmWoChecklist,{ foreignKey: 'pm_wo_id',     as: 'Checklist' });
+
+// PmWoChecklist
+PmWoChecklist.belongsTo(PmWorkOrder,    { foreignKey: 'pm_wo_id',         as: 'PmWorkOrder' });
+PmWoChecklist.belongsTo(PmTemplateItem, { foreignKey: 'template_item_id', as: 'TemplateItem' });
+PmWoChecklist.belongsTo(User,           { foreignKey: 'completed_by',     as: 'CompletedBy' });
+
+// SparePart
+SparePart.belongsTo(Vendor,             { foreignKey: 'supplier_id',   as: 'Supplier' });
+SparePart.hasMany(SparePartBom,         { foreignKey: 'spare_part_id', as: 'BomItems' });
+SparePart.hasMany(SparePartConsumption, { foreignKey: 'spare_part_id', as: 'Consumptions' });
+
+// SparePartBom
+SparePartBom.belongsTo(Equipment,  { foreignKey: 'equipment_id',  as: 'Equipment' });
+SparePartBom.belongsTo(SparePart,  { foreignKey: 'spare_part_id', as: 'SparePart' });
+
+// SparePartConsumption
+SparePartConsumption.belongsTo(SparePart,            { foreignKey: 'spare_part_id', as: 'SparePart' });
+SparePartConsumption.belongsTo(MaintenanceWorkOrder, { foreignKey: 'work_order_id', as: 'WorkOrder' });
+SparePartConsumption.belongsTo(PmWorkOrder,          { foreignKey: 'pm_wo_id',      as: 'PmWorkOrder' });
+SparePartConsumption.belongsTo(User,                 { foreignKey: 'consumed_by',   as: 'ConsumedBy' });
+
+// LotoProcedure
+LotoProcedure.belongsTo(Equipment, { foreignKey: 'equipment_id', as: 'Equipment' });
+LotoProcedure.hasMany(LotoExecution, { foreignKey: 'procedure_id', as: 'Executions' });
+
+// LotoExecution
+LotoExecution.belongsTo(Equipment,            { foreignKey: 'equipment_id',  as: 'Equipment' });
+LotoExecution.belongsTo(LotoProcedure,        { foreignKey: 'procedure_id',  as: 'Procedure' });
+LotoExecution.belongsTo(MaintenanceWorkOrder, { foreignKey: 'work_order_id', as: 'WorkOrder' });
+LotoExecution.belongsTo(PmWorkOrder,          { foreignKey: 'pm_wo_id',      as: 'PmWorkOrder' });
+LotoExecution.belongsTo(User, { foreignKey: 'initiated_by', as: 'InitiatedBy' });
+LotoExecution.belongsTo(User, { foreignKey: 'locked_by',    as: 'LockedBy' });
+LotoExecution.belongsTo(User, { foreignKey: 'completed_by', as: 'CompletedBy' });
+LotoExecution.hasMany(LotoPermit, { foreignKey: 'execution_id', as: 'Permits' });
+
+// LotoPermit
+LotoPermit.belongsTo(LotoExecution, { foreignKey: 'execution_id', as: 'Execution' });
+LotoPermit.belongsTo(User, { foreignKey: 'issued_to',    as: 'IssuedTo' });
+LotoPermit.belongsTo(User, { foreignKey: 'authorized_by',as: 'AuthorizedBy' });
+
+// MaintenanceCost
+MaintenanceCost.belongsTo(MaintenanceWorkOrder, { foreignKey: 'work_order_id', as: 'WorkOrder' });
+MaintenanceCost.belongsTo(PmWorkOrder,          { foreignKey: 'pm_wo_id',      as: 'PmWorkOrder' });
+MaintenanceCost.belongsTo(Equipment,            { foreignKey: 'equipment_id',  as: 'Equipment' });
 
 module.exports = {
   sequelize,
@@ -688,6 +1060,42 @@ module.exports = {
   Pfmea,
   PfmeaItem,
   PfmeaAction,
+  // Mold Management
+  MoldCategory,
+  MoldStorageLocation,
+  Mold,
+  MoldPartMapping,
+  MoldMachineCompat,
+  MoldDocument,
+  MoldQrRegistry,
+  MoldCavity,
+  CavityHistory,
+  MoldShotLog,
+  MoldShotSummary,
+  MoldLifeConfig,
+  MoldLifeAlert,
+  MoldLifeExtension,
+  MoldIssueReturn,
+  MoldVerificationLog,
+  MoldInspection,
+  MoldInspectionPhoto,
+  // Mold Sprint 5
+  MoldPmTemplate,
+  MoldPmTemplateItem,
+  MoldPmSchedule,
+  MoldPmWorkOrder,
+  MoldPmChecklistResult,
+  MoldPmPhoto,
+  MoldRepairType,
+  MoldRepairRequest,
+  MoldRepairTracking,
+  MoldRepairCost,
+  MoldTrialProtocol,
+  MoldTrial,
+  MoldTrialParameter,
+  MoldTrialReading,
+  MoldTrialPhoto,
+  MoldCost,
   SalesInvoice,
   DebitCreditNote,
   Payment,
@@ -700,4 +1108,37 @@ module.exports = {
   AiAgentSetting,
   AdminAuditLog,
   MadadChat,
+  // Maintenance Sprint 3
+  EquipmentCategory,
+  Equipment,
+  EquipmentHierarchy,
+  EquipmentDocument,
+  EquipmentWarranty,
+  MaintenanceType,
+  FailureCode,
+  MntDowntimeReason,
+  MaintenancePriority,
+  BreakdownRequest,
+  MaintenanceWorkOrder,
+  MwoTask,
+  MwoAssignment,
+  MwoDiagnosis,
+  DowntimeLog,
+  TechnicianSkill,
+  TechnicianSkillMapping,
+  EquipmentHealthScore,
+  MachineStatus,
+  // Maintenance Sprint 5
+  PmTemplate,
+  PmTemplateItem,
+  PmSchedule,
+  PmWorkOrder,
+  PmWoChecklist,
+  SparePart,
+  SparePartBom,
+  SparePartConsumption,
+  LotoProcedure,
+  LotoExecution,
+  LotoPermit,
+  MaintenanceCost,
 };

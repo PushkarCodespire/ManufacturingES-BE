@@ -7,6 +7,7 @@
     "start": "node index.js",
     "dev": "nodemon index.js",
     "seed": "node seeders/index.js",
+    "seed:maintenance": "node seeders/maintenance-masters.seed.js",
     "migration:create": "node scripts/create-migration.js",
     "migration:up": "node -e \"require('./config/migrator').runMigrations()\"",
     "migration:down": "node -e \"require('./config/migrator').rollbackLastMigration()\"",

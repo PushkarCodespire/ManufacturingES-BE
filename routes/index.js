@@ -70,6 +70,28 @@ const dashboardRoutes             = require('./dashboard.routes');
 // Sprint 5: Admin Control Room & Madad AI
 const adminControlRoomRoutes      = require('./admin.routes');
 const madadRoutes                 = require('./madad.routes');
+// Mold Management — Sprint 3
+const moldMasterRoutes      = require('./moldMaster.routes');
+const moldCavityRoutes      = require('./moldCavity.routes');
+const moldShotCountRoutes   = require('./moldShotCount.routes');
+const moldLifeRoutes        = require('./moldLife.routes');
+const moldIssueReturnRoutes = require('./moldIssueReturn.routes');
+const moldStoreRoutes       = require('./moldStore.routes');
+// Mold Management — Sprint 5
+const moldPmRoutes          = require('./moldPm.routes');
+const moldRepairRoutes      = require('./moldRepair.routes');
+const moldTrialRoutes       = require('./moldTrial.routes');
+const moldCostRoutes        = require('./moldCost.routes');
+const moldDocumentsRoutes   = require('./moldDocuments.routes');
+// Maintenance — Sprint 3 & 5
+const equipmentMasterRoutes  = require('./equipmentMaster.routes');
+const equipmentHealthRoutes  = require('./equipmentHealth.routes');
+const breakdownRoutes        = require('./breakdown.routes');
+const downtimeRoutes         = require('./downtime.routes');
+const pmScheduleRoutes       = require('./pmSchedule.routes');
+const sparePartsRoutes       = require('./spareParts.routes');
+const lotoRoutes             = require('./loto.routes');
+const maintenanceKpiRoutes   = require('./maintenanceKpi.routes');
 
 // Mount routes
 router.use('/auth',          authRoutes);
@@ -142,5 +164,27 @@ router.use('/dashboard',                dashboardRoutes);
 // Sprint 5: Admin Control Room & Madad AI
 router.use('/admin/control-room',        adminControlRoomRoutes);
 router.use('/madad',                     madadRoutes);
+// Mold Management — Sprint 3
+router.use('/mold/masters',      moldMasterRoutes);
+router.use('/mold/cavities',     moldCavityRoutes);
+router.use('/mold/shot-count',   moldShotCountRoutes);
+router.use('/mold/life',         moldLifeRoutes);
+router.use('/mold/issue-return', moldIssueReturnRoutes);
+router.use('/mold/store',        moldStoreRoutes);
+// Mold Management — Sprint 5
+router.use('/mold/pm',           moldPmRoutes);
+router.use('/mold/repair',       moldRepairRoutes);
+router.use('/mold/trial',        moldTrialRoutes);
+router.use('/mold/cost',         moldCostRoutes);
+router.use('/mold/documents',    moldDocumentsRoutes);
+// Maintenance — Sprint 3 & 5
+router.use('/maintenance/equipment', equipmentMasterRoutes);
+router.use('/maintenance/health',    equipmentHealthRoutes);
+router.use('/maintenance/breakdown', breakdownRoutes);
+router.use('/maintenance/downtime',  downtimeRoutes);
+router.use('/maintenance/pm',          pmScheduleRoutes);
+router.use('/maintenance/spare-parts', sparePartsRoutes);
+router.use('/maintenance/loto',        lotoRoutes);
+router.use('/maintenance/kpi',         maintenanceKpiRoutes);
 
 module.exports = router;

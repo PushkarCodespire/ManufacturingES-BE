@@ -8,7 +8,10 @@
 
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 const bcrypt = require('bcryptjs');
-const { sequelize, Department, Role, User } = require('../models');
+const {
+  sequelize, Department, Role, User,
+  MaintenancePriority, EquipmentCategory, MntDowntimeReason,
+} = require('../models');
 const { DEPARTMENTS, ROLES } = require('../config/constants');
 
 const SEED_USERS = [
@@ -89,6 +92,62 @@ async function seed() {
       console.log(`  ${u.employee_id} — ${u.name} [${u.role}]`);
     }
     console.log(`\n✅ ${SEED_USERS.length} Users seeded\n`);
+
+    // ── Step 4: Maintenance Priorities ──────────────────────────────────────
+    const PRIORITIES = [
+      { name: 'P1 — Critical',  response_time_minutes: 15,   description: 'Immediate response — production stopped',     color_code: '#dc2626', is_active: true },
+      { name: 'P2 — High',      response_time_minutes: 60,   description: 'Urgent — significant production impact',      color_code: '#d97706', is_active: true },
+      { name: 'P3 — Medium',    response_time_minutes: 240,  description: 'Normal — partial or potential impact',        color_code: '#ca8a04', is_active: true },
+      { name: 'P4 — Low',       response_time_minutes: 1440, description: 'Scheduled — no immediate production impact',  color_code: '#2563eb', is_active: true },
+    ];
+    for (const p of PRIORITIES) {
+      await MaintenancePriority.create(p);
+      console.log(`  ${p.name} (${p.response_time_minutes} min)`);
+    }
+    console.log(`\n✅ ${PRIORITIES.length} Maintenance Priorities seeded\n`);
+
+    // ── Step 5: Equipment Categories ─────────────────────────────────────────
+    const EQUIP_CATEGORIES = [
+      { name: 'Injection Moulding',  description: 'Injection moulding machines',        default_criticality: 'A', is_active: true },
+      { name: 'CNC Machining',       description: 'CNC lathes and milling machines',    default_criticality: 'A', is_active: true },
+      { name: 'Welding',             description: 'Welding and fabrication equipment',  default_criticality: 'B', is_active: true },
+      { name: 'Conveyor / Material Handling', description: 'Conveyor and MHE',          default_criticality: 'B', is_active: true },
+      { name: 'Compressors & Utilities',      description: 'Air compressors, chillers', default_criticality: 'B', is_active: true },
+      { name: 'Assembly Tools',      description: 'Assembly jigs, presses, torque tools', default_criticality: 'C', is_active: true },
+      { name: 'Inspection / Testing', description: 'CMM, gauges, test rigs',            default_criticality: 'B', is_active: true },
+      { name: 'General',             description: 'General purpose equipment',           default_criticality: 'C', is_active: true },
+    ];
+    for (const c of EQUIP_CATEGORIES) {
+      await EquipmentCategory.create(c);
+      console.log(`  ${c.name}`);
+    }
+    console.log(`\n✅ ${EQUIP_CATEGORIES.length} Equipment Categories seeded\n`);
+
+    // ── Step 6: Downtime Reasons ──────────────────────────────────────────────
+    const DOWNTIME_REASONS = [
+      { name: 'Preventive Maintenance',    category: 'planned_pm',   is_active: true },
+      { name: 'Scheduled Inspection',      category: 'planned_pm',   is_active: true },
+      { name: 'Machine Breakdown',         category: 'breakdown',    is_active: true },
+      { name: 'Electrical Fault',          category: 'breakdown',    is_active: true },
+      { name: 'Hydraulic Failure',         category: 'breakdown',    is_active: true },
+      { name: 'Tooling Failure',           category: 'breakdown',    is_active: true },
+      { name: 'Mould / Die Changeover',    category: 'changeover',   is_active: true },
+      { name: 'Product Changeover',        category: 'changeover',   is_active: true },
+      { name: 'Material Not Available',    category: 'no_material',  is_active: true },
+      { name: 'Raw Material Shortage',     category: 'no_material',  is_active: true },
+      { name: 'Operator Absent',           category: 'no_operator',  is_active: true },
+      { name: 'Operator Training',         category: 'no_operator',  is_active: true },
+      { name: 'Quality Hold — Inspection', category: 'quality_hold', is_active: true },
+      { name: 'Quality Hold — Rework',     category: 'quality_hold', is_active: true },
+      { name: 'Power Failure',             category: 'other',        is_active: true },
+      { name: 'Utility Failure',           category: 'other',        is_active: true },
+      { name: 'Other / Unknown',           category: 'other',        is_active: true },
+    ];
+    for (const r of DOWNTIME_REASONS) {
+      await MntDowntimeReason.create(r);
+      console.log(`  ${r.name} [${r.category}]`);
+    }
+    console.log(`\n✅ ${DOWNTIME_REASONS.length} Downtime Reasons seeded\n`);
 
     console.log('─'.repeat(50));
     console.log('🎉 Seeding complete!');
