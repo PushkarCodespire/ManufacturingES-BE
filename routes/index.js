@@ -92,6 +92,7 @@ const pmScheduleRoutes       = require('./pmSchedule.routes');
 const sparePartsRoutes       = require('./spareParts.routes');
 const lotoRoutes             = require('./loto.routes');
 const maintenanceKpiRoutes   = require('./maintenanceKpi.routes');
+const maintenanceAiRoutes    = require('./maintenanceAi.routes');
 
 // Mount routes
 router.use('/auth',          authRoutes);
@@ -186,5 +187,6 @@ router.use('/maintenance/pm',          pmScheduleRoutes);
 router.use('/maintenance/spare-parts', sparePartsRoutes);
 router.use('/maintenance/loto',        lotoRoutes);
 router.use('/maintenance/kpi',         maintenanceKpiRoutes);
+router.use('/maintenance/ai',          maintenanceAiRoutes);
 
 module.exports = router;

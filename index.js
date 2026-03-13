@@ -41,12 +41,18 @@ const IS_DEV  = process.env.NODE_ENV !== 'production';
     // ── Step 4 (DEV only): Sync models as safety net ─────────────────────
     //    Catches any model changes you haven't written a migration for yet.
     //    NEVER runs in production — production relies on migrations only.
+    //
+    //    NOTE: sequelize.sync({ alter: true }) runs all DDL in parallel, which
+    //    causes PostgreSQL deadlocks when 100+ tables are altered concurrently.
+    //    Instead we sync each model serially to avoid lock contention.
     if (IS_DEV) {
-      await sequelize.sync({ alter: true });
+      for (const model of Object.values(sequelize.models)) {
+        await model.sync({ alter: true });
+      }
       console.log('✅ Models synced (dev safety net — alter mode)');
     }
 
-    // ── Step 4: Start server ──────────────────────────────────────────────
+    // ── Step 5: Start server ──────────────────────────────────────────────
     app.listen(PORT, () => {
       console.log(`\n🚀 Dynatech ONE API  →  http://localhost:${PORT}`);
       console.log(`   Health check      →  http://localhost:${PORT}/health`);
