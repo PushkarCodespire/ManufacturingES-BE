@@ -4,6 +4,7 @@ const {
 } = require('../../../models');
 const { notifyByRoles } = require('../../../services/notification.service');
 const { validateCreateNcr, validateUpdateNcr, validateDisposition } = require('../cred/ncr.cred');
+const { callClaude } = require('../../../services/ai.service');
 
 // ── Auto-number ───────────────────────────────────────────────────────────────
 async function nextNcrNo() {
@@ -194,6 +195,83 @@ exports.close = async (req, res) => {
   } catch (err) {
     console.error('[ncr.close]', err);
     res.status(500).json({ success: false, message: 'Failed to close NCR' });
+  }
+};
+
+// ── GET /ncr/:id/ai-suggestion ────────────────────────────────────────────────
+// Returns AI-generated root-cause analysis and corrective action suggestions
+// for this NCR. Fetches the last 5 NCRs for the same item as historical context.
+exports.getAiSuggestion = async (req, res) => {
+  try {
+    const ncr = await Ncr.findByPk(req.params.id, {
+      include: [
+        { model: Item, as: 'Item', attributes: ['id', 'name', 'code'] },
+        { model: User, as: 'RaisedBy', attributes: ['id', 'name'] },
+        { model: NcrDisposition, as: 'Disposition', required: false },
+      ],
+    });
+    if (!ncr) return res.status(404).json({ success: false, message: 'NCR not found' });
+
+    // Historical NCRs for same item (excluding this one)
+    const history = ncr.item_id
+      ? await Ncr.findAll({
+          where:      { item_id: ncr.item_id, id: { [Op.ne]: ncr.id } },
+          order:      [['created_at', 'DESC']],
+          limit:      5,
+          attributes: ['ncr_no', 'defect_desc', 'ncr_type', 'location_found', 'status', 'created_at'],
+        })
+      : [];
+
+    const systemPrompt = `You are a quality engineering expert specialising in manufacturing non-conformance investigations.
+Analyse the NCR data and respond ONLY with a JSON object matching this schema:
+{
+  "likely_root_causes": ["string", ...],
+  "contributing_factors": ["string", ...],
+  "recommended_corrective_actions": ["string", ...],
+  "recurrence_risk": "low" | "medium" | "high",
+  "confidence": "low" | "medium" | "high",
+  "notes": "string"
+}
+Base your analysis on the defect description, NCR type, location found, and historical patterns.
+Be concise and practical — each array item should be one actionable sentence.`;
+
+    const userPrompt = `Current NCR:
+- NCR No: ${ncr.ncr_no}
+- Part: ${ncr.Item?.name || 'Unknown'} (${ncr.Item?.code || 'N/A'})
+- Defect Description: ${ncr.defect_desc || 'Not provided'}
+- NCR Type: ${ncr.ncr_type || 'Not specified'}
+- Location Found: ${ncr.location_found || 'Not specified'}
+- Qty Affected: ${ncr.qty_affected ?? 'Unknown'}
+- Lot No: ${ncr.lot_no || 'N/A'}
+- Status: ${ncr.status}
+
+Historical NCRs for this part (last ${history.length}):
+${history.length === 0
+  ? 'No history found.'
+  : history.map((h) =>
+      `- ${h.ncr_no} | ${h.defect_desc} | ${h.ncr_type} | ${h.location_found} | ${h.status}`
+    ).join('\n')}`;
+
+    const result = await callClaude(systemPrompt, userPrompt, {
+      cacheKey:   `ncr-ai-${ncr.id}`,
+      cacheTtlMs: 60 * 60 * 1000, // 1 hour
+    });
+
+    return res.json({
+      success:        true,
+      data: {
+        ncr_no:        ncr.ncr_no,
+        item:          ncr.Item,
+        ai_available:  result.ai_available,
+        ai_cached:     result.cached,
+        ai_error:      result.ai_error,
+        ai_insight:    result.data,
+        history_count: history.length,
+      },
+    });
+  } catch (err) {
+    console.error('[ncr.getAiSuggestion]', err);
+    return res.status(500).json({ success: false, message: 'Failed to generate AI suggestion' });
   }
 };
 

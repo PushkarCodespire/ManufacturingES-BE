@@ -4,6 +4,7 @@ const { notifyByRoles } = require('../../../services/notification.service');
 const {
   validateCreateComplaint, validateUpdateComplaint, validateAcknowledge,
 } = require('../cred/complaint.cred');
+const { callClaude } = require('../../../services/ai.service');
 
 // ── Auto-number ───────────────────────────────────────────────────────────────
 async function nextComplaintNo() {
@@ -196,6 +197,79 @@ exports.getOverdue = async (req, res) => {
   } catch (err) {
     console.error('[complaint.getOverdue]', err);
     return res.status(500).json({ success: false, message: 'Failed to fetch overdue complaints' });
+  }
+};
+
+// ── GET /complaints/:id/ai-summary ───────────────────────────────────────────
+// Generates a professional closure summary for the complaint: timeline, root
+// cause, actions taken, and customer communication draft.
+exports.getAiSummary = async (req, res) => {
+  try {
+    const complaint = await Complaint.findByPk(req.params.id, {
+      include: [
+        { model: Item, as: 'Item',    attributes: ['id', 'name', 'code'] },
+        { model: User, as: 'Creator', attributes: ['id', 'name'] },
+        { model: Ncr,  as: 'Ncr',    attributes: ['id', 'ncr_no', 'defect_desc', 'status'], required: false },
+        { model: Capa, as: 'Capa',   attributes: ['id', 'capa_no', 'title', 'status'],      required: false },
+      ],
+    });
+    if (!complaint) return res.status(404).json({ success: false, message: 'Complaint not found' });
+
+    const systemPrompt = `You are a customer quality manager drafting a complaint closure summary for a manufacturing company.
+Respond ONLY with a JSON object matching this schema:
+{
+  "executive_summary": "string (2-3 sentences for management)",
+  "timeline_summary": "string (brief chronological summary of events)",
+  "root_cause_assessment": "string",
+  "actions_taken": ["string", ...],
+  "preventive_measures": ["string", ...],
+  "customer_communication_draft": "string (professional email body to send to customer)",
+  "closure_recommendation": "ready_to_close" | "pending_actions" | "requires_escalation",
+  "confidence": "low" | "medium" | "high"
+}
+Be professional, concise, and customer-focused.`;
+
+    const daysSinceReceived = complaint.createdAt
+      ? Math.round((Date.now() - new Date(complaint.createdAt).getTime()) / (1000 * 60 * 60 * 24))
+      : null;
+
+    const userPrompt = `Complaint Details:
+- Complaint No: ${complaint.complaint_no}
+- Customer: ${complaint.customer_name || 'Unknown'}
+- Part: ${complaint.Item?.name || 'Unknown'} (${complaint.Item?.code || 'N/A'})
+- Defect Description: ${complaint.defect_desc || 'Not provided'}
+- Qty Affected: ${complaint.qty_affected ?? 'Unknown'}
+- Status: ${complaint.status}
+- Received: ${complaint.createdAt ? new Date(complaint.createdAt).toDateString() : 'Unknown'}
+- Days Open: ${daysSinceReceived ?? 'Unknown'}
+- Response Due: ${complaint.response_due ? new Date(complaint.response_due).toDateString() : 'Not set'}
+- Remarks: ${complaint.remarks || 'None'}
+
+Linked NCR: ${complaint.Ncr ? `${complaint.Ncr.ncr_no} — ${complaint.Ncr.defect_desc} (${complaint.Ncr.status})` : 'None'}
+Linked CAPA: ${complaint.Capa ? `${complaint.Capa.capa_no} — ${complaint.Capa.title} (${complaint.Capa.status})` : 'None'}`;
+
+    const result = await callClaude(systemPrompt, userPrompt, {
+      cacheKey:   `complaint-ai-${complaint.id}-${complaint.status}`,
+      cacheTtlMs: 30 * 60 * 1000, // 30 min (re-generate if status changes)
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        complaint_no:  complaint.complaint_no,
+        customer_name: complaint.customer_name,
+        item:          complaint.Item,
+        status:        complaint.status,
+        days_open:     daysSinceReceived,
+        ai_available:  result.ai_available,
+        ai_cached:     result.cached,
+        ai_error:      result.ai_error,
+        ai_insight:    result.data,
+      },
+    });
+  } catch (err) {
+    console.error('[complaint.getAiSummary]', err);
+    return res.status(500).json({ success: false, message: 'Failed to generate AI summary' });
   }
 };
 

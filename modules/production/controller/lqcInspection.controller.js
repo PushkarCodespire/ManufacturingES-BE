@@ -9,6 +9,7 @@ const {
   JobCard,
 } = require('../../../models');
 const { validateCreateLqc, validateUpdateResult } = require('../cred/lqcInspection.cred');
+const { callClaude } = require('../../../services/ai.service');
 
 // ── Auto-number generator ────────────────────────────────────────────────────
 async function nextInspectionNo() {
@@ -226,6 +227,130 @@ const getToolWearTrend = async (req, res) => {
   }
 };
 
+// ── GET /lqc-inspections/:id/ai-spike-alert ───────────────────────────────────
+// Compares the current inspection's fail rate against the rolling average of the
+// last 10 LQC inspections for the same machine+item combination, then uses AI
+// to interpret the pattern and suggest immediate actions.
+const getAiSpikeAlert = async (req, res) => {
+  try {
+    const record = await LqcInspection.findByPk(req.params.id, {
+      include: [
+        { model: LqcInspectionResult, as: 'Results' },
+        { model: Item,    as: 'Item',    attributes: ['id', 'name', 'code'] },
+        { model: Machine, as: 'Machine', attributes: ['id', 'name'] },
+        { model: User,    as: 'Inspector', attributes: ['id', 'name'] },
+      ],
+    });
+    if (!record) return res.status(404).json({ success: false, message: 'LQC inspection not found' });
+
+    // Compute fail rate for this inspection
+    const results = record.Results || [];
+    const totalParams = results.length;
+    const failCount = results.filter((r) => r.result === 'fail').length;
+    const currentFailRate = totalParams > 0 ? (failCount / totalParams) * 100 : 0;
+
+    // Get last 10 inspections for same machine + item (exclude current)
+    const whereHistory = { id: { [Op.ne]: record.id } };
+    if (record.machine_id) whereHistory.machine_id = record.machine_id;
+    if (record.item_id)    whereHistory.item_id    = record.item_id;
+
+    const history = await LqcInspection.findAll({
+      where:   whereHistory,
+      order:   [['created_at', 'DESC']],
+      limit:   10,
+      include: [{ model: LqcInspectionResult, as: 'Results' }],
+    });
+
+    // Calculate rolling average fail rate from history
+    const historyStats = history.map((h) => {
+      const res = h.Results || [];
+      const fails = res.filter((r) => r.result === 'fail').length;
+      return {
+        inspection_no:  h.inspection_no,
+        inspection_date: h.inspection_date,
+        total_params:   res.length,
+        fail_count:     fails,
+        fail_rate:      res.length > 0 ? Math.round((fails / res.length) * 100) : 0,
+        result:         h.result,
+      };
+    });
+
+    const avgFailRate = historyStats.length > 0
+      ? historyStats.reduce((sum, h) => sum + h.fail_rate, 0) / historyStats.length
+      : 0;
+
+    const spikeDetected = currentFailRate > avgFailRate + 20; // >20% above average = spike
+    const spikeSeverity = currentFailRate >= 75 ? 'critical'
+      : currentFailRate >= 50 ? 'high'
+      : currentFailRate >= 30 ? 'medium'
+      : 'low';
+
+    const systemPrompt = `You are a production quality engineer monitoring in-line LQC (Line Quality Control) inspections.
+Analyse the inspection data and respond ONLY with a JSON object matching this schema:
+{
+  "alert_level": "none" | "watch" | "warning" | "critical",
+  "spike_assessment": "string (1-2 sentences describing what you see)",
+  "likely_causes": ["string", ...],
+  "immediate_actions": ["string", ...],
+  "escalate_to_supervisor": true | false,
+  "hold_production": true | false,
+  "confidence": "low" | "medium" | "high"
+}
+Focus on actionable, immediate guidance for the shop floor supervisor.`;
+
+    const failedParams = results
+      .filter((r) => r.result === 'fail')
+      .map((r) => `${r.parameter_name}: actual=${r.actual_value}, spec=${r.specification}`)
+      .join('\n');
+
+    const userPrompt = `Current LQC Inspection:
+- Inspection No: ${record.inspection_no}
+- Part: ${record.Item?.name || 'Unknown'} (${record.Item?.code || 'N/A'})
+- Machine: ${record.Machine?.name || 'Unknown'}
+- Inspection Date: ${record.inspection_date || 'N/A'}
+- Overall Result: ${record.result}
+- Total Parameters Checked: ${totalParams}
+- Parameters Failed: ${failCount}
+- Current Fail Rate: ${currentFailRate.toFixed(1)}%
+
+Failed Parameters:
+${failedParams || 'None'}
+
+Historical Context (last ${historyStats.length} inspections, same machine+part):
+- Average Fail Rate: ${avgFailRate.toFixed(1)}%
+- Spike Detected: ${spikeDetected ? 'YES' : 'No'}
+- Spike Severity: ${spikeSeverity}
+${historyStats.slice(0, 5).map((h) => `- ${h.inspection_no}: ${h.fail_rate}% fail rate (${h.result})`).join('\n')}`;
+
+    const result = await callClaude(systemPrompt, userPrompt, {
+      cacheKey:   `lqc-ai-${record.id}`,
+      cacheTtlMs: 20 * 60 * 1000, // 20 min
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        inspection_no:    record.inspection_no,
+        machine:          record.Machine,
+        item:             record.Item,
+        current_fail_rate: parseFloat(currentFailRate.toFixed(1)),
+        avg_fail_rate:    parseFloat(avgFailRate.toFixed(1)),
+        spike_detected:   spikeDetected,
+        spike_severity:   spikeSeverity,
+        history_count:    historyStats.length,
+        history_summary:  historyStats,
+        ai_available:     result.ai_available,
+        ai_cached:        result.cached,
+        ai_error:         result.ai_error,
+        ai_insight:       result.data,
+      },
+    });
+  } catch (err) {
+    console.error('[LqcInspection.getAiSpikeAlert]', err);
+    return res.status(500).json({ success: false, message: 'Failed to generate AI spike alert' });
+  }
+};
+
 // ── DELETE /lqc-inspections/:id ───────────────────────────────────────────────
 const deleteLqcInspection = async (req, res) => {
   try {
@@ -248,5 +373,6 @@ module.exports = {
   create,
   updateResult,
   getToolWearTrend,
+  getAiSpikeAlert,
   delete: deleteLqcInspection,
 };
