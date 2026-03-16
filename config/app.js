@@ -1,7 +1,8 @@
-const express     = require('express');
-const cors        = require('cors');
-const path        = require('path');
-const swaggerUi   = require('swagger-ui-express');
+const express      = require('express');
+const cors         = require('cors');
+const cookieParser = require('cookie-parser');
+const path         = require('path');
+const swaggerUi    = require('swagger-ui-express');
 require('dotenv').config();
 
 const routes      = require('../routes');
@@ -12,10 +13,15 @@ const app = express();
 // CORS
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin: process.env.FRONTEND_URL
+      ? process.env.FRONTEND_URL.split(',').map(s => s.trim())
+      : ['http://localhost:5173', 'http://localhost:5174'],
     credentials: true,
   })
 );
+
+// Cookie parser — required for H-06 httpOnly refresh token
+app.use(cookieParser());
 
 // Body parsers
 app.use(express.json());

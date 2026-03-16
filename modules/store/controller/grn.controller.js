@@ -221,6 +221,19 @@ exports.approve = async (req, res) => {
     if (!grn) return res.status(404).json({ success: false, message: 'GRN not found' });
     if (grn.status !== 'pending') return res.status(400).json({ success: false, message: `GRN is already ${grn.status}` });
 
+    // C-03 gate: block approval if any linked IQC inspection has a conditional
+    // result without a disposition — non-conforming material must be dispositioned
+    // before it enters inventory
+    const unresolvedConditional = await IqcInspection.count({
+      where: { grn_id: grn.id, result: 'conditional', disposition: null },
+    });
+    if (unresolvedConditional > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot approve GRN: ${unresolvedConditional} IQC inspection(s) have a conditional result awaiting disposition`,
+      });
+    }
+
     await updateInventory(grn.Items, grn.warehouse_id, 'grn', grn.id, grn.grn_no, req.user.id, 'grn_in', +1);
     await grn.update({ status: 'approved', updated_by: req.user.id });
 

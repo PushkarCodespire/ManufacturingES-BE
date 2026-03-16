@@ -22,7 +22,9 @@ const auditIncludes = [
 const getAllMachines = async (req, res) => {
   try {
     const where = {};
-    if (req.query.is_active !== undefined) where.is_active = req.query.is_active === 'true';
+    // L-04: default to active-only; deactivated machines must not appear in job card machine dropdowns.
+    // Pass ?is_active=false to view deactivated machines (admin/audit view).
+    where.is_active = req.query.is_active !== undefined ? req.query.is_active === 'true' : true;
     if (req.query.search) {
       where[Op.or] = [
         { name: { [Op.iLike]: `%${req.query.search}%` } },
@@ -246,13 +248,20 @@ const updateMachineParameters = async (req, res) => {
 };
 
 // ─── DELETE /machines/:id ───────────────────────────────────────────────────
+// L-04: Soft-delete — set is_active=false rather than hard-deleting.
+// Machines are referenced by work orders, job cards, downtime logs, and LOTO records.
+// A hard delete would destroy that operational history or fail with FK errors.
+// Deactivated machines are hidden from job card / work order machine selectors.
 const deleteMachine = async (req, res) => {
   try {
     const machine = await Machine.findByPk(req.params.id);
     if (!machine) return res.status(404).json({ success: false, message: 'Machine not found' });
+    if (!machine.is_active) {
+      return res.status(400).json({ success: false, message: `Machine "${machine.name}" is already deactivated` });
+    }
 
-    await machine.destroy();
-    return res.json({ success: true, message: `Machine "${machine.name}" deleted successfully` });
+    await machine.update({ is_active: false, updated_by: req.user?.id || null });
+    return res.json({ success: true, message: `Machine "${machine.name}" deactivated successfully` });
   } catch (err) {
     console.error('[deleteMachine]', err);
     return res.status(500).json({ success: false, message: 'Server error' });

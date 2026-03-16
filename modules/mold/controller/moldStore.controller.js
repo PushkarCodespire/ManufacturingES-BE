@@ -190,4 +190,90 @@ const updateLocation = async (req, res) => {
   }
 };
 
-module.exports = { getDashboard, getRackMap, getMovementForecast, updateLocation };
+// ── POST /molds/store/locations ─────────────────────────────────────────────
+const createStorageLocation = async (req, res) => {
+  try {
+    const { rack_number, shelf_number, position_number, capacity_kg } = req.body;
+    if (!rack_number || shelf_number == null || position_number == null) {
+      return res.status(400).json({ success: false, message: 'rack_number, shelf_number, and position_number are required' });
+    }
+
+    const existing = await MoldStorageLocation.findOne({
+      where: { rack_number: String(rack_number), shelf_number: String(shelf_number), position_number: String(position_number) },
+    });
+    if (existing) {
+      return res.status(409).json({ success: false, message: 'A location with this rack/shelf/position already exists' });
+    }
+
+    const location = await MoldStorageLocation.create({
+      rack_number:     String(rack_number),
+      shelf_number:    String(shelf_number),
+      position_number: String(position_number),
+      capacity_kg:     capacity_kg ?? null,
+      status:          'available',
+      created_by:      req.user.id,
+      updated_by:      req.user.id,
+    });
+
+    return res.status(201).json({ success: true, data: location });
+  } catch (err) {
+    console.error('[MoldStore.createStorageLocation]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// ── PATCH /molds/store/locations/:locationId ────────────────────────────────
+const updateStorageLocation = async (req, res) => {
+  try {
+    const location = await MoldStorageLocation.findByPk(req.params.locationId);
+    if (!location) return res.status(404).json({ success: false, message: 'Location not found' });
+
+    const { rack_number, shelf_number, position_number, capacity_kg } = req.body;
+
+    // Check uniqueness if coordinates are being changed
+    if (rack_number != null || shelf_number != null || position_number != null) {
+      const newRack  = rack_number      != null ? String(rack_number)      : location.rack_number;
+      const newShelf = shelf_number     != null ? String(shelf_number)     : location.shelf_number;
+      const newPos   = position_number  != null ? String(position_number)  : location.position_number;
+      const conflict = await MoldStorageLocation.findOne({
+        where: { rack_number: newRack, shelf_number: newShelf, position_number: newPos },
+      });
+      if (conflict && conflict.id !== location.id) {
+        return res.status(409).json({ success: false, message: 'A location with this rack/shelf/position already exists' });
+      }
+    }
+
+    await location.update({
+      ...(rack_number      != null && { rack_number:     String(rack_number) }),
+      ...(shelf_number     != null && { shelf_number:    String(shelf_number) }),
+      ...(position_number  != null && { position_number: String(position_number) }),
+      ...(capacity_kg      !== undefined && { capacity_kg }),
+      updated_by: req.user.id,
+    });
+
+    return res.json({ success: true, data: location });
+  } catch (err) {
+    console.error('[MoldStore.updateStorageLocation]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// ── DELETE /molds/store/locations/:locationId ────────────────────────────────
+const deleteStorageLocation = async (req, res) => {
+  try {
+    const location = await MoldStorageLocation.findByPk(req.params.locationId);
+    if (!location) return res.status(404).json({ success: false, message: 'Location not found' });
+
+    if (location.status === 'occupied') {
+      return res.status(400).json({ success: false, message: 'Cannot delete an occupied location — move the mold first' });
+    }
+
+    await location.destroy();
+    return res.json({ success: true, message: 'Location deleted' });
+  } catch (err) {
+    console.error('[MoldStore.deleteStorageLocation]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+module.exports = { getDashboard, getRackMap, getMovementForecast, updateLocation, createStorageLocation, updateStorageLocation, deleteStorageLocation };

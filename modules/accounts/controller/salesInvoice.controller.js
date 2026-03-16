@@ -3,6 +3,26 @@ const {
   SalesInvoice, Vendor, CustomerOrder, DispatchOrder, User,
 } = require('../../../models');
 
+// ── M-08: Invoice lifecycle state machine ─────────────────────────────────────
+// Allowed transitions:
+//   draft      → finalized | cancelled
+//   finalized  → sent      | cancelled
+//   sent       → paid      | cancelled
+//   approved   → finalized | cancelled  (backward compat for pre-M-08 records)
+//   paid       → (terminal)
+//   cancelled  → (terminal)
+const VALID_SI_TRANSITIONS = {
+  draft:     ['finalized', 'cancelled'],
+  finalized: ['sent', 'cancelled'],
+  sent:      ['paid', 'cancelled'],
+  approved:  ['finalized', 'cancelled'],  // backward compat
+  paid:      [],
+  cancelled: [],
+};
+
+// Terminal states — invoice cannot be mutated after reaching these
+const SI_TERMINAL_STATES = ['paid', 'cancelled'];
+
 // ── Auto-number generator ─────────────────────────────────────────────────────
 async function nextInvoiceNo() {
   const year   = new Date().getFullYear();
@@ -85,7 +105,10 @@ exports.update = async (req, res) => {
   try {
     const record = await SalesInvoice.findByPk(req.params.id);
     if (!record) return res.status(404).json({ success: false, message: 'Invoice not found' });
-    if (record.status === 'approved') return res.status(400).json({ success: false, message: 'Cannot edit approved invoice' });
+    // M-08: only draft invoices may be edited; all other states are locked
+    if (record.status !== 'draft') {
+      return res.status(400).json({ success: false, message: `Cannot edit invoice in '${record.status}' status — only draft invoices can be edited` });
+    }
     await record.update({ ...req.body, updated_by: req.user.id });
     const full = await SalesInvoice.findByPk(record.id, { include: HEADER_INCLUDE });
     res.json({ success: true, data: full, message: `Invoice ${record.invoice_no} updated` });
@@ -96,16 +119,49 @@ exports.update = async (req, res) => {
 };
 
 // ── PATCH /sales-invoices/:id/approve ───────────────────────────────────────
+// Kept for backward compatibility — equivalent to transitioning draft → finalized.
 exports.approve = async (req, res) => {
   try {
     const record = await SalesInvoice.findByPk(req.params.id);
     if (!record) return res.status(404).json({ success: false, message: 'Invoice not found' });
     if (record.status !== 'draft') return res.status(400).json({ success: false, message: `Already ${record.status}` });
-    await record.update({ status: 'approved', updated_by: req.user.id });
-    res.json({ success: true, data: record, message: `Invoice ${record.invoice_no} approved` });
+    await record.update({ status: 'finalized', updated_by: req.user.id });
+    res.json({ success: true, data: record, message: `Invoice ${record.invoice_no} finalized` });
   } catch (err) {
     console.error('salesInvoice.approve:', err);
     res.status(500).json({ success: false, message: err.message || 'Failed to approve invoice' });
+  }
+};
+
+// ── PATCH /sales-invoices/:id/status ────────────────────────────────────────
+// M-08: Full lifecycle state machine for sales invoices.
+// Valid transitions: draft→finalized, finalized→sent, sent→paid, any→cancelled.
+// Body: { status: 'finalized' | 'sent' | 'paid' | 'cancelled' }
+exports.changeStatus = async (req, res) => {
+  try {
+    const { status: newStatus } = req.body;
+    if (!newStatus) return res.status(400).json({ success: false, message: 'status is required' });
+
+    const record = await SalesInvoice.findByPk(req.params.id);
+    if (!record) return res.status(404).json({ success: false, message: 'Invoice not found' });
+
+    const allowed = VALID_SI_TRANSITIONS[record.status];
+    if (!allowed) {
+      return res.status(400).json({ success: false, message: `Unknown current status '${record.status}'` });
+    }
+    if (!allowed.includes(newStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot transition invoice from '${record.status}' to '${newStatus}'. Allowed: ${allowed.length ? allowed.join(', ') : 'none (terminal state)'}`,
+      });
+    }
+
+    await record.update({ status: newStatus, updated_by: req.user.id });
+    const full = await SalesInvoice.findByPk(record.id, { include: HEADER_INCLUDE });
+    res.json({ success: true, data: full, message: `Invoice ${record.invoice_no} → ${newStatus}` });
+  } catch (err) {
+    console.error('salesInvoice.changeStatus:', err);
+    res.status(500).json({ success: false, message: err.message || 'Failed to update invoice status' });
   }
 };
 
@@ -114,7 +170,10 @@ exports.delete = async (req, res) => {
   try {
     const record = await SalesInvoice.findByPk(req.params.id);
     if (!record) return res.status(404).json({ success: false, message: 'Invoice not found' });
-    if (record.status === 'approved') return res.status(400).json({ success: false, message: 'Cannot delete approved invoice' });
+    // M-08: only draft invoices may be deleted; terminal/in-flight invoices must be cancelled first
+    if (record.status !== 'draft') {
+      return res.status(400).json({ success: false, message: `Cannot delete invoice in '${record.status}' status — cancel it first or only draft invoices can be deleted` });
+    }
     const no = record.invoice_no;
     await record.destroy();
     res.json({ success: true, message: `Invoice ${no} deleted` });

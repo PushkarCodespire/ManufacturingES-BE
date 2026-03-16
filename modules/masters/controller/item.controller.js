@@ -12,7 +12,9 @@ const auditIncludes = [
 const getAllItems = async (req, res) => {
   try {
     const where = {};
-    if (req.query.is_active !== undefined) where.is_active = req.query.is_active === 'true';
+    // L-04: default to active-only so deactivated items don't pollute dropdowns/BOM lookups.
+    // Pass ?is_active=false to list deactivated items (admin/audit view).
+    where.is_active = req.query.is_active !== undefined ? req.query.is_active === 'true' : true;
     if (req.query.item_group) where.item_group = req.query.item_group;
     if (req.query.item_type)  where.item_type  = req.query.item_type;
     if (req.query.search) {
@@ -129,13 +131,20 @@ const updateItem = async (req, res) => {
 };
 
 // ─── DELETE /items/:id ──────────────────────────────────────────────────────
+// L-04: Soft-delete — set is_active=false rather than hard-deleting.
+// Items are referenced by GRN history, work orders, BOMs, and inventory records.
+// A hard delete would either cascade-destroy that history or fail with FK errors.
+// Deactivated items are hidden from dropdowns but preserved for audit trails.
 const deleteItem = async (req, res) => {
   try {
     const item = await Item.findByPk(req.params.id);
     if (!item) return res.status(404).json({ success: false, message: 'Item not found' });
+    if (!item.is_active) {
+      return res.status(400).json({ success: false, message: `Item "${item.name || item.code}" is already deactivated` });
+    }
 
-    await item.destroy();
-    return res.json({ success: true, message: `Item "${item.name || item.code}" deleted successfully` });
+    await item.update({ is_active: false, updated_by: req.user?.id || null });
+    return res.json({ success: true, message: `Item "${item.name || item.code}" deactivated successfully` });
   } catch (err) {
     console.error('[deleteItem]', err);
     return res.status(500).json({ success: false, message: 'Server error' });

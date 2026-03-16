@@ -4,8 +4,13 @@ const {
   WorkOrder,
   Machine,
   User,
+  LotoExecution,
+  Equipment,
 } = require('../../../models');
-const { validateCreateJobCard, validateUpdateJobCard } = require('../cred/jobCard.cred');
+const { validateCreateJobCard, validateUpdateJobCard, validateCloseJobCard } = require('../cred/jobCard.cred');
+
+// Terminal states — a job card in these states cannot be mutated further
+const TERMINAL_STATES = ['closed', 'cancelled'];
 
 // ── Auto-number generator ────────────────────────────────────────────────────
 async function nextJobNo() {
@@ -75,7 +80,13 @@ const create = async (req, res) => {
     const { error, value } = validateCreateJobCard(req.body);
     if (error) return res.status(400).json({ success: false, message: error.details[0].message });
 
-    // FPI gate: check if parent WO has passed FPI
+    // H-02: operators can only create job cards for themselves
+    const isOperator = req.user.Role?.name === 'operator';
+    if (isOperator) {
+      value.operator_id = req.user.id;
+    }
+
+    // FPI gate + H-02 machine-lock: check parent WO
     if (value.work_order_id) {
       const wo = await WorkOrder.findByPk(value.work_order_id);
       if (wo && wo.fpi_status === 'pending') {
@@ -83,6 +94,43 @@ const create = async (req, res) => {
       }
       if (wo && wo.fpi_status === 'fail') {
         return res.status(400).json({ success: false, message: 'FPI failed — resolve before starting production' });
+      }
+      // C-04 gate: conditional FPI also blocks new job cards until dispositioned
+      if (wo && wo.fpi_status === 'conditional') {
+        return res.status(400).json({ success: false, message: 'FPI result is conditional — disposition required before starting production' });
+      }
+
+      // H-02: if the WO specifies a machine, the job card must target that same machine
+      if (wo && wo.machine_id && value.machine_id && String(value.machine_id) !== String(wo.machine_id)) {
+        return res.status(400).json({
+          success: false,
+          message: `Machine mismatch: this work order is assigned to machine ${wo.machine_id} — job card must use the same machine`,
+        });
+      }
+    }
+
+    // M-07: Block job card creation when the target machine has an active LOTO.
+    // An active LOTO means the machine is locked out for maintenance/repair —
+    // issuing a production job card against it is a safety violation.
+    // Equipment bridges maintenance (LotoExecution.equipment_id) to production
+    // (Equipment.machine_id → JobCard.machine_id).
+    if (value.machine_id) {
+      const activeLoto = await LotoExecution.findOne({
+        where: { status: { [Op.in]: ['initiated', 'locked'] } },
+        include: [{
+          model:    Equipment,
+          as:       'Equipment',
+          where:    { machine_id: value.machine_id },
+          required: true,
+          attributes: ['id', 'machine_id'],
+        }],
+        attributes: ['id', 'status'],
+      });
+      if (activeLoto) {
+        return res.status(400).json({
+          success: false,
+          message: `Machine is currently under active LOTO (status: ${activeLoto.status}) — job card creation is blocked until the lockout is cleared`,
+        });
       }
     }
 
@@ -124,7 +172,16 @@ const update = async (req, res) => {
     const record = await JobCard.findByPk(req.params.id);
     if (!record) return res.status(404).json({ success: false, message: 'Job card not found' });
 
-    await record.update({ ...value, updated_by: req.user.id });
+    if (TERMINAL_STATES.includes(record.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Job card is already ${record.status} and cannot be modified`,
+      });
+    }
+
+    // Belt-and-suspenders: strip status even if Joi somehow lets it through
+    const { status: _s, ...safeValue } = value;
+    await record.update({ ...safeValue, updated_by: req.user.id });
     return res.json({ success: true, data: record });
   } catch (err) {
     console.error('[JobCard.update]', err);
@@ -135,16 +192,21 @@ const update = async (req, res) => {
 // ── PATCH /job-cards/:id/close ────────────────────────────────────────────────
 const close = async (req, res) => {
   try {
+    const { error, value } = validateCloseJobCard(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
     const record = await JobCard.findByPk(req.params.id);
     if (!record) return res.status(404).json({ success: false, message: 'Job card not found' });
+
     if (record.status === 'closed') {
       return res.status(400).json({ success: false, message: 'Job card is already closed' });
     }
+    if (record.status === 'cancelled') {
+      return res.status(400).json({ success: false, message: 'Cannot close a cancelled job card' });
+    }
 
-    const endTime      = new Date();
-    const qtyProduced  = parseFloat(req.body.qty_produced || 0);
-    const qtyRejected  = parseFloat(req.body.qty_rejected || 0);
-    const breakMin     = parseInt(req.body.break_minutes || 0, 10);
+    const { qty_produced: qtyProduced, qty_rejected: qtyRejected, break_minutes: breakMin, notes } = value;
+    const endTime = new Date();
 
     // Calculate actual cycle time (minutes per piece)
     let cycleTimeActual = null;
@@ -161,18 +223,23 @@ const close = async (req, res) => {
       qty_rejected: qtyRejected,
       break_minutes: breakMin,
       cycle_time_actual: cycleTimeActual,
+      ...(notes !== undefined && { notes }),
       updated_by: req.user.id,
     });
 
-    // Update WorkOrder totals
+    // M-01: Roll up quantities into the parent WorkOrder using a SUM recount —
+    // idempotent and concurrent-safe. Incrementing (wo.qty + jobCard.qty) drifts
+    // when jobs run concurrently or the DB is edited manually.
     if (record.work_order_id) {
       const wo = await WorkOrder.findByPk(record.work_order_id);
       if (wo) {
-        const newProduced = parseFloat(wo.produced_qty || 0) + parseFloat(record.qty_produced || 0);
-        const newRejected = parseFloat(wo.rejected_qty || 0) + parseFloat(record.qty_rejected || 0);
+        const [totalProduced, totalRejected] = await Promise.all([
+          JobCard.sum('qty_produced', { where: { work_order_id: record.work_order_id, status: 'closed' } }),
+          JobCard.sum('qty_rejected', { where: { work_order_id: record.work_order_id, status: 'closed' } }),
+        ]);
         await wo.update({
-          produced_qty: newProduced,
-          rejected_qty: newRejected,
+          produced_qty: parseFloat(totalProduced || 0),
+          rejected_qty: parseFloat(totalRejected || 0),
           updated_by: req.user.id,
         });
       }
@@ -181,6 +248,32 @@ const close = async (req, res) => {
     return res.json({ success: true, data: record });
   } catch (err) {
     console.error('[JobCard.close]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// ── PATCH /job-cards/:id/cancel ───────────────────────────────────────────────
+const cancel = async (req, res) => {
+  try {
+    const record = await JobCard.findByPk(req.params.id);
+    if (!record) return res.status(404).json({ success: false, message: 'Job card not found' });
+
+    if (record.status === 'cancelled') {
+      return res.status(400).json({ success: false, message: 'Job card is already cancelled' });
+    }
+    if (record.status === 'closed') {
+      return res.status(400).json({ success: false, message: 'Cannot cancel a closed job card' });
+    }
+
+    await record.update({
+      status: 'cancelled',
+      end_time: record.end_time ?? new Date(),
+      updated_by: req.user.id,
+    });
+
+    return res.json({ success: true, data: record });
+  } catch (err) {
+    console.error('[JobCard.cancel]', err);
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 };
@@ -238,6 +331,7 @@ module.exports = {
   create,
   update,
   close,
+  cancel,
   getActiveIdle,
   delete: deleteJobCard,
 };

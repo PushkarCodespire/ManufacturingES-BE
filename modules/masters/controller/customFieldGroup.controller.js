@@ -1,4 +1,6 @@
 const { CustomFieldGroup, User } = require('../../../models');
+// L-06: Field-definition validation — ensures submitted field schemas have valid types/structure
+const { validateFieldDefinitions } = require('../../../services/customField.service');
 
 const AUDIT_ATTRS = ['id', 'name', 'employee_id'];
 
@@ -48,6 +50,18 @@ const create = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Event is required' });
     }
 
+    // L-06: Validate field-definition structure before storing.
+    // Ensures every field item has a recognised type and valid structure so
+    // the stored schema can actually be used for downstream value validation.
+    const fieldCheck = validateFieldDefinitions(fields);
+    if (!fieldCheck.valid) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid field definition: ${fieldCheck.errors[0]}`,
+        validation_errors: fieldCheck.errors,
+      });
+    }
+
     const group = await CustomFieldGroup.create({
       event:        event.trim(),
       field_module: field_module || null,
@@ -83,8 +97,19 @@ const update = async (req, res) => {
     const { id, createdAt, updatedAt, created_by, event, ...updateData } = req.body;
     updateData.updated_by = req.user?.id || null;
 
-    if (updateData.fields !== undefined && !Array.isArray(updateData.fields)) {
-      updateData.fields = [];
+    if (updateData.fields !== undefined) {
+      if (!Array.isArray(updateData.fields)) {
+        return res.status(400).json({ success: false, message: 'fields must be an array' });
+      }
+      // L-06: Validate field-definition structure on update as well
+      const fieldCheck = validateFieldDefinitions(updateData.fields);
+      if (!fieldCheck.valid) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid field definition: ${fieldCheck.errors[0]}`,
+          validation_errors: fieldCheck.errors,
+        });
+      }
     }
 
     await group.update(updateData);

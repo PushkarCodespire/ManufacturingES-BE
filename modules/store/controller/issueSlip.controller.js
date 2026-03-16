@@ -149,6 +149,23 @@ exports.create = async (req, res) => {
     if (!rest.issued_date)  return res.status(400).json({ success: false, message: 'issued_date is required' });
     if (!items.length)      return res.status(400).json({ success: false, message: 'At least one item is required' });
 
+    // M-02: Enforce MaterialRequest approval gate before issuing inventory.
+    // An issue slip must not bypass the procurement approval workflow.
+    if (rest.material_request_id) {
+      const mr = await MaterialRequest.findByPk(rest.material_request_id, {
+        attributes: ['id', 'status', 'request_no'],
+      });
+      if (!mr) {
+        return res.status(404).json({ success: false, message: 'Material request not found' });
+      }
+      if (mr.status !== 'approved') {
+        return res.status(400).json({
+          success: false,
+          message: `Cannot issue against material request ${mr.request_no} — status is '${mr.status}', request must be approved first`,
+        });
+      }
+    }
+
     // ── STR-002: Enforce FIFO before issuing ──
     const fifo_warnings = await checkFifo(items, rest.warehouse_id);
 

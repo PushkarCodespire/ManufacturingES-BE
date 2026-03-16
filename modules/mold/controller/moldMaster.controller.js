@@ -337,6 +337,32 @@ const uploadDocument = async (req, res) => {
   }
 };
 
+// ── GET /mold/masters/categories ────────────────────────────────────────────
+const DEFAULT_CATEGORIES = [
+  { name: 'Injection Mould',     description: 'Standard thermoplastic injection moulds' },
+  { name: 'Compression Mould',   description: 'Thermoset compression moulds' },
+  { name: 'Blow Mould',          description: 'Blow moulding tools for hollow parts' },
+  { name: 'Die Cast Die',        description: 'Aluminium / zinc pressure die casting dies' },
+  { name: 'Press Tool',          description: 'Sheet metal stamping / forming tools' },
+  { name: 'Fixture / Jig',       description: 'Machining fixtures and assembly jigs' },
+  { name: 'Prototype Mould',     description: 'Low-volume prototype / trial moulds' },
+  { name: 'Insert Mould',        description: 'Moulds with metal or composite inserts' },
+];
+
+const getCategories = async (req, res) => {
+  try {
+    let cats = await MoldCategory.findAll({ where: { is_active: true }, order: [['name', 'ASC']] });
+    if (cats.length === 0) {
+      await MoldCategory.bulkCreate(DEFAULT_CATEGORIES);
+      cats = await MoldCategory.findAll({ where: { is_active: true }, order: [['name', 'ASC']] });
+    }
+    return res.json({ success: true, data: cats });
+  } catch (err) {
+    console.error('[MoldMaster.getCategories]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
 module.exports = {
   getAll,
   getById,
@@ -344,6 +370,7 @@ module.exports = {
   update,
   remove,
   getByQrCode,
+  getCategories,
   addPartMapping,
   removePartMapping,
   addMachineCompat,

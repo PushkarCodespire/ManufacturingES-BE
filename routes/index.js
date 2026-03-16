@@ -83,6 +83,8 @@ const moldRepairRoutes      = require('./moldRepair.routes');
 const moldTrialRoutes       = require('./moldTrial.routes');
 const moldCostRoutes        = require('./moldCost.routes');
 const moldDocumentsRoutes   = require('./moldDocuments.routes');
+// Mold Management — Sprint 6
+const moldAiRoutes          = require('./moldAi.routes');
 // Maintenance — Sprint 3 & 5
 const equipmentMasterRoutes  = require('./equipmentMaster.routes');
 const equipmentHealthRoutes  = require('./equipmentHealth.routes');
@@ -178,6 +180,8 @@ router.use('/mold/repair',       moldRepairRoutes);
 router.use('/mold/trial',        moldTrialRoutes);
 router.use('/mold/cost',         moldCostRoutes);
 router.use('/mold/documents',    moldDocumentsRoutes);
+// Mold Management — Sprint 6
+router.use('/mold/ai',           moldAiRoutes);
 // Maintenance — Sprint 3 & 5
 router.use('/maintenance/equipment', equipmentMasterRoutes);
 router.use('/maintenance/health',    equipmentHealthRoutes);

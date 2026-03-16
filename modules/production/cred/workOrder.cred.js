@@ -28,6 +28,9 @@ const updateWorkOrderSchema = Joi.object({
   actual_end:        Joi.string().isoDate().optional().allow(null),
   priority:          Joi.string().valid(...PRIORITIES).optional(),
   notes:             Joi.string().trim().max(2000).optional().allow('', null),
+  // Workflow state fields — must never be set via the general update endpoint
+  status:            Joi.any().forbidden().messages({ 'any.unknown': 'Use PATCH /:id/status to change work order status' }),
+  fpi_status:        Joi.any().forbidden().messages({ 'any.unknown': 'FPI status is managed by the quality workflow — use the designated endpoint' }),
 }).min(1).messages({ 'object.min': 'At least one field is required to update' });
 
 const updateStatusSchema = Joi.object({

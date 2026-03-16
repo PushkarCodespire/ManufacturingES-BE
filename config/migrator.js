@@ -23,7 +23,8 @@ const sequelize = require('./database');
 const umzug = new Umzug({
   migrations: {
     // Glob pattern — picks up all .js files inside /migrations
-    glob: path.join(__dirname, '../migrations/*.js'),
+    // Use forward slashes to avoid Windows backslash issues with glob
+    glob: path.join(__dirname, '../migrations/*.js').replace(/\\/g, '/'),
     resolve: ({ name, path: migrationPath, context }) => {
       const migration = require(migrationPath);
       return {

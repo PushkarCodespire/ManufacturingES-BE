@@ -18,22 +18,39 @@ const LIFE_STAGE_COLORS = {
 // ── GET /molds/life/dashboard ───────────────────────────────────────────────
 const getLifeDashboard = async (req, res) => {
   try {
-    const molds = await Mold.findAll({
-      where: { is_active: true },
-      include: [
-        { model: MoldShotSummary, as: 'ShotSummary' },
-        { model: MoldLifeConfig,  as: 'LifeConfig' },
-        { model: MoldCategory,    as: 'Category' },
-      ],
-      order: [['life_stage', 'ASC'], ['created_at', 'DESC']],
-    });
+    const [molds, pendingExtensions] = await Promise.all([
+      Mold.findAll({
+        where: { is_active: true },
+        include: [
+          { model: MoldShotSummary, as: 'ShotSummary' },
+          { model: MoldLifeConfig,  as: 'LifeConfig' },
+          { model: MoldCategory,    as: 'Category' },
+        ],
+        order: [['life_stage', 'ASC'], ['created_at', 'DESC']],
+      }),
+      MoldLifeExtension.findAll({
+        where: { approved_by: null },
+        include: [{ model: Mold, as: 'Mold', attributes: ['id', 'mold_code', 'name'] }],
+        order: [['created_at', 'DESC']],
+      }),
+    ]);
 
-    const data = molds.map((m) => ({
+    const moldData = molds.map((m) => ({
       ...m.toJSON(),
       life_color: LIFE_STAGE_COLORS[m.life_stage] || '#9E9E9E',
     }));
 
-    return res.json({ success: true, data });
+    return res.json({
+      success: true,
+      data: {
+        molds: moldData,
+        pending_extensions: pendingExtensions.map((e) => ({
+          ...e.toJSON(),
+          mold_code: e.Mold?.mold_code,
+          status: 'pending',
+        })),
+      },
+    });
   } catch (err) {
     console.error('[MoldLife.getLifeDashboard]', err);
     return res.status(500).json({ success: false, message: 'Server error' });

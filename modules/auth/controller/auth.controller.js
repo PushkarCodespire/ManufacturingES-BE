@@ -17,6 +17,44 @@ const { MAX_LOGIN_ATTEMPTS, LOCKOUT_DURATION_MINUTES } = require('../../../confi
 const getIP = (req) =>
   req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
 
+// ─── H-05: Per-IP login rate limiter ─────────────────────────────────────────
+// Prevents a single IP from triggering mass account lockouts across all employees.
+// In-memory sliding-window: max 30 attempts per 15-minute window per IP.
+// NOTE: For multi-process / clustered deployments this should be backed by Redis.
+const IP_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const IP_MAX_HITS  = 30;              // max login attempts per window per IP
+const ipHitMap     = new Map();       // Map<ip, { count, windowStart }>
+
+const checkIpRateLimit = (ip) => {
+  const now  = Date.now();
+  const slot = ipHitMap.get(ip) || { count: 0, windowStart: now };
+
+  // Reset window if expired
+  if (now - slot.windowStart >= IP_WINDOW_MS) {
+    slot.count       = 0;
+    slot.windowStart = now;
+  }
+
+  slot.count += 1;
+  ipHitMap.set(ip, slot);
+
+  if (slot.count > IP_MAX_HITS) {
+    const retryAfter = Math.ceil((slot.windowStart + IP_WINDOW_MS - now) / 1000);
+    return { blocked: true, retryAfter };
+  }
+  return { blocked: false };
+};
+
+// ─── H-06: Refresh-token cookie options ──────────────────────────────────────
+const REFRESH_COOKIE = 'dt_refresh';
+const COOKIE_OPTS = {
+  httpOnly: true,                                     // inaccessible to JS — XSS safe
+  sameSite: 'Lax',                                    // CSRF protection for cross-origin
+  secure:   process.env.NODE_ENV === 'production',    // HTTPS-only in prod, HTTP allowed in dev
+  maxAge:   8 * 60 * 60 * 1000,                      // matches session TTL (8 h)
+  path:     '/',
+};
+
 /** Fire-and-forget audit entry */
 const audit = (data) => AuditLog.create(data).catch((e) => console.error('[audit]', e.message));
 
@@ -46,6 +84,15 @@ const notifyAdmins = async (type, title, message, metadata = {}) => {
 const login = async (req, res) => {
   const ip         = getIP(req);
   const user_agent = req.headers['user-agent'] || null;
+
+  // H-05: Block IPs that have exceeded the per-IP attempt limit
+  const ipCheck = checkIpRateLimit(ip);
+  if (ipCheck.blocked) {
+    return res.status(429).json({
+      success: false,
+      message: `Too many login attempts from this IP. Try again in ${Math.ceil(ipCheck.retryAfter / 60)} minute(s).`,
+    });
+  }
 
   try {
     const { error, value } = validateLogin(req.body);
@@ -151,12 +198,15 @@ const login = async (req, res) => {
 
     await audit({ user_id: user.id, employee_id, action: 'LOGIN', status: 'SUCCESS', ip_address: ip, user_agent });
 
+    // H-06: Set refresh token in httpOnly cookie — not accessible to JavaScript
+    res.cookie(REFRESH_COOKIE, refreshToken, COOKIE_OPTS);
+
     return res.json({
       success: true,
       message: 'Login successful',
       data: {
         token:          accessToken,
-        refresh_token:  refreshToken,
+        // refresh_token intentionally omitted from body — delivered via httpOnly cookie
         is_first_login: user.is_first_login,
         user: {
           id:             user.id,
@@ -179,7 +229,10 @@ const login = async (req, res) => {
 
 // ─── SYS-004: Refresh access token (30-min rotation) ─────────────────────────
 const refresh = async (req, res) => {
-  const { refresh_token } = req.body;
+  // H-06: Read refresh token from httpOnly cookie (set by login); fall back to
+  // request body for a one-release transition window so existing sessions aren't
+  // immediately invalidated after deployment.
+  const refresh_token = req.cookies?.[REFRESH_COOKIE] || req.body?.refresh_token;
   if (!refresh_token) {
     return res.status(400).json({ success: false, message: 'Refresh token required' });
   }
@@ -232,9 +285,13 @@ const refresh = async (req, res) => {
       user_agent:    session.user_agent,
     });
 
+    // H-06: Rotate the refresh token cookie
+    res.cookie(REFRESH_COOKIE, newRefreshToken, COOKIE_OPTS);
+
     return res.json({
       success: true,
-      data: { token: newAccessToken, refresh_token: newRefreshToken },
+      // refresh_token intentionally omitted from body — delivered via httpOnly cookie
+      data: { token: newAccessToken },
     });
   } catch (err) {
     console.error('[refresh]', err);
@@ -374,8 +431,8 @@ const logout = async (req, res) => {
   const ip         = getIP(req);
   const user_agent = req.headers['user-agent'] || null;
 
-  // Revoke the refresh token
-  const { refresh_token } = req.body;
+  // H-06: Read from httpOnly cookie (preferred) or body (backward compat)
+  const refresh_token = req.cookies?.[REFRESH_COOKIE] || req.body?.refresh_token;
   if (refresh_token) {
     try {
       const tokenHash = hashRefreshToken(refresh_token);
@@ -387,6 +444,9 @@ const logout = async (req, res) => {
       console.error('[logout revoke]', e.message);
     }
   }
+
+  // H-06: Clear the httpOnly cookie
+  res.clearCookie(REFRESH_COOKIE, { httpOnly: true, sameSite: 'Lax', path: '/' });
 
   await audit({
     user_id: req.user?.id, employee_id: req.user?.employee_id,

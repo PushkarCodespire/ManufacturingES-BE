@@ -11,7 +11,8 @@ router.get('/',              ctrl.getAll);
 router.get('/:id',           ctrl.getById);
 router.post('/',             authorize(...writeRoles), ctrl.create);
 router.patch('/:id',         authorize(...writeRoles), ctrl.update);
-router.patch('/:id/approve', authorize(...writeRoles), ctrl.approve);
+router.patch('/:id/approve', authorize(...writeRoles), ctrl.approve);   // backward compat → draft→finalized
+router.patch('/:id/status',  authorize(...writeRoles), ctrl.changeStatus); // M-08: full state machine
 router.delete('/:id',        authorize(...writeRoles), ctrl.delete);
 
 module.exports = router;

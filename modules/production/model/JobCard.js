@@ -15,7 +15,7 @@ const JobCard = sequelize.define('JobCard', {
   break_minutes:      { type: DataTypes.INTEGER, defaultValue: 0 },
   idle_minutes:       { type: DataTypes.INTEGER, defaultValue: 0 },
   cycle_time_actual:  { type: DataTypes.DECIMAL(10,2), allowNull: true },
-  status:         { type: DataTypes.STRING(20), defaultValue: 'open' },
+  status:         { type: DataTypes.ENUM('open', 'closed', 'cancelled'), defaultValue: 'open' },
   notes:          { type: DataTypes.TEXT, allowNull: true },
   created_by:     { type: DataTypes.INTEGER, allowNull: true },
   updated_by:     { type: DataTypes.INTEGER, allowNull: true },

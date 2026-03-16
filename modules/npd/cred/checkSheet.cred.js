@@ -27,6 +27,7 @@ const createTemplateSchema = Joi.object({
                       .messages({ 'any.required': 'Revision is required' }),
   applicable_gates: Joi.array().items(Joi.string().valid('iqc','lqc','pqc','oqc')).optional().default(['iqc','lqc','pqc','oqc']),
   dimensions:       Joi.array().items(dimensionSchema).optional().default([]),
+  notes:            Joi.string().trim().max(2000).optional().allow('', null),
 });
 
 // ── Template update ───────────────────────────────────────────────────────────
@@ -35,6 +36,7 @@ const updateTemplateSchema = Joi.object({
   revision:         Joi.string().trim().max(10).optional(),
   applicable_gates: Joi.array().items(Joi.string().valid('iqc','lqc','pqc','oqc')).optional(),
   is_active:        Joi.boolean().optional(),
+  notes:            Joi.string().trim().max(2000).optional().allow('', null),
 }).min(1).messages({ 'object.min': 'At least one field is required' });
 
 // ── Replace dimensions ────────────────────────────────────────────────────────

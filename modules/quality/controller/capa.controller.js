@@ -77,6 +77,16 @@ exports.create = async (req, res) => {
     if (error) return res.status(400).json({ success: false, message: error.details[0].message });
 
     const { team_members = [], ...rest } = value;
+
+    // H-03: segregation of duties — the user raising the CAPA cannot also be
+    // the champion (investigator/closer), preventing self-review of defects
+    if (rest.champion_id && String(rest.champion_id) === String(req.user.id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Segregation of duties: you cannot assign yourself as CAPA champion on a record you are creating',
+      });
+    }
+
     const capa_no = await nextCapaNo();
 
     const capa = await Capa.create({
@@ -109,6 +119,14 @@ exports.update = async (req, res) => {
     const capa = await Capa.findByPk(req.params.id);
     if (!capa) return res.status(404).json({ success: false, message: 'CAPA not found' });
     if (capa.status === 'closed') return res.status(400).json({ success: false, message: 'Cannot edit a closed CAPA' });
+
+    // H-03: segregation of duties — cannot re-assign champion to yourself
+    if (value.champion_id && String(value.champion_id) === String(req.user.id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Segregation of duties: you cannot assign yourself as CAPA champion',
+      });
+    }
 
     await capa.update(value);
     const full = await Capa.findByPk(capa.id, { include: FULL_INCLUDE });
@@ -243,6 +261,15 @@ exports.close = async (req, res) => {
     const capa = await Capa.findByPk(req.params.id);
     if (!capa) return res.status(404).json({ success: false, message: 'CAPA not found' });
     if (capa.status === 'closed') return res.status(400).json({ success: false, message: 'CAPA is already closed' });
+
+    // H-03: segregation of duties — the originator cannot close their own CAPA;
+    // an independent reviewer (champion or quality manager) must perform the closure
+    if (String(capa.created_by) === String(req.user.id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Segregation of duties: the originator of a CAPA cannot close it — an independent reviewer is required',
+      });
+    }
 
     const { closure_notes } = req.body;
     await capa.update({

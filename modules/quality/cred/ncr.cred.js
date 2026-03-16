@@ -4,8 +4,7 @@ const Joi = require('joi');
 const createNcrSchema = Joi.object({
   ncr_type:        Joi.string().valid('dimensional','visual','material','process','documentation').required()
                      .messages({ 'any.required': 'NCR type is required' }),
-  item_id:         Joi.number().integer().positive().required()
-                     .messages({ 'any.required': 'Item is required' }),
+  item_id:         Joi.number().integer().positive().optional().allow(null),
   lot_no:          Joi.string().trim().max(100).optional().allow('', null),
   work_order_id:   Joi.string().uuid().optional().allow(null),
   qty_affected:    Joi.number().positive().optional().allow(null),

@@ -13,6 +13,7 @@ const {
   InventoryTxn,
   Instrument,
   CalibrationRecord,
+  CheckSheetTemplate,    // L-02: needed for template status guard
 } = require('../../../models');
 const {
   validateCreateIqc,
@@ -21,8 +22,57 @@ const {
   validateDisposition,
 } = require('../cred/iqcInspection.cred');
 const { notifyByRoles } = require('../../../services/notification.service');
+// L-01: Cascade business logic lives in the service — not inline in the controller
+const iqcCascadeService = require('../../../services/iqcCascade.service');
 const aiService = require('../../../services/ai.service');
 const aiPrompts = require('../../../config/ai-prompts');
+
+// ── L-03: Shared calibration-status helper ───────────────────────────────────
+// Called at inspection CREATE and again at results SUBMIT (updateResults).
+// Inspections can span multiple days; instruments must be verified when
+// measurement data is actually recorded — not just when the record was opened.
+// Returns { blocked: true, message, unverified } | { blocked: false, warnings }
+async function checkInstrumentCalibration() {
+  if (!Instrument || !CalibrationRecord) return { blocked: false, warnings: [] };
+  try {
+    const today = new Date().toISOString().split('T')[0];
+
+    const activeInstruments = await Instrument.findAll({
+      where: { status: 'active' },
+      attributes: ['id', 'instrument_code', 'name', 'next_due_at'],
+      raw: true,
+    });
+
+    const todayRecords = await CalibrationRecord.findAll({
+      where: { calibration_date: today },
+      attributes: ['instrument_id'],
+      raw: true,
+    });
+    const verifiedIds = new Set(todayRecords.map((r) => r.instrument_id));
+
+    const unverified = activeInstruments.filter((inst) => !verifiedIds.has(inst.id));
+    if (unverified.length > 0) {
+      return {
+        blocked:    true,
+        message:    `IQC blocked: ${unverified.length} instrument(s) not verified today. Complete daily verification before recording measurements.`,
+        unverified: unverified.map((inst) => ({ instrument_code: inst.instrument_code, name: inst.name })),
+      };
+    }
+
+    // Warn about overdue calibrations (next_due_at in the past)
+    const warnings = activeInstruments
+      .filter((inst) => inst.next_due_at && inst.next_due_at < today)
+      .map((inst) => ({
+        instrument_code: inst.instrument_code,
+        message: `Calibration overdue for ${inst.name} (${inst.instrument_code}) — due ${inst.next_due_at}`,
+      }));
+
+    return { blocked: false, warnings };
+  } catch (err) {
+    console.warn('[IqcInspection] Calibration check error (non-fatal):', err.message);
+    return { blocked: false, warnings: [] };
+  }
+}
 
 // ── Auto-number generators ───────────────────────────────────────────────────
 async function nextAutoNo(Model, field, prefix) {
@@ -36,10 +86,9 @@ async function nextAutoNo(Model, field, prefix) {
   return `${full}${String(seq).padStart(4, '0')}`;
 }
 
+// Only the IQC sequence is needed in the controller; CAPA/NCR/SCAR sequences
+// are generated inside iqcCascade.service.js (L-01).
 const nextInspectionNo = () => nextAutoNo(IqcInspection, 'inspection_no', 'IQC');
-const nextCapaNo       = () => nextAutoNo(Capa, 'capa_no', 'CAPA');
-const nextNcrNo        = () => nextAutoNo(Ncr, 'ncr_no', 'NCR');
-const nextScarNo       = () => nextAutoNo(Scar, 'scar_no', 'SCAR');
 
 const INCLUDES = [
   { model: Item,   as: 'Item',      attributes: ['id', 'name', 'code'] },
@@ -93,55 +142,43 @@ const create = async (req, res) => {
     const { error, value } = validateCreateIqc(req.body);
     if (error) return res.status(400).json({ success: false, message: error.details[0].message });
 
-    // ── IQC-003: Block if instruments not verified today ──
-    const warnings = [];
-    if (Instrument && CalibrationRecord) {
-      try {
-        const today = new Date().toISOString().split('T')[0];
-
-        const activeInstruments = await Instrument.findAll({
-          where: { status: 'active' },
-          attributes: ['id', 'instrument_code', 'name', 'next_due_at'],
-          raw: true,
-        });
-
-        const todayRecords = await CalibrationRecord.findAll({
-          where: { calibration_date: today },
-          attributes: ['instrument_id'],
-          raw: true,
-        });
-        const verifiedIds = new Set(todayRecords.map((r) => r.instrument_id));
-
-        const unverified = activeInstruments.filter((inst) => !verifiedIds.has(inst.id));
-
-        if (unverified.length > 0) {
-          return res.status(400).json({
-            success: false,
-            message: `IQC blocked: ${unverified.length} instrument(s) not verified today. Complete daily verification before starting inspections.`,
-            unverified_instruments: unverified.map((inst) => ({
-              instrument_code: inst.instrument_code,
-              name: inst.name,
-            })),
-          });
-        }
-
-        // Secondary check: warn about overdue calibrations
-        const overdue = activeInstruments.filter(
-          (inst) => inst.next_due_at && inst.next_due_at < today
-        );
-        for (const inst of overdue) {
-          warnings.push({
-            instrument_code: inst.instrument_code,
-            message: `Calibration overdue for ${inst.name} (${inst.instrument_code}) — due ${inst.next_due_at}`,
-          });
-        }
-      } catch (verifyErr) {
-        console.warn('[IqcInspection.create] Instrument verification check error (non-fatal):', verifyErr.message);
-      }
+    // ── IQC-003 / L-03: Block if instruments not verified today (shared helper) ──
+    const calibCheck = await checkInstrumentCalibration();
+    if (calibCheck.blocked) {
+      return res.status(400).json({
+        success: false,
+        message: calibCheck.message,
+        unverified_instruments: calibCheck.unverified,
+      });
     }
+    const warnings = calibCheck.warnings;
 
     const inspection_no = await nextInspectionNo();
     const { results, ...inspectionData } = value;
+
+    // ── L-02: Reject archived / invalidated check sheet templates ─────────────
+    // Archived templates may reference outdated specifications from superseded
+    // drawing revisions — inspections must always use the current active template.
+    if (inspectionData.check_sheet_id) {
+      const tmpl = await CheckSheetTemplate.findByPk(inspectionData.check_sheet_id, {
+        attributes: ['id', 'name', 'sheet_status', 'is_active'],
+      });
+      if (!tmpl) {
+        return res.status(404).json({ success: false, message: 'Check sheet template not found' });
+      }
+      if (tmpl.sheet_status === 'invalidated') {
+        return res.status(400).json({
+          success: false,
+          message: `Check sheet template "${tmpl.name}" has been invalidated after a drawing revision. Select the revalidated or replacement template.`,
+        });
+      }
+      if (!tmpl.is_active) {
+        return res.status(400).json({
+          success: false,
+          message: `Check sheet template "${tmpl.name}" is inactive. Select an active template.`,
+        });
+      }
+    }
 
     const record = await IqcInspection.create({
       ...inspectionData,
@@ -173,6 +210,20 @@ const updateResults = async (req, res) => {
     const record = await IqcInspection.findByPk(req.params.id);
     if (!record) return res.status(404).json({ success: false, message: 'IQC inspection not found' });
 
+    // L-03: Re-check instrument calibration at result-submission time.
+    // The inspection may have been created yesterday (or even earlier in a
+    // multi-day inspection cycle) — instruments must be verified on the day
+    // the actual measurements are being recorded, not just when the record
+    // was opened.
+    const calibCheck = await checkInstrumentCalibration();
+    if (calibCheck.blocked) {
+      return res.status(400).json({
+        success: false,
+        message: calibCheck.message,
+        unverified_instruments: calibCheck.unverified,
+      });
+    }
+
     // Full-replace: delete existing then bulk-create
     await IqcInspectionResult.destroy({ where: { inspection_id: record.id } });
     if (value.results.length > 0) {
@@ -186,7 +237,8 @@ const updateResults = async (req, res) => {
     const autoResult = anyFail ? 'fail' : 'pass';
 
     const updated = await IqcInspection.findByPk(record.id, { include: INCLUDES });
-    return res.json({ success: true, data: updated, auto_verdict: autoResult });
+    // Surface calibration warnings alongside the updated record
+    return res.json({ success: true, data: updated, auto_verdict: autoResult, calibration_warnings: calibCheck.warnings });
   } catch (err) {
     console.error('[IqcInspection.updateResults]', err);
     return res.status(500).json({ success: false, message: 'Server error' });
@@ -253,6 +305,8 @@ const setDisposition = async (req, res) => {
 };
 
 // ── POST /iqc-inspections/:id/cascade-capa  (IQC-007 — Full Rejection Cascade)
+// L-01: Business logic delegated to iqcCascade.service.js — controller is now
+// a thin wrapper (validate → fetch with includes → call service → respond).
 const cascadeCapa = async (req, res) => {
   try {
     const record = await IqcInspection.findByPk(req.params.id, {
@@ -271,114 +325,7 @@ const cascadeCapa = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Cascade already executed for this inspection', capa_id: record.capa_id });
     }
 
-    const itemName   = record.Item?.name   || 'Unknown Item';
-    const vendorName = record.Vendor?.name  || 'Unknown Vendor';
-    const rejQty     = parseFloat(record.qty_rejected || 0);
-    const result     = {};
-
-    // ── 1. Create CAPA ──
-    const capa_no = await nextCapaNo();
-    const capa = await Capa.create({
-      capa_no,
-      source_type:   'iqc',
-      source_id:     record.id,
-      problem_title: `IQC Rejection — ${itemName} — ${record.inspection_no}`,
-      problem_desc:  `Incoming inspection ${record.inspection_no} resulted in ${record.result.toUpperCase()}.\nVendor: ${vendorName}\nBatch: ${record.batch_no || 'N/A'}\nQty Rejected: ${rejQty}\nInspection Date: ${record.inspection_date}`,
-      status:        'draft',
-      created_by:    req.user.id,
-    });
-    result.capa_id = capa.id;
-    result.capa_no = capa.capa_no;
-
-    // ── 2. Create NCR ──
-    const ncr_no = await nextNcrNo();
-    const ncr = await Ncr.create({
-      ncr_no,
-      ncr_type:       'material',
-      item_id:        record.item_id,
-      lot_no:         record.batch_no || null,
-      qty_affected:   rejQty,
-      defect_desc:    `IQC rejection for ${itemName} from vendor ${vendorName}.\nInspection: ${record.inspection_no}\nResult: ${record.result}\nNotes: ${record.notes || 'N/A'}`,
-      location_found: 'iqc',
-      status:         'raised',
-      raised_by:      req.user.id,
-      created_by:     req.user.id,
-    });
-    result.ncr_id = ncr.id;
-    result.ncr_no = ncr.ncr_no;
-
-    // ── 3. Create SCAR ──
-    if (record.vendor_id) {
-      const scar_no = await nextScarNo();
-      const responseDate = new Date();
-      responseDate.setDate(responseDate.getDate() + 15);
-      const scar = await Scar.create({
-        scar_no,
-        vendor_id:              record.vendor_id,
-        source_type:            'iqc',
-        source_id:              record.id,
-        defect_desc:            `IQC rejection: ${itemName} — ${record.inspection_no}. ${record.notes || ''}`.trim(),
-        affected_qty:           rejQty,
-        severity:               'major',
-        required_response_date: responseDate.toISOString().split('T')[0],
-        status:                 'created',
-        created_by:             req.user.id,
-      });
-      result.scar_id = scar.id;
-      result.scar_no = scar.scar_no;
-      await record.update({ scar_id: scar.id });
-    }
-
-    // ── 4. Quarantine inventory (deduct rejected qty) ──
-    result.quarantine_qty = 0;
-    if (rejQty > 0 && record.item_id && record.Grn?.warehouse_id) {
-      try {
-        const inv = await Inventory.findOne({
-          where: { item_id: record.item_id, warehouse_id: record.Grn.warehouse_id },
-        });
-        if (inv) {
-          const qtyBefore = parseFloat(inv.qty_on_hand);
-          const qtyChange = -rejQty;
-          const qtyAfter  = qtyBefore + qtyChange;
-          await inv.update({ qty_on_hand: Math.max(0, qtyAfter), last_txn_at: new Date() });
-          await InventoryTxn.create({
-            item_id:      record.item_id,
-            warehouse_id: record.Grn.warehouse_id,
-            txn_type:     'quarantine_out',
-            ref_type:     'iqc',
-            ref_id:       record.id,
-            ref_no:       record.inspection_no,
-            qty_before:   qtyBefore,
-            qty_change:   qtyChange,
-            qty_after:    Math.max(0, qtyAfter),
-            created_by:   req.user.id,
-          });
-          result.quarantine_qty = rejQty;
-        }
-      } catch (invErr) {
-        console.warn('[IqcInspection.cascadeCapa] Quarantine error (non-fatal):', invErr.message);
-      }
-    }
-
-    // ── 5. Update inspection links ──
-    await record.update({ capa_id: capa.id, ncr_id: ncr.id });
-
-    // ── 6. Notify stakeholders ──
-    await notifyByRoles(
-      ['quality_manager', 'procurement_manager'],
-      'IQC_REJECTION',
-      `IQC Rejection Cascade: ${record.inspection_no}`,
-      `Full cascade triggered for ${itemName} — CAPA ${capa.capa_no}, NCR ${ncr.ncr_no}${result.scar_no ? `, SCAR ${result.scar_no}` : ''}. Qty quarantined: ${result.quarantine_qty}.`,
-    );
-    if (result.quarantine_qty > 0) {
-      await notifyByRoles(
-        ['store_manager'],
-        'IQC_QUARANTINE',
-        `Inventory quarantined: ${itemName}`,
-        `${result.quarantine_qty} units of ${itemName} quarantined from warehouse due to IQC rejection ${record.inspection_no}.`,
-      );
-    }
-
+    const result = await iqcCascadeService.executeCascade(record, req.user.id);
     return res.status(201).json({ success: true, data: result });
   } catch (err) {
     console.error('[IqcInspection.cascadeCapa]', err);

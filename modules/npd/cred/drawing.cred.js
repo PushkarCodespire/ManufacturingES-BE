@@ -11,6 +11,7 @@ const createDrawingSchema = Joi.object({
   material:         Joi.string().trim().max(100).optional().allow('', null),
   current_revision: Joi.string().trim().max(10).required()
                       .messages({ 'any.required': 'Revision is required' }),
+  notes:            Joi.string().trim().max(2000).optional().allow('', null),
 });
 
 // ── Drawing update ────────────────────────────────────────────────────────────
@@ -20,6 +21,7 @@ const updateDrawingSchema = Joi.object({
   customer:         Joi.string().trim().max(255).optional().allow('', null),
   material:         Joi.string().trim().max(100).optional().allow('', null),
   current_revision: Joi.string().trim().max(10).optional(),
+  notes:            Joi.string().trim().max(2000).optional().allow('', null),
 }).min(1).messages({ 'object.min': 'At least one field is required' });
 
 // ── New version upload ────────────────────────────────────────────────────────

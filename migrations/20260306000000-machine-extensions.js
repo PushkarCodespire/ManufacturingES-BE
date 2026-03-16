@@ -8,62 +8,47 @@
 
 module.exports = {
   async up(queryInterface, Sequelize) {
-    // ── 1. Extend machines table ──────────────────────────────────────────
-    await queryInterface.addColumn('machines', 'production_against', {
-      type:         Sequelize.DataTypes.STRING(20),
-      allowNull:    true,
-      defaultValue: 'none',
-      comment:      'none | work_order | sales_order',
-    });
-    await queryInterface.addColumn('machines', 'shift', {
-      type:      Sequelize.DataTypes.STRING(100),
-      allowNull: true,
-    });
-    await queryInterface.addColumn('machines', 'setup_time_hrs', {
-      type:         Sequelize.DataTypes.DECIMAL(10, 2),
-      allowNull:    true,
-      defaultValue: null,
-    });
-    await queryInterface.addColumn('machines', 'queue_time_days', {
-      type:         Sequelize.DataTypes.DECIMAL(10, 2),
-      allowNull:    true,
-      defaultValue: null,
-    });
-    await queryInterface.addColumn('machines', 'min_batch_quantity', {
-      type:      Sequelize.DataTypes.INTEGER,
-      allowNull: true,
-    });
-    await queryInterface.addColumn('machines', 'weighted_production', {
-      type:         Sequelize.DataTypes.BOOLEAN,
-      defaultValue: false,
-    });
-    await queryInterface.addColumn('machines', 'auto_production', {
-      type:         Sequelize.DataTypes.BOOLEAN,
-      defaultValue: false,
-    });
-    await queryInterface.addColumn('machines', 'start_stop_flow', {
-      type:         Sequelize.DataTypes.BOOLEAN,
-      defaultValue: false,
-    });
-    await queryInterface.addColumn('machines', 'serialization', {
-      type:         Sequelize.DataTypes.BOOLEAN,
-      defaultValue: false,
-    });
-    await queryInterface.addColumn('machines', 'item_group_tags', {
-      type:         Sequelize.DataTypes.JSONB,
-      allowNull:    true,
-      defaultValue: [],
-    });
-    await queryInterface.addColumn('machines', 'machine_group_tags', {
-      type:         Sequelize.DataTypes.JSONB,
-      allowNull:    true,
-      defaultValue: [],
-    });
-    await queryInterface.addColumn('machines', 'iot_device_tags', {
-      type:         Sequelize.DataTypes.JSONB,
-      allowNull:    true,
-      defaultValue: [],
-    });
+    // ── 0. Create machines base table if it doesn't exist yet ─────────────
+    //    On a fresh install the initial-schema migration only creates the
+    //    auth tables; machines was historically created via sequelize.sync().
+    //    We create it here (with base columns) so the addColumn calls below
+    //    always have a target table.
+    const tableExists = await queryInterface.tableExists('machines');
+    if (!tableExists) {
+      await queryInterface.createTable('machines', {
+        id:          { type: Sequelize.DataTypes.INTEGER, primaryKey: true, autoIncrement: true, allowNull: false },
+        name:        { type: Sequelize.DataTypes.STRING(100), allowNull: false },
+        code:        { type: Sequelize.DataTypes.STRING(20),  allowNull: false },
+        parent_id:   { type: Sequelize.DataTypes.INTEGER, allowNull: true },
+        description: { type: Sequelize.DataTypes.STRING(500), allowNull: true },
+        is_active:   { type: Sequelize.DataTypes.BOOLEAN, defaultValue: true },
+        created_by:  { type: Sequelize.DataTypes.INTEGER, allowNull: true, references: { model: 'users', key: 'id' }, onDelete: 'SET NULL' },
+        updated_by:  { type: Sequelize.DataTypes.INTEGER, allowNull: true },
+        createdAt:   { type: Sequelize.DataTypes.DATE, allowNull: false },
+        updatedAt:   { type: Sequelize.DataTypes.DATE, allowNull: false },
+      });
+      await queryInterface.addIndex('machines', ['code'], { unique: true, name: 'machines_code_unique' });
+    }
+
+    // ── 1. Extend machines table (use IF NOT EXISTS to be idempotent) ─────
+    const qi = queryInterface.sequelize;
+    const cols = [
+      `ADD COLUMN IF NOT EXISTS production_against  VARCHAR(20)     DEFAULT 'none'`,
+      `ADD COLUMN IF NOT EXISTS shift               VARCHAR(100)`,
+      `ADD COLUMN IF NOT EXISTS setup_time_hrs      DECIMAL(10,2)`,
+      `ADD COLUMN IF NOT EXISTS queue_time_days     DECIMAL(10,2)`,
+      `ADD COLUMN IF NOT EXISTS min_batch_quantity  INTEGER`,
+      `ADD COLUMN IF NOT EXISTS weighted_production BOOLEAN         DEFAULT false`,
+      `ADD COLUMN IF NOT EXISTS auto_production     BOOLEAN         DEFAULT false`,
+      `ADD COLUMN IF NOT EXISTS start_stop_flow     BOOLEAN         DEFAULT false`,
+      `ADD COLUMN IF NOT EXISTS serialization       BOOLEAN         DEFAULT false`,
+      `ADD COLUMN IF NOT EXISTS item_group_tags     JSONB           DEFAULT '[]'`,
+      `ADD COLUMN IF NOT EXISTS machine_group_tags  JSONB           DEFAULT '[]'`,
+      `ADD COLUMN IF NOT EXISTS iot_device_tags     JSONB           DEFAULT '[]'`,
+    ];
+    for (const col of cols) {
+      await qi.query(`ALTER TABLE machines ${col};`);
+    }
 
     // ── 2. Create production_parameters table ─────────────────────────────
     await queryInterface.createTable('production_parameters', {

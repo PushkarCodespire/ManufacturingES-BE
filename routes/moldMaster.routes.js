@@ -7,6 +7,7 @@ const {
   create,
   update,
   remove,
+  getCategories,
   addPartMapping,
   removePartMapping,
   addMachineCompat,
@@ -18,6 +19,7 @@ const { moldDocUpload } = require('../config/upload');
 router.use(authenticate);
 
 router.get( '/scan/:qrCode',              getByQrCode);
+router.get( '/categories',                getCategories);
 router.get( '/',                           getAll);
 router.get( '/:id',                        getById);
 router.post('/',                           create);

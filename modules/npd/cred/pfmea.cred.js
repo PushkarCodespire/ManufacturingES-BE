@@ -10,6 +10,7 @@ const createPfmeaSchema = Joi.object({
   revision:      Joi.string().trim().max(10).optional().allow('', null),
   document_date: Joi.string().isoDate().optional().allow(null),
   review_date:   Joi.string().isoDate().optional().allow(null),
+  notes:         Joi.string().trim().max(2000).optional().allow('', null),
 });
 
 const updatePfmeaSchema = Joi.object({
@@ -20,6 +21,7 @@ const updatePfmeaSchema = Joi.object({
   document_date: Joi.string().isoDate().optional().allow(null),
   review_date:   Joi.string().isoDate().optional().allow(null),
   status:        Joi.string().valid('draft','active','obsolete').optional(),
+  notes:         Joi.string().trim().max(2000).optional().allow('', null),
 }).min(1).messages({ 'object.min': 'At least one field is required' });
 
 // ── PFMEA item (process step) ─────────────────────────────────────────────────

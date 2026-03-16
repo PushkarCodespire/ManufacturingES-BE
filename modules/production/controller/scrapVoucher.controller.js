@@ -129,6 +129,15 @@ const authorizeVoucher = async (req, res) => {
     if (record.status !== 'pending') {
       return res.status(400).json({ success: false, message: 'Only pending scrap vouchers can be authorized' });
     }
+
+    // H-04: segregation of duties — the creator cannot authorize their own scrap voucher
+    if (String(record.created_by) === String(req.user.id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Segregation of duties: you cannot authorize a scrap voucher that you created',
+      });
+    }
+
     await record.update({ status: 'authorized', authorized_by: req.user.id, updated_by: req.user.id });
 
     // Auto-create COPQ entry for authorized scrap

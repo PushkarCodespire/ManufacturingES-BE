@@ -164,6 +164,41 @@ exports.acknowledge = async (req, res) => {
   }
 };
 
+// ── GET /complaints/overdue ───────────────────────────────────────────────────
+// M-03: Returns complaints that have breached their response_due SLA deadline.
+// Also fires a quality_manager notification so breaches are never silent.
+// In production this endpoint should be polled by a scheduled task / cron job
+// so escalations fire even when no user is actively viewing complaints.
+exports.getOverdue = async (req, res) => {
+  try {
+    const now = new Date();
+
+    const records = await Complaint.findAll({
+      where: {
+        response_due: { [Op.lt]: now, [Op.ne]: null },
+        status:       { [Op.notIn]: ['closed'] },
+      },
+      include: BASE_INCLUDE,
+      order:   [['response_due', 'ASC']],
+    });
+
+    if (records.length > 0) {
+      const nos = records.map((r) => r.complaint_no).join(', ');
+      notifyByRoles(
+        ['quality_manager'],
+        'COMPLAINT_SLA_BREACH',
+        `${records.length} Complaint(s) Breached SLA Deadline`,
+        `The following complaints have passed their response_due date without resolution: ${nos}`,
+      );
+    }
+
+    return res.json({ success: true, data: records, count: records.length });
+  } catch (err) {
+    console.error('[complaint.getOverdue]', err);
+    return res.status(500).json({ success: false, message: 'Failed to fetch overdue complaints' });
+  }
+};
+
 // ── DELETE /complaints/:id ────────────────────────────────────────────────────
 exports.delete = async (req, res) => {
   try {

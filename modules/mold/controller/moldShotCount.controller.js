@@ -13,6 +13,20 @@ const LIFE_ALERTS = [
   { pct: 100, type: 'end_of_life',        stage: 'end_of_life'        },
 ];
 
+// M-04: Pure function that derives life_stage from current shot count vs expected
+// life. Calling this on every shot-count write guarantees life_stage is always
+// consistent with the stored count — it can never drift due to bypassed updates
+// or manual DB edits corrected by the next legitimate write.
+const deriveLifeStage = (current, expected) => {
+  if (!expected || expected <= 0) return 'normal';
+  const pct = (current / expected) * 100;
+  if (pct >= 100) return 'end_of_life';
+  if (pct >= 95)  return 'critical';
+  if (pct >= 85)  return 'urgent_replacement';
+  if (pct >= 70)  return 'plan_replacement';
+  return 'normal';
+};
+
 // ── GET /molds/shots/dashboard ──────────────────────────────────────────────
 const getDashboard = async (req, res) => {
   try {
@@ -140,8 +154,10 @@ const calculateShots = async (req, res) => {
       logged_at: new Date(),
     }, { transaction: t });
 
-    // 5. Update mold.current_shot_count
-    await mold.update({ current_shot_count: newTotal, updated_by: req.user.id }, { transaction: t });
+    // 5. Update mold.current_shot_count and derive life_stage (M-04: always computed
+    //    so it never drifts from the stored shot count, even after manual adjustments)
+    const newLifeStage = deriveLifeStage(newTotal, mold.expected_life_shots);
+    await mold.update({ current_shot_count: newTotal, life_stage: newLifeStage, updated_by: req.user.id }, { transaction: t });
 
     // 6. Update shot summary
     const lifePct = mold.expected_life_shots ? ((newTotal / mold.expected_life_shots) * 100).toFixed(2) : null;
@@ -177,9 +193,7 @@ const calculateShots = async (req, res) => {
               shot_count_at_alert: newTotal,
               status: 'triggered',
             }, { transaction: t });
-
-            // Update mold life_stage
-            await mold.update({ life_stage: alert.stage }, { transaction: t });
+            // life_stage is already set unconditionally above via deriveLifeStage (M-04)
           }
         }
       }
@@ -233,8 +247,13 @@ const adjustShotCount = async (req, res) => {
       logged_at: new Date(),
     }, { transaction: t });
 
-    // Update mold
-    await mold.update({ current_shot_count: newTotal, updated_by: req.user.id }, { transaction: t });
+    // Update mold — M-04: derive life_stage unconditionally so manual adjustments
+    // never leave life_stage out of sync with the corrected shot count
+    await mold.update({
+      current_shot_count: newTotal,
+      life_stage: deriveLifeStage(newTotal, mold.expected_life_shots),
+      updated_by: req.user.id,
+    }, { transaction: t });
 
     // Update summary
     const lifePct = mold.expected_life_shots ? ((newTotal / mold.expected_life_shots) * 100).toFixed(2) : null;

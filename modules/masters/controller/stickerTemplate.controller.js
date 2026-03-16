@@ -123,4 +123,53 @@ const remove = async (req, res) => {
   }
 };
 
-module.exports = { getAll, getById, create, update, remove };
+// ─── POST /sticker-templates/:id/render ───────────────────────────────────────
+// Body: { entity_data: { 'Machine Code': 'MC-001', ... } }
+// Resolves primary/secondary keys and CTQ params against caller-supplied data,
+// and substitutes placeholders in ZPL code.
+const render = async (req, res) => {
+  try {
+    const template = await StickerTemplate.findByPk(req.params.id);
+    if (!template) return res.status(404).json({ success: false, message: 'Template not found' });
+
+    const data = req.body.entity_data || {};
+
+    const primaryValue   = (template.primary_key   && data[template.primary_key])   ? String(data[template.primary_key])   : '';
+    const secondaryValue = (template.secondary_key && data[template.secondary_key]) ? String(data[template.secondary_key]) : '';
+    const sep            = template.separator || '/';
+    const qrData         = [primaryValue, secondaryValue].filter(Boolean).join(` ${sep} `);
+
+    const ctqResolved = (template.ctq_params || []).map((p) => ({
+      param_name:   p.param_name   || '',
+      source_field: p.source_field || '',
+      unit:         p.unit         || '',
+      value:        p.source_field && data[p.source_field] != null ? String(data[p.source_field]) : '',
+    }));
+
+    let zplRendered = template.zpl_code || '';
+    if (zplRendered) {
+      zplRendered = zplRendered
+        .replace(/\{PRIMARY_KEY\}/g,   primaryValue)
+        .replace(/\{SECONDARY_KEY\}/g, secondaryValue);
+      Object.entries(data).forEach(([k, v]) => {
+        zplRendered = zplRendered.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v ?? ''));
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        primary_value:   primaryValue,
+        secondary_value: secondaryValue,
+        qr_data:         qrData,
+        ctq_resolved:    ctqResolved,
+        zpl_rendered:    zplRendered,
+      },
+    });
+  } catch (err) {
+    console.error('[stickerTemplate.render]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+module.exports = { getAll, getById, create, update, remove, render };

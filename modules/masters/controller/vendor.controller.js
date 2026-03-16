@@ -41,8 +41,10 @@ const getAllVendors = async (req, res) => {
   try {
     const where = {};
 
-    if (req.query.type)      where.type      = req.query.type;
-    if (req.query.is_active !== undefined) where.is_active = req.query.is_active === 'true';
+    if (req.query.type) where.type = req.query.type;
+    // L-04: default to active-only; inactive vendors/customers must not appear in PO/IQC dropdowns.
+    // Pass ?is_active=false to view deactivated partners (admin/audit view).
+    where.is_active = req.query.is_active !== undefined ? req.query.is_active === 'true' : true;
 
     if (req.query.search) {
       where[Op.or] = [
@@ -153,18 +155,21 @@ const updateVendor = async (req, res) => {
   }
 };
 
-// ─── DELETE /vendors/:id — Delete vendor ─────────────────────────────────────
+// ─── DELETE /vendors/:id — Soft-deactivate vendor ────────────────────────────
+// L-04: Soft-delete — set is_active=false rather than hard-deleting.
+// Vendors are referenced by GRNs, POs, IQC inspections, and SCAR records.
+// A hard delete would destroy procurement and quality history or fail with FK errors.
+// Deactivated vendors are hidden from PO/GRN dropdowns but preserved for audit trails.
 const deleteVendor = async (req, res) => {
   try {
     const vendor = await Vendor.findByPk(req.params.id);
     if (!vendor) return res.status(404).json({ success: false, message: 'Vendor not found' });
+    if (!vendor.is_active) {
+      return res.status(400).json({ success: false, message: `"${vendor.name}" is already deactivated` });
+    }
 
-    await vendor.destroy();
-
-    return res.json({
-      success: true,
-      message: `"${vendor.name}" deleted successfully`,
-    });
+    await vendor.update({ is_active: false, updated_by: req.user?.id || null });
+    return res.json({ success: true, message: `"${vendor.name}" deactivated successfully` });
   } catch (err) {
     console.error('[deleteVendor]', err);
     return res.status(500).json({ success: false, message: 'Server error' });

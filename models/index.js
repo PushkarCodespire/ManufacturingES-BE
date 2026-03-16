@@ -136,6 +136,10 @@ const MoldTrialParameter    = require('../modules/mold/model/MoldTrialParameter'
 const MoldTrialReading      = require('../modules/mold/model/MoldTrialReading')(sequelize);
 const MoldTrialPhoto        = require('../modules/mold/model/MoldTrialPhoto')(sequelize);
 const MoldCost              = require('../modules/mold/model/MoldCost')(sequelize);
+// ── Mold Management — Sprint 6 ───────────────────────────────────────────────
+const MoldAiPrediction       = require('../modules/mold/model/MoldAiPrediction')(sequelize);
+const MoldPredictionFeedback = require('../modules/mold/model/MoldPredictionFeedback')(sequelize);
+const MoldReservation        = require('../modules/mold/model/MoldReservation')(sequelize);
 // ── Maintenance Sprint 3 ──────────────────────────────────────────────────────
 const EquipmentCategory     = require('../modules/maintenance/model/EquipmentCategory')(sequelize);
 const Equipment             = require('../modules/maintenance/model/Equipment')(sequelize);
@@ -801,6 +805,24 @@ MoldCost.belongsTo(Vendor, { foreignKey: 'vendor_id',  as: 'Vendor'  });
 MoldCost.belongsTo(User,   { foreignKey: 'created_by', as: 'Creator' });
 Mold.hasMany(MoldCost,     { foreignKey: 'mold_id',    as: 'Costs',  onDelete: 'CASCADE' });
 
+// ── Mold Sprint 6 associations ───────────────────────────────────────────────
+
+// MoldAiPrediction → Mold + feedback
+MoldAiPrediction.belongsTo(Mold, { foreignKey: 'mold_id', as: 'Mold' });
+MoldAiPrediction.hasMany(MoldPredictionFeedback, { foreignKey: 'prediction_id', as: 'Feedback', onDelete: 'CASCADE' });
+Mold.hasMany(MoldAiPrediction, { foreignKey: 'mold_id', as: 'AiPredictions', onDelete: 'CASCADE' });
+
+// MoldPredictionFeedback → Prediction + Mold + User
+MoldPredictionFeedback.belongsTo(MoldAiPrediction, { foreignKey: 'prediction_id', as: 'Prediction' });
+MoldPredictionFeedback.belongsTo(Mold,             { foreignKey: 'mold_id',       as: 'Mold'       });
+MoldPredictionFeedback.belongsTo(User,             { foreignKey: 'given_by',      as: 'GivenBy'    });
+
+// MoldReservation → Mold + WorkOrder + User
+MoldReservation.belongsTo(Mold,      { foreignKey: 'mold_id',       as: 'Mold'       });
+MoldReservation.belongsTo(WorkOrder, { foreignKey: 'work_order_id', as: 'WorkOrder'  });
+MoldReservation.belongsTo(User,      { foreignKey: 'reserved_by',   as: 'ReservedBy' });
+Mold.hasMany(MoldReservation, { foreignKey: 'mold_id', as: 'Reservations', onDelete: 'CASCADE' });
+
 // ── Accounts & Finance associations ─────────────────────────────────────────
 
 // SalesInvoice → Customer (Vendor), CustomerOrder, DispatchOrder, User
@@ -1096,6 +1118,10 @@ module.exports = {
   MoldTrialReading,
   MoldTrialPhoto,
   MoldCost,
+  // Mold Sprint 6
+  MoldAiPrediction,
+  MoldPredictionFeedback,
+  MoldReservation,
   SalesInvoice,
   DebitCreditNote,
   Payment,

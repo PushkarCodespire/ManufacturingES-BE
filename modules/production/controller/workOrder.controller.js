@@ -116,7 +116,9 @@ const update = async (req, res) => {
     const record = await WorkOrder.findByPk(req.params.id);
     if (!record) return res.status(404).json({ success: false, message: 'Work order not found' });
 
-    await record.update({ ...value, updated_by: req.user.id });
+    // Belt-and-suspenders: strip workflow state fields even if Joi somehow lets them through
+    const { status: _s, fpi_status: _f, ...safeValue } = value;
+    await record.update({ ...safeValue, updated_by: req.user.id });
     return res.json({ success: true, data: record });
   } catch (err) {
     console.error('[WorkOrder.update]', err);
@@ -163,6 +165,26 @@ const updateStatus = async (req, res) => {
       }
       if (record.fpi_status === 'fail') {
         return res.status(400).json({ success: false, message: 'Cannot start production: FPI inspection has failed' });
+      }
+      // C-04 gate: conditional FPI result also blocks production until dispositioned
+      if (record.fpi_status === 'conditional') {
+        return res.status(400).json({ success: false, message: 'Cannot start production: FPI result is conditional — disposition required before proceeding' });
+      }
+    }
+
+    // Job card completion gate: block completed if any job cards are still open
+    if (status === 'completed') {
+      const openCards = await JobCard.count({
+        where: {
+          work_order_id: record.id,
+          status: { [Op.notIn]: ['closed', 'cancelled'] },
+        },
+      });
+      if (openCards > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Cannot complete work order: ${openCards} job card(s) are still open`,
+        });
       }
     }
 
