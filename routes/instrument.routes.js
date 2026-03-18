@@ -8,8 +8,9 @@ const QC_MANAGE = ['plant_head', 'it_admin', 'quality_manager'];
 
 router.use(authenticate);
 
-// Verification status must come before /:id to avoid route collision
-router.get('/verification-status', authorize(...QC_ROLES), ctrl.getVerificationStatus);
+// Static routes must come before /:id to avoid route collision
+router.get('/ai-calibration-forecast', ctrl.getAiCalibrationForecast);  // AI: fleet calibration risk
+router.get('/verification-status',     authorize(...QC_ROLES), ctrl.getVerificationStatus);
 
 router.get('/',                    ctrl.getAll);
 router.get('/:id',                 ctrl.getById);

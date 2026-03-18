@@ -11,6 +11,7 @@ const Warehouse    = require('../modules/masters/model/Warehouse');
 const Shift        = require('../modules/masters/model/Shift');
 const Machine              = require('../modules/masters/model/Machine');
 const Item                 = require('../modules/masters/model/Item');
+const ItemQualityParam     = require('../modules/masters/model/ItemQualityParam');
 const ProductionParameter  = require('../modules/masters/model/ProductionParameter');
 const MachineParameter     = require('../modules/masters/model/MachineParameter');
 const Tag                  = require('../modules/masters/model/Tag');
@@ -232,6 +233,10 @@ Machine.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
 // Item audit — created_by / updated_by
 Item.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
 Item.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
+
+// Item → Quality Params (CTQ)
+Item.hasMany(ItemQualityParam, { foreignKey: 'item_id', as: 'QualityParams', onDelete: 'CASCADE' });
+ItemQualityParam.belongsTo(Item, { foreignKey: 'item_id' });
 
 // ProductionParameter audit
 ProductionParameter.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
@@ -1167,4 +1172,5 @@ module.exports = {
   LotoExecution,
   LotoPermit,
   MaintenanceCost,
+  ItemQualityParam,
 };

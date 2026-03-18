@@ -1,6 +1,7 @@
 'use strict';
 const { Op } = require('sequelize');
 const { Instrument, CalibrationRecord, User } = require('../../../models');
+const { callClaude } = require('../../../services/ai.service');
 
 // ── GET /instruments ────────────────────────────────────────────────────────────
 exports.getAll = async (req, res) => {
@@ -160,6 +161,114 @@ exports.verify = async (req, res) => {
   } catch (err) {
     console.error('instrument.verify:', err);
     res.status(500).json({ success: false, message: 'Failed to verify instrument' });
+  }
+};
+
+// ── GET /instruments/ai-calibration-forecast ─────────────────────────────────
+// Fleet-wide calibration scheduling forecast — identifies overdue, at-risk,
+// and upcoming calibrations and generates an AI-driven scheduling priority plan.
+exports.getAiCalibrationForecast = async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const in7d  = new Date(Date.now() + 7  * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const in30d = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    const instruments = await Instrument.findAll({
+      where:      { status: 'active' },
+      attributes: ['id', 'instrument_code', 'name', 'category', 'location',
+                   'last_calibrated_at', 'next_due_at', 'calibration_frequency_days'],
+      order:      [['next_due_at', 'ASC']],
+      raw:        true,
+    });
+
+    // Last calibration result per instrument
+    const recentRecords = await CalibrationRecord.findAll({
+      attributes: ['instrument_id', 'result', 'calibration_date'],
+      order:      [['calibration_date', 'DESC']],
+      raw:        true,
+    });
+    const lastResultMap = {};
+    for (const r of recentRecords) {
+      if (!lastResultMap[r.instrument_id]) lastResultMap[r.instrument_id] = r.result;
+    }
+
+    // Bucket instruments
+    const overdue      = [];
+    const dueThisWeek  = [];
+    const dueThisMonth = [];
+    const ok           = [];
+    const noDueDate    = [];
+
+    for (const inst of instruments) {
+      const entry = { ...inst, last_result: lastResultMap[inst.id] || null };
+      if (!inst.next_due_at)           { noDueDate.push(entry); }
+      else if (inst.next_due_at < today)  { overdue.push(entry); }
+      else if (inst.next_due_at <= in7d)  { dueThisWeek.push(entry); }
+      else if (inst.next_due_at <= in30d) { dueThisMonth.push(entry); }
+      else                              { ok.push(entry); }
+    }
+
+    const failCount = Object.values(lastResultMap).filter((r) => r === 'fail').length;
+
+    const systemPrompt = `You are a quality systems metrology manager responsible for instrument calibration planning.
+Respond ONLY with a JSON object matching this schema:
+{
+  "risk_level": "low" | "medium" | "high" | "critical",
+  "fleet_health_summary": "string (2-3 sentences on overall calibration health)",
+  "immediate_actions": ["string", ...],
+  "scheduling_recommendations": ["string", ...],
+  "instruments_to_prioritise": ["string", ...],
+  "compliance_risk": true | false,
+  "confidence": "low" | "medium" | "high"
+}
+Focus on ISO/IATF calibration compliance and production impact.`;
+
+    const userPrompt = `Instrument Calibration Fleet Status (as of ${today}):
+
+Total Active Instruments: ${instruments.length}
+- Overdue (past due date): ${overdue.length}
+- Due This Week: ${dueThisWeek.length}
+- Due This Month: ${dueThisMonth.length}
+- OK (next due > 30 days): ${ok.length}
+- No Due Date Set: ${noDueDate.length}
+- Instruments with recent FAIL result: ${failCount}
+
+Overdue Instruments:
+${overdue.length === 0 ? '  None' : overdue.slice(0, 10).map((i) =>
+  `  • ${i.instrument_code} — ${i.name} (${i.category || 'N/A'}, ${i.location || 'N/A'}) — Due: ${i.next_due_at} — Last result: ${i.last_result || 'Unknown'}`
+).join('\n')}
+
+Due This Week:
+${dueThisWeek.length === 0 ? '  None' : dueThisWeek.map((i) =>
+  `  • ${i.instrument_code} — ${i.name} — Due: ${i.next_due_at}`
+).join('\n')}`;
+
+    const result = await callClaude(systemPrompt, userPrompt, {
+      cacheKey:   `instrument-ai-forecast-${today}`,
+      cacheTtlMs: 60 * 60 * 1000, // 1 hour
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        as_of:         today,
+        total:         instruments.length,
+        overdue_count: overdue.length,
+        due_this_week: dueThisWeek.length,
+        due_this_month: dueThisMonth.length,
+        ok_count:      ok.length,
+        fail_count:    failCount,
+        overdue:       overdue,
+        due_week:      dueThisWeek,
+        ai_available:  result.ai_available,
+        ai_cached:     result.cached,
+        ai_error:      result.ai_error,
+        ai_insight:    result.data,
+      },
+    });
+  } catch (err) {
+    console.error('[instrument.getAiCalibrationForecast]', err);
+    return res.status(500).json({ success: false, message: 'Failed to generate AI calibration forecast' });
   }
 };
 

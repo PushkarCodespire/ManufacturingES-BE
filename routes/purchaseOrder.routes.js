@@ -7,8 +7,9 @@ const PO_RECEIVE = ['plant_head', 'it_admin', 'procurement_manager', 'store_mana
 
 router.use(authenticate);
 
-router.get('/',              ctrl.getAll);
-router.get('/:id',           ctrl.getById);
+router.get('/',                  ctrl.getAll);
+router.get('/:id/ai-risk-flag',  ctrl.getAiRiskFlag);  // AI: PO delivery risk flag
+router.get('/:id',               ctrl.getById);
 router.post('/',             authorize(...PO_WRITE),   ctrl.create);
 router.patch('/:id',         authorize(...PO_WRITE),   ctrl.update);
 router.patch('/:id/send',    authorize(...PO_WRITE),   ctrl.send);

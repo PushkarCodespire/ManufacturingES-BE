@@ -7,6 +7,7 @@ const {
   User,
 }= require('../../../models');
 const { validateCreatePo, validateUpdatePo, validateReceivePo } = require('../cred/purchaseOrder.cred');
+const { callClaude } = require('../../../services/ai.service');
 
 // ── Auto-number generator ────────────────────────────────────────────────────
 async function nextPoNo() {
@@ -249,6 +250,96 @@ const deletePurchaseOrder = async (req, res) => {
   }
 };
 
+// ── GET /purchase-orders/:id/ai-risk-flag ─────────────────────────────────────
+// Analyses a PO for delivery and supplier risk — overdue history, lead time,
+// outstanding qty — and returns recommended actions.
+const getAiRiskFlag = async (req, res) => {
+  try {
+    const record = await PurchaseOrder.findByPk(req.params.id, {
+      include: [
+        { model: Vendor,            as: 'Vendor',  attributes: ['id', 'name'] },
+        { model: User,              as: 'Creator', attributes: ['id', 'name'] },
+        {
+          model:   PurchaseOrderItem,
+          as:      'Items',
+          include: [{ model: Item, as: 'Item', attributes: ['id', 'name', 'code', 'unit'] }],
+        },
+      ],
+    });
+    if (!record) return res.status(404).json({ success: false, message: 'Purchase order not found' });
+
+    // Count open overdue POs for same vendor
+    const overduePOs = record.vendor_id ? await PurchaseOrder.count({
+      where: {
+        vendor_id:     record.vendor_id,
+        id:            { [Op.ne]: record.id },
+        expected_date: { [Op.lt]: new Date() },
+        status:        { [Op.notIn]: ['received', 'cancelled'] },
+      },
+    }) : 0;
+
+    const today        = new Date();
+    const expectedDate = record.expected_date ? new Date(record.expected_date) : null;
+    const orderDate    = record.order_date    ? new Date(record.order_date)    : null;
+    const daysToDelivery = expectedDate ? Math.ceil((expectedDate - today)      / (1000 * 60 * 60 * 24)) : null;
+    const leadTimeDays   = (orderDate && expectedDate) ? Math.ceil((expectedDate - orderDate) / (1000 * 60 * 60 * 24)) : null;
+    const totalValue     = (record.Items || []).reduce((sum, it) =>
+      sum + parseFloat(it.unit_price || 0) * parseFloat(it.qty_ordered || 0), 0);
+
+    const systemPrompt = `You are a procurement risk analyst evaluating purchase orders for delivery and supplier risks.
+Respond ONLY with a JSON object matching this schema:
+{
+  "overall_risk": "low" | "medium" | "high" | "critical",
+  "risk_factors": ["string", ...],
+  "delivery_risk": "on_track" | "at_risk" | "overdue" | "unknown",
+  "recommended_actions": ["string", ...],
+  "expedite_required": true | false,
+  "confidence": "low" | "medium" | "high"
+}
+Be concise and actionable.`;
+
+    const userPrompt = `Purchase Order:
+- PO No: ${record.po_no}
+- Vendor: ${record.Vendor?.name || 'Unknown'}
+- Status: ${record.status}
+- Order Date: ${record.order_date || 'N/A'}
+- Expected Delivery: ${record.expected_date || 'Not set'}
+- Days to Delivery: ${daysToDelivery !== null ? daysToDelivery : 'Unknown'}
+- Lead Time: ${leadTimeDays !== null ? `${leadTimeDays} days` : 'Unknown'}
+- Total Value: ₹${totalValue.toLocaleString('en-IN')}
+- Line Items (${(record.Items || []).length}):
+${(record.Items || []).map((it) => `  • ${it.Item?.name || 'Unknown'} — Ordered: ${it.qty_ordered}, Received: ${it.qty_received || 0}`).join('\n') || '  None'}
+
+Vendor Risk Signals:
+- Other open overdue POs for this vendor: ${overduePOs}
+- Remarks: ${record.remarks || 'None'}`;
+
+    const result = await callClaude(systemPrompt, userPrompt, {
+      cacheKey:   `po-ai-risk-${record.id}-${record.status}`,
+      cacheTtlMs: 30 * 60 * 1000,
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        po_no:                   record.po_no,
+        vendor:                  record.Vendor,
+        status:                  record.status,
+        days_to_delivery:        daysToDelivery,
+        total_value:             totalValue,
+        overdue_pos_for_vendor:  overduePOs,
+        ai_available:            result.ai_available,
+        ai_cached:               result.cached,
+        ai_error:                result.ai_error,
+        ai_insight:              result.data,
+      },
+    });
+  } catch (err) {
+    console.error('[PurchaseOrder.getAiRiskFlag]', err);
+    return res.status(500).json({ success: false, message: 'Failed to generate AI risk flag' });
+  }
+};
+
 module.exports = {
   getAll,
   getById,
@@ -256,5 +347,6 @@ module.exports = {
   update,
   send,
   receive,
+  getAiRiskFlag,
   delete: deletePurchaseOrder,
 };

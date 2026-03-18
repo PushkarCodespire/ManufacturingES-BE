@@ -210,7 +210,7 @@ exports.getAiSummary = async (req, res) => {
         { model: Item, as: 'Item',    attributes: ['id', 'name', 'code'] },
         { model: User, as: 'Creator', attributes: ['id', 'name'] },
         { model: Ncr,  as: 'Ncr',    attributes: ['id', 'ncr_no', 'defect_desc', 'status'], required: false },
-        { model: Capa, as: 'Capa',   attributes: ['id', 'capa_no', 'title', 'status'],      required: false },
+        { model: Capa, as: 'Capa',   attributes: ['id', 'capa_no', 'problem_title', 'status'], required: false },
       ],
     });
     if (!complaint) return res.status(404).json({ success: false, message: 'Complaint not found' });
@@ -246,7 +246,7 @@ Be professional, concise, and customer-focused.`;
 - Remarks: ${complaint.remarks || 'None'}
 
 Linked NCR: ${complaint.Ncr ? `${complaint.Ncr.ncr_no} — ${complaint.Ncr.defect_desc} (${complaint.Ncr.status})` : 'None'}
-Linked CAPA: ${complaint.Capa ? `${complaint.Capa.capa_no} — ${complaint.Capa.title} (${complaint.Capa.status})` : 'None'}`;
+Linked CAPA: ${complaint.Capa ? `${complaint.Capa.capa_no} — ${complaint.Capa.problem_title} (${complaint.Capa.status})` : 'None'}`;
 
     const result = await callClaude(systemPrompt, userPrompt, {
       cacheKey:   `complaint-ai-${complaint.id}-${complaint.status}`,

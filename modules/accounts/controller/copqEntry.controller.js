@@ -3,6 +3,7 @@ const sequelize = require('../../../config/database');
 const {
   CopqEntry, Item, Department, User,
 } = require('../../../models');
+const { callClaude } = require('../../../services/ai.service');
 
 // ── Auto-number generator ─────────────────────────────────────────────────────
 async function nextEntryNo() {
@@ -149,6 +150,89 @@ exports.update = async (req, res) => {
   } catch (err) {
     console.error('copqEntry.update:', err);
     res.status(500).json({ success: false, message: err.message || 'Failed to update entry' });
+  }
+};
+
+// ── GET /copq-entries/ai-narrative ──────────────────────────────────────────
+// Accepts optional ?from=YYYY-MM-DD&to=YYYY-MM-DD query params.
+// Aggregates COPQ by category then asks AI to produce a management narrative.
+exports.getAiNarrative = async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    const where = {};
+    if (from || to) {
+      where.entry_date = {};
+      if (from) where.entry_date[Op.gte] = from;
+      if (to)   where.entry_date[Op.lte] = to;
+    }
+
+    const byCategory = await CopqEntry.findAll({
+      where,
+      attributes: [
+        'category',
+        [sequelize.fn('SUM', sequelize.col('cost_amount')), 'total_cost'],
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
+      ],
+      group: ['category'],
+      raw:   true,
+    });
+
+    if (byCategory.length === 0) {
+      return res.json({
+        success: true,
+        data: { ai_available: false, ai_error: 'No COPQ data found for the specified period', ai_insight: null },
+      });
+    }
+
+    const totalCost  = byCategory.reduce((sum, c) => sum + parseFloat(c.total_cost || 0), 0);
+    const topCategory = [...byCategory].sort((a, b) => parseFloat(b.total_cost) - parseFloat(a.total_cost))[0];
+
+    const systemPrompt = `You are a management accountant preparing a COPQ (Cost of Poor Quality) report for senior management.
+Respond ONLY with a JSON object matching this schema:
+{
+  "executive_summary": "string (3-4 sentences for board-level consumption)",
+  "key_findings": ["string", ...],
+  "cost_drivers": ["string", ...],
+  "improvement_opportunities": ["string", ...],
+  "benchmarking_insight": "string (industry context — ~5-10% of revenue is typical warning level)",
+  "priority_actions": ["string", ...],
+  "confidence": "low" | "medium" | "high"
+}
+Use professional financial language.`;
+
+    const period = from && to ? `${from} to ${to}` : from ? `from ${from}` : to ? `up to ${to}` : 'all time';
+
+    const userPrompt = `COPQ Summary for period: ${period}
+
+Total Cost of Poor Quality: ₹${totalCost.toLocaleString('en-IN')}
+Dominant Category: ${topCategory.category} (₹${parseFloat(topCategory.total_cost).toLocaleString('en-IN')}, ${((parseFloat(topCategory.total_cost) / totalCost) * 100).toFixed(1)}% of total)
+
+Breakdown by Category:
+${byCategory.map((c) =>
+  `  • ${c.category}: ₹${parseFloat(c.total_cost).toLocaleString('en-IN')} (${c.count} entries, ${((parseFloat(c.total_cost) / totalCost) * 100).toFixed(1)}%)`
+).join('\n')}`;
+
+    const result = await callClaude(systemPrompt, userPrompt, {
+      cacheKey:   `copq-ai-narrative-${from || 'all'}-${to || 'all'}`,
+      cacheTtlMs: 60 * 60 * 1000,
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        period:       { from: from || null, to: to || null },
+        total_cost:   totalCost,
+        top_category: topCategory.category,
+        breakdown:    byCategory,
+        ai_available: result.ai_available,
+        ai_cached:    result.cached,
+        ai_error:     result.ai_error,
+        ai_insight:   result.data,
+      },
+    });
+  } catch (err) {
+    console.error('[copqEntry.getAiNarrative]', err);
+    return res.status(500).json({ success: false, message: 'Failed to generate AI narrative' });
   }
 };
 

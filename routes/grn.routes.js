@@ -7,8 +7,9 @@ const writeRoles = ['plant_head', 'it_admin', 'store_manager', 'store_incharge']
 
 router.use(authenticate);
 
-router.get('/',              ctrl.getAll);
-router.get('/:id',           ctrl.getById);
+router.get('/',                      ctrl.getAll);
+router.get('/:id/ai-quality-flag',   ctrl.getAiQualityFlag);  // AI: incoming quality risk
+router.get('/:id',                   ctrl.getById);
 router.post('/',             authorize(...writeRoles), ctrl.create);
 router.patch('/:id',         authorize(...writeRoles), ctrl.update);
 router.patch('/:id/approve', authorize(...writeRoles), ctrl.approve);

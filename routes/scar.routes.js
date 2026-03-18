@@ -9,6 +9,7 @@ router.use(authenticate);
 
 router.get('/overdue',         ctrl.getOverdue);
 router.get('/',                ctrl.getAll);
+router.get('/:id/ai-draft',    ctrl.getAiDraft);     // AI: SCAR draft assistant
 router.get('/:id',             ctrl.getById);
 router.post('/',               authorize(...PRC_WRITE),  ctrl.create);
 router.patch('/:id',           authorize(...PRC_WRITE),  ctrl.update);

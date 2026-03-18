@@ -248,8 +248,8 @@ exports.aiFailureModeSuggestion = async (req, res) => {
 
     const prompt = failureModeSuggestion(processStep, material, historicalItems);
     const result = await callClaude(
-      'You are a PFMEA expert for automotive manufacturing.',
-      prompt,
+      prompt.system,
+      prompt.user,
       { cacheKey: `pfmea-fm-${pfmea.id}-${processStep}`, maxTokens: 2000 },
     );
 

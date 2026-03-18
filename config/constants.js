@@ -12,6 +12,7 @@ const DEPARTMENTS = [
   { code: 15, name: 'Dispatch / Logistics' },
   { code: 16, name: 'Accounts / Finance' },
   { code: 17, name: 'HR / Admin' },
+  { code: 18, name: 'Sales' },
 ];
 
 // 16 roles as per dynatech_one_features.xlsx
@@ -32,6 +33,7 @@ const ROLES = [
   { name: 'dispatch_manager',      label: 'Dispatch Manager',      dept_code: 15 },
   { name: 'accounts_manager',      label: 'Accounts Manager',      dept_code: 16 },
   { name: 'hr_admin',              label: 'HR Admin',              dept_code: 17 },
+  { name: 'sales_manager',         label: 'Sales Manager',         dept_code: 18 },
 ];
 
 // SYS-001: Max 5 failed attempts → 15-min lockout

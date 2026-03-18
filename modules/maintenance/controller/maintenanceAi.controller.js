@@ -1,4 +1,6 @@
 'use strict';
+const { callClaude } = require('../../../services/ai.service');
+
 /**
  * Maintenance AI Controller — Wave 1 + Wave 2 + Wave 3
  *
@@ -232,8 +234,11 @@ exports.getRootCauseSuggestion = async (req, res) => {
       .split(/[\s,.\-\/]+/)
       .filter((t) => t.length >= 3);
 
-    // Get equipment category for focused failure code lookup
-    const equip = await Equipment.findByPk(bd.equipment_id, { attributes: ['id', 'category_id'] });
+    // Get equipment name + category for focused failure code lookup and AI context
+    const equip = await Equipment.findByPk(bd.equipment_id, {
+      attributes: ['id', 'name', 'category_id'],
+      include:    [{ model: EquipmentCategory, as: 'Category', attributes: ['name'] }],
+    });
 
     // Load failure codes (prefer same category, fallback all)
     const whereFC = { is_active: true };
@@ -268,7 +273,7 @@ exports.getRootCauseSuggestion = async (req, res) => {
       s.histCount    = freq[s.fc.id] || 0;
     });
 
-    const suggestions = scored
+    let suggestions = scored
       .filter((s) => s.combined > 0 || s.histCount > 0)
       .sort((a, b) => b.combined - a.combined)
       .slice(0, 3)
@@ -280,7 +285,61 @@ exports.getRootCauseSuggestion = async (req, res) => {
         typical_cause:   s.fc.typical_cause,
         confidence:      Math.min(100, Math.round(s.combined * 100)),
         history_count:   s.histCount,
+        ai_generated:    false,
       }));
+
+    // ── Claude AI fallback when DB keyword-match yields nothing ──────────────
+    // This covers the common case where no failure codes are configured yet,
+    // or the symptoms don't match any existing code vocabulary.
+    if (suggestions.length === 0 && bd.symptoms && bd.symptoms.trim().length > 0) {
+      try {
+        const equipName     = equip?.name || 'industrial equipment';
+        const equipCategory = equip?.Category?.name || 'General';
+
+        const aiResult = await callClaude(
+          `You are a maintenance engineering expert. Given equipment symptoms, suggest the 3 most likely root causes.
+Return ONLY a JSON array (no markdown, no explanation) with exactly this structure:
+[
+  {
+    "name": "Short failure mode name (5-8 words)",
+    "category": "Mechanical|Electrical|Hydraulic|Pneumatic|Control|Lubrication|Structural",
+    "typical_cause": "One sentence describing the root cause (max 20 words)",
+    "confidence": <integer 10-95>
+  }
+]
+Sort by confidence descending. Keep names concise and technical.`,
+
+          `Equipment: ${equipName}
+Category: ${equipCategory}
+Reported symptoms: ${bd.symptoms}
+Historical WO count for this equipment: ${pastWOs.length}
+
+Suggest the 3 most likely failure modes causing these symptoms.`,
+
+          { maxTokens: 600, cacheKey: null },
+        );
+
+        // Parse — callClaude already strips code fences and returns parsed object
+        const raw = aiResult?.data ?? aiResult;
+        const aiSuggestions = Array.isArray(raw) ? raw : (Array.isArray(raw?.suggestions) ? raw.suggestions : null);
+
+        if (Array.isArray(aiSuggestions) && aiSuggestions.length > 0) {
+          suggestions = aiSuggestions.slice(0, 3).map((s, i) => ({
+            failure_code_id: null,
+            code:            null,
+            name:            s.name || `Root Cause ${i + 1}`,
+            category:        s.category || equipCategory,
+            typical_cause:   s.typical_cause || '',
+            confidence:      Math.min(95, Math.max(10, parseInt(s.confidence, 10) || 50)),
+            history_count:   0,
+            ai_generated:    true,
+          }));
+        }
+      } catch (aiErr) {
+        // Claude fallback failed — proceed with empty suggestions rather than crashing
+        console.warn('[maintenanceAi] Claude fallback failed:', aiErr.message);
+      }
+    }
 
     // Auto-save top suggestion to breakdown if requested
     if (save && suggestions.length > 0) {

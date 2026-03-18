@@ -4,6 +4,7 @@ const { notifyByRoles } = require('../../../services/notification.service');
 const {
   validateCreateDrawing, validateUpdateDrawing, validateCreateVersion,
 } = require('../cred/drawing.cred');
+const { callClaudeVision } = require('../../../services/ai.service');
 
 const BASE_INCLUDE = [
   { model: Item, as: 'Item',     attributes: ['id', 'name', 'code'] },
@@ -208,6 +209,88 @@ exports.checkCascade = async (req, res) => {
   } catch (err) {
     console.error('[drawing.checkCascade]', err);
     res.status(500).json({ success: false, message: 'Failed to check cascade' });
+  }
+};
+
+// ── POST /npd/drawings/ai-analyze ─────────────────────────────────────────────
+// Accepts a drawing image or PDF upload and uses Claude Vision to extract:
+// title block, dimensions, tolerances, materials, surface finish, and notes.
+// Optionally pass drawing_id in body to enrich the response with part context.
+exports.aiAnalyze = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded. Send a drawing image or PDF as multipart/form-data field "file".' });
+    }
+
+    const { drawing_id, context } = req.body;
+
+    // Optionally enrich with drawing metadata
+    let drawingInfo = null;
+    if (drawing_id) {
+      drawingInfo = await Drawing.findByPk(drawing_id, {
+        include:    [{ model: Item, as: 'Item', attributes: ['id', 'name', 'code'] }],
+        attributes: ['id', 'drawing_no', 'title', 'current_revision'],
+      });
+    }
+
+    const base64Data = req.file.buffer.toString('base64');
+    const mediaType  = req.file.mimetype;
+
+    const systemPrompt = `You are a mechanical engineering drawing analyst and GD&T (Geometric Dimensioning and Tolerancing) expert.
+Examine the engineering drawing carefully and respond ONLY with a JSON object matching this schema:
+{
+  "title_block": {
+    "drawing_no": "string or null",
+    "title": "string or null",
+    "revision": "string or null",
+    "material": "string or null",
+    "scale": "string or null",
+    "drawn_by": "string or null",
+    "date": "string or null",
+    "part_no": "string or null"
+  },
+  "dimensions": [
+    { "description": "string", "value": "string", "unit": "mm|inch|other", "tolerance": "string or null" }
+  ],
+  "geometric_tolerances": [
+    { "symbol": "string (e.g. ⊙ flatness, ∥ parallelism)", "value": "string", "datum": "string or null" }
+  ],
+  "surface_finish": "string or null",
+  "critical_features": ["string", ...],
+  "manufacturing_notes": ["string", ...],
+  "drawing_type": "assembly|part|detail|schematic|other",
+  "views_present": ["string", ...],
+  "confidence": "low" | "medium" | "high",
+  "warnings": ["string", ...]
+}
+Extract all visible information. If a field is not visible or legible, use null.`;
+
+    const textPrompt = `Analyse this engineering drawing.${drawingInfo
+  ? ` This is drawing ${drawingInfo.drawing_no} Rev ${drawingInfo.current_revision} for part: ${drawingInfo.Item?.name || 'Unknown'} (${drawingInfo.Item?.code || 'N/A'}).`
+  : ''}${context ? ` Additional context: ${context}` : ''}
+Extract all dimensions, tolerances, title block data, material callouts, surface finish notes, critical features, and manufacturing notes visible in the drawing.`;
+
+    const result = await callClaudeVision(systemPrompt, base64Data, mediaType, textPrompt, {
+      maxTokens: 3000,
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        drawing:      drawingInfo
+          ? { drawing_no: drawingInfo.drawing_no, revision: drawingInfo.current_revision, item: drawingInfo.Item }
+          : null,
+        file_name:    req.file.originalname,
+        file_size_kb: Math.round(req.file.size / 1024),
+        media_type:   mediaType,
+        ai_available: result.ai_available,
+        ai_error:     result.ai_error,
+        ai_insight:   result.data,
+      },
+    });
+  } catch (err) {
+    console.error('[drawing.aiAnalyze]', err);
+    return res.status(500).json({ success: false, message: 'Failed to analyse drawing' });
   }
 };
 

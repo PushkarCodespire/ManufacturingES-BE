@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const { Scar, Vendor, User } = require('../../../models');
 const { validateCreateScar, validateUpdateScar } = require('../cred/scar.cred');
+const { callClaude } = require('../../../services/ai.service');
 
 // ── Auto-number ───────────────────────────────────────────────────────────────
 async function nextScarNo() {
@@ -197,4 +198,72 @@ const getOverdue = async (req, res) => {
   }
 };
 
-module.exports = { getAll, getById, create, update, respond, close, getOverdue, delete: deleteScar };
+// ── GET /scars/:id/ai-draft ──────────────────────────────────────────────────
+// Generates a professional SCAR draft with root-cause areas and corrective
+// action suggestions, using the supplier's historical SCAR data for context.
+const getAiDraft = async (req, res) => {
+  try {
+    const record = await Scar.findByPk(req.params.id, { include: INCLUDES });
+    if (!record) return res.status(404).json({ success: false, message: 'SCAR not found' });
+
+    // Last 3 SCARs for same vendor (for recurrence detection)
+    const history = record.vendor_id ? await Scar.findAll({
+      where:      { vendor_id: record.vendor_id, id: { [Op.ne]: record.id } },
+      order:      [['createdAt', 'DESC']],
+      limit:      3,
+      attributes: ['scar_no', 'defect_desc', 'severity', 'root_cause', 'corrective_action', 'status'],
+    }) : [];
+
+    const systemPrompt = `You are a procurement quality manager drafting Supplier Corrective Action Requests (SCARs).
+Respond ONLY with a JSON object matching this schema:
+{
+  "professional_issue_statement": "string (formal, specific nonconformance description)",
+  "suggested_root_cause_areas": ["string", ...],
+  "suggested_corrective_actions": ["string", ...],
+  "suggested_preventive_actions": ["string", ...],
+  "supplier_risk_level": "low" | "medium" | "high" | "critical",
+  "recurrence_pattern": true | false,
+  "escalation_recommended": true | false,
+  "confidence": "low" | "medium" | "high"
+}
+Be formal, specific, and actionable.`;
+
+    const userPrompt = `SCAR Details:
+- SCAR No: ${record.scar_no}
+- Supplier: ${record.Vendor?.name || 'Unknown'}
+- Issue Description: ${record.defect_desc || 'Not provided'}
+- Severity: ${record.severity || 'Not specified'}
+- Status: ${record.status}
+- Required Response Date: ${record.required_response_date || 'Not set'}
+- Existing Root Cause: ${record.root_cause || 'Not yet identified'}
+- Existing Corrective Action: ${record.corrective_action || 'Not yet defined'}
+
+Supplier History (last ${history.length} SCARs):
+${history.length === 0
+  ? 'No previous SCARs for this supplier.'
+  : history.map((h) => `- ${h.scar_no}: ${h.defect_desc} | Severity: ${h.severity} | Status: ${h.status}`).join('\n')}`;
+
+    const result = await callClaude(systemPrompt, userPrompt, {
+      cacheKey:   `scar-ai-${record.id}`,
+      cacheTtlMs: 60 * 60 * 1000, // 1 hour
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        scar_no:       record.scar_no,
+        vendor:        record.Vendor,
+        history_count: history.length,
+        ai_available:  result.ai_available,
+        ai_cached:     result.cached,
+        ai_error:      result.ai_error,
+        ai_insight:    result.data,
+      },
+    });
+  } catch (err) {
+    console.error('[Scar.getAiDraft]', err);
+    return res.status(500).json({ success: false, message: 'Failed to generate AI draft' });
+  }
+};
+
+module.exports = { getAll, getById, create, update, respond, close, getOverdue, getAiDraft, delete: deleteScar };

@@ -431,6 +431,81 @@ const aiDispositionRecommendation = async (req, res) => {
   }
 };
 
+// ── POST /iqc-inspections/ai-photo-analyze ────────────────────────────────────
+// Accepts an inspection photo (image upload) and uses Claude Vision to identify
+// visible surface defects, assess severity, and recommend disposition.
+// Optional: pass inspection_id, item_name, expected_spec in multipart body.
+const aiPhotoAnalyze = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded. Send an inspection photo as multipart/form-data field "file".' });
+    }
+
+    const { inspection_id, item_name, expected_spec } = req.body;
+
+    let inspectionInfo = null;
+    if (inspection_id) {
+      inspectionInfo = await IqcInspection.findByPk(inspection_id, {
+        include: [
+          { model: Item,   as: 'Item',   attributes: ['id', 'name', 'code'] },
+          { model: Vendor, as: 'Vendor', attributes: ['id', 'name'] },
+        ],
+        attributes: ['id', 'inspection_no', 'result', 'batch_no'],
+      });
+    }
+
+    const base64Data = req.file.buffer.toString('base64');
+    const mediaType  = req.file.mimetype;
+
+    const systemPrompt = `You are an IQC (Incoming Quality Control) inspector and quality engineer specialising in manufactured parts.
+Analyse the inspection photo and respond ONLY with a JSON object matching this schema:
+{
+  "overall_assessment": "pass" | "conditional" | "fail",
+  "defects_found": [
+    {
+      "defect_type": "string (e.g. scratch, crack, dent, porosity, surface_finish, dimensional, contamination, burr, flash, corrosion)",
+      "location": "string (where on the part)",
+      "severity": "minor" | "major" | "critical",
+      "description": "string"
+    }
+  ],
+  "surface_quality": "acceptable" | "borderline" | "unacceptable",
+  "dimensional_concerns": ["string", ...],
+  "disposition_recommendation": "accept" | "accept_with_deviation" | "sort_and_inspect" | "reject" | "insufficient_info",
+  "additional_inspection_required": true | false,
+  "confidence": "low" | "medium" | "high",
+  "notes": "string"
+}
+If no defects are visible, return an empty defects_found array and overall_assessment of "pass".`;
+
+    const textPrompt = `Analyse this incoming quality inspection photo.${inspectionInfo
+  ? ` Inspection: ${inspectionInfo.inspection_no}, Part: ${inspectionInfo.Item?.name || 'Unknown'} (${inspectionInfo.Item?.code || 'N/A'}), Vendor: ${inspectionInfo.Vendor?.name || 'Unknown'}.`
+  : ''}${item_name ? ` Part name: ${item_name}.` : ''}${expected_spec ? ` Expected specification: ${expected_spec}.` : ''}
+Identify all visible surface defects and dimensional concerns. Assess severity and recommend disposition.`;
+
+    const result = await aiService.callClaudeVision(systemPrompt, base64Data, mediaType, textPrompt, {
+      maxTokens: 2000,
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        inspection:   inspectionInfo
+          ? { inspection_no: inspectionInfo.inspection_no, item: inspectionInfo.Item, vendor: inspectionInfo.Vendor }
+          : null,
+        file_name:    req.file.originalname,
+        file_size_kb: Math.round(req.file.size / 1024),
+        ai_available: result.ai_available,
+        ai_error:     result.ai_error,
+        ai_insight:   result.data,
+      },
+    });
+  } catch (err) {
+    console.error('[IqcInspection.aiPhotoAnalyze]', err);
+    return res.status(500).json({ success: false, message: 'Failed to analyse inspection photo' });
+  }
+};
+
 module.exports = {
   getAll,
   getById,
@@ -442,4 +517,5 @@ module.exports = {
   delete: deleteIqcInspection,
   aiCascadeSuggestion,
   aiDispositionRecommendation,
+  aiPhotoAnalyze,
 };

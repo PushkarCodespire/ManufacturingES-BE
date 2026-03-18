@@ -328,8 +328,8 @@ exports.aiRootCause = async (req, res) => {
     });
 
     const result = await callClaude(
-      'You are a quality engineering AI assistant.',
-      prompt,
+      prompt.system,
+      prompt.user,
       { cacheKey: `capa-root-cause-${record.id}`, maxTokens: 1500 },
     );
 
@@ -372,8 +372,8 @@ exports.aiEffectivenessPrediction = async (req, res) => {
     );
 
     const result = await callClaude(
-      'You are a quality management AI assistant.',
-      prompt,
+      prompt.system,
+      prompt.user,
       { cacheKey: `capa-effectiveness-${record.id}`, maxTokens: 1000 },
     );
 

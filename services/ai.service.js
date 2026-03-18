@@ -134,10 +134,13 @@ async function callClaude(systemPrompt, userPrompt, options = {}) {
     const textBlock = response.content.find((b) => b.type === 'text');
     const raw = textBlock?.text || '';
 
-    // Try to parse JSON
+    // Try to parse JSON — extract from markdown code fence if present
+    // Use match() to grab content BETWEEN fences, ignoring any trailing text after the block
+    const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]+?)```/i);
+    const stripped = fenceMatch ? fenceMatch[1].trim() : raw.trim();
     let data;
     try {
-      data = JSON.parse(raw);
+      data = JSON.parse(stripped);
     } catch {
       data = { raw_text: raw };
     }
@@ -206,9 +209,13 @@ async function callClaudeVision(systemPrompt, base64Data, mediaType, textPrompt,
     const textBlock = response.content.find((b) => b.type === 'text');
     const raw = textBlock?.text || '';
 
+    // Try to parse JSON — extract from markdown code fence if present
+    // Use match() to grab content BETWEEN fences, ignoring any trailing text after the block
+    const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]+?)```/i);
+    const stripped = fenceMatch ? fenceMatch[1].trim() : raw.trim();
     let data;
     try {
-      data = JSON.parse(raw);
+      data = JSON.parse(stripped);
     } catch {
       data = { raw_text: raw };
     }

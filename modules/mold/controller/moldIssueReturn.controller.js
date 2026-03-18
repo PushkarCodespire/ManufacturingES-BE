@@ -5,6 +5,7 @@ const {
   WorkOrder, Machine, User, sequelize,
 } = require('../../../models');
 const { validateIssue, validateReturn, validateInspection } = require('../cred/moldIssueReturn.cred');
+const { callClaudeVision } = require('../../../services/ai.service');
 
 // ── GET /mold/issue-return/:moldId/verify/:woId/:machineId ───────────────────
 const verifyForIssue = async (req, res) => {
@@ -496,4 +497,78 @@ async function runVerificationChecks(mold, workOrderId, machineId) {
   return checks;
 }
 
-module.exports = { verifyForIssue, issueMold, issueWithOverride, returnMold, inspectReturn, getHistory };
+// ── POST /mold/issue-return/ai-photo-analyze ──────────────────────────────────
+// Accepts a photo of a returned mold and uses Claude Vision to assess condition,
+// identify damage, and recommend repair actions or safe-to-issue verdict.
+// Optional: pass mold_id in multipart body to enrich with shot count data.
+const aiPhotoAnalyze = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded. Send a mold photo as multipart/form-data field "file".' });
+    }
+
+    const { mold_id } = req.body;
+
+    let moldInfo = null;
+    if (mold_id) {
+      moldInfo = await Mold.findByPk(mold_id, {
+        attributes: ['id', 'mold_code', 'name', 'current_shot_count', 'expected_life_shots', 'status'],
+      });
+    }
+
+    const base64Data = req.file.buffer.toString('base64');
+    const mediaType  = req.file.mimetype;
+
+    const systemPrompt = `You are a toolroom engineer and injection mold specialist with expertise in mold inspection and maintenance.
+Analyse the mold photo and respond ONLY with a JSON object matching this schema:
+{
+  "overall_condition": "good" | "fair" | "needs_repair" | "critical",
+  "visible_damage": [
+    {
+      "component": "string (e.g. cavity surface, parting line, ejector pins, cooling channels, gate area, runner system, guide pillars)",
+      "damage_type": "string (e.g. wear, crack, corrosion, flash build-up, scratch, dent, deformation, blockage)",
+      "severity": "minor" | "moderate" | "severe",
+      "description": "string"
+    }
+  ],
+  "parting_line_condition": "acceptable" | "worn" | "damaged",
+  "cavity_surface_condition": "acceptable" | "worn" | "damaged",
+  "ejector_system_visible_issues": ["string", ...],
+  "maintenance_required": true | false,
+  "repair_recommendations": ["string", ...],
+  "estimated_shots_before_service": "string or null",
+  "safe_to_issue_again": true | false,
+  "confidence": "low" | "medium" | "high",
+  "notes": "string"
+}
+If the image quality is poor, note it in warnings and set confidence to low.`;
+
+    const textPrompt = `Analyse this returned injection mold photo.${moldInfo
+  ? ` Mold: ${moldInfo.mold_code} — ${moldInfo.name || 'N/A'}, Shot count: ${moldInfo.current_shot_count || 0}/${moldInfo.expected_life_shots || 'N/A'}, Current status: ${moldInfo.status}.`
+  : ''}
+Assess all visible mold components for wear, damage, and contamination. Provide a maintenance recommendation and safe-to-issue verdict.`;
+
+    const result = await callClaudeVision(systemPrompt, base64Data, mediaType, textPrompt, {
+      maxTokens: 2000,
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        mold:         moldInfo
+          ? { mold_code: moldInfo.mold_code, name: moldInfo.name, shot_count: moldInfo.current_shot_count, expected_life: moldInfo.expected_life_shots, status: moldInfo.status }
+          : null,
+        file_name:    req.file.originalname,
+        file_size_kb: Math.round(req.file.size / 1024),
+        ai_available: result.ai_available,
+        ai_error:     result.ai_error,
+        ai_insight:   result.data,
+      },
+    });
+  } catch (err) {
+    console.error('[MoldIssueReturn.aiPhotoAnalyze]', err);
+    return res.status(500).json({ success: false, message: 'Failed to analyse mold photo' });
+  }
+};
+
+module.exports = { verifyForIssue, issueMold, issueWithOverride, returnMold, inspectReturn, getHistory, aiPhotoAnalyze };

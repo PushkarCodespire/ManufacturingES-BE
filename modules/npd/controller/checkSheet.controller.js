@@ -173,7 +173,8 @@ exports.aiDimensionExtraction = async (req, res) => {
         'You are a metrology expert extracting dimensions from engineering drawings.',
         base64Data,
         mediaType,
-        prompt,
+        prompt.user,
+        { maxTokens: 4096 },  // large drawings can have 20+ dimensions — needs more room
       );
       return res.json({ success: true, data: result, ai_available: true });
     }
@@ -182,9 +183,9 @@ exports.aiDimensionExtraction = async (req, res) => {
     const { callClaude } = require('../../../services/ai.service');
     const prompt = dimensionExtraction(drawingContext);
     const result = await callClaude(
-      'You are a metrology expert.',
-      prompt,
-      { cacheKey: `dims-${drawing_id || check_sheet_id}`, maxTokens: 2000 },
+      prompt.system, // ← use the dedicated system prompt from the template
+      prompt.user,   // ← extract the user string, not the whole { system, user } object
+      { cacheKey: `dims-${drawing_id || check_sheet_id}`, maxTokens: 4096 },
     );
 
     res.json({ success: true, data: result, ai_available: true });

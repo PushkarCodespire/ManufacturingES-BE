@@ -9,6 +9,7 @@ const {
   User,
 } = require('../../../models');
 const { validateCreateWorkOrder, validateUpdateWorkOrder, validateUpdateStatus } = require('../cred/workOrder.cred');
+const { callClaude } = require('../../../services/ai.service');
 
 // ── Auto-number generator ────────────────────────────────────────────────────
 async function nextWoNo() {
@@ -220,11 +221,114 @@ const deleteWorkOrder = async (req, res) => {
   }
 };
 
+// ── GET /work-orders/:id/ai-delay-risk ───────────────────────────────────────
+// Analyses a work order for schedule delay risk: qty progress, due-date
+// proximity, open job cards, and historical cycle time from closed cards.
+const getAiDelayRisk = async (req, res) => {
+  try {
+    const record = await WorkOrder.findByPk(req.params.id, {
+      include: [
+        { model: Item,          as: 'Item',         attributes: ['id', 'name', 'code'] },
+        { model: Machine,       as: 'Machine',       attributes: ['id', 'name'] },
+        { model: CustomerOrder, as: 'CustomerOrder', attributes: ['id', 'order_no'] },
+        { model: JobCard,       as: 'JobCards',
+          attributes: ['id', 'job_no', 'status', 'start_time', 'end_time', 'qty_produced', 'qty_rejected', 'cycle_time_actual'] },
+      ],
+    });
+    if (!record) return res.status(404).json({ success: false, message: 'Work order not found' });
+
+    const today        = new Date();
+    const dueDate      = record.due_date      ? new Date(record.due_date)      : null;
+    const plannedStart = record.planned_start ? new Date(record.planned_start) : null;
+    const actualStart  = record.actual_start  ? new Date(record.actual_start)  : null;
+
+    const daysRemaining = dueDate ? Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24)) : null;
+    const isOverdue     = daysRemaining !== null && daysRemaining < 0;
+
+    const plannedQty  = parseFloat(record.planned_qty  || 0);
+    const producedQty = parseFloat(record.produced_qty || 0);
+    const rejectedQty = parseFloat(record.rejected_qty || 0);
+    const progressPct = plannedQty > 0 ? Math.round((producedQty / plannedQty) * 100) : 0;
+
+    const jobCards    = record.JobCards || [];
+    const openJCs     = jobCards.filter((jc) => !['closed', 'cancelled'].includes(jc.status));
+    const closedJCs   = jobCards.filter((jc) => jc.status === 'closed' && jc.cycle_time_actual);
+    const avgCycleMin = closedJCs.length > 0
+      ? closedJCs.reduce((s, jc) => s + parseFloat(jc.cycle_time_actual), 0) / closedJCs.length
+      : null;
+
+    const remainingQty = Math.max(0, plannedQty - producedQty);
+    const estimatedMinRemaining = avgCycleMin && remainingQty ? Math.round(avgCycleMin * remainingQty) : null;
+
+    const systemPrompt = `You are a production planning expert assessing work order schedule risks.
+Respond ONLY with a JSON object matching this schema:
+{
+  "delay_risk": "none" | "low" | "medium" | "high" | "critical",
+  "risk_summary": "string (2-3 sentences)",
+  "risk_factors": ["string", ...],
+  "recommended_actions": ["string", ...],
+  "expedite_required": true | false,
+  "confidence": "low" | "medium" | "high"
+}
+Be concise and actionable for the production manager.`;
+
+    const userPrompt = `Work Order:
+- WO No: ${record.wo_no}
+- Part: ${record.Item?.name || 'Unknown'} (${record.Item?.code || 'N/A'})
+- Machine: ${record.Machine?.name || 'Unknown'}
+- Status: ${record.status}
+- Planned Qty: ${plannedQty}
+- Produced Qty: ${producedQty} (${progressPct}% complete)
+- Rejected Qty: ${rejectedQty}
+- Remaining Qty: ${remainingQty}
+- Due Date: ${record.due_date || 'Not set'}
+- Days Remaining: ${daysRemaining !== null ? daysRemaining : 'N/A'}${isOverdue ? ' ⚠ OVERDUE' : ''}
+- Planned Start: ${record.planned_start || 'N/A'}
+- Actual Start: ${record.actual_start || 'Not started'}
+- Linked Customer Order: ${record.CustomerOrder?.order_no || 'None'}
+
+Job Card Summary:
+- Total Job Cards: ${jobCards.length}
+- Open: ${openJCs.length}
+- Closed: ${closedJCs.length}
+- Avg Cycle Time (min/piece): ${avgCycleMin !== null ? avgCycleMin.toFixed(1) : 'Unknown'}
+- Est. Time to Complete at Avg Rate: ${estimatedMinRemaining !== null ? `${Math.floor(estimatedMinRemaining / 60)}h ${estimatedMinRemaining % 60}m` : 'Unknown'}`;
+
+    const result = await callClaude(systemPrompt, userPrompt, {
+      cacheKey:   `wo-ai-delay-${record.id}-${record.status}-${producedQty}`,
+      cacheTtlMs: 15 * 60 * 1000, // 15 min (progress changes frequently)
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        wo_no:            record.wo_no,
+        item:             record.Item,
+        status:           record.status,
+        progress_pct:     progressPct,
+        days_remaining:   daysRemaining,
+        is_overdue:       isOverdue,
+        remaining_qty:    remainingQty,
+        avg_cycle_min:    avgCycleMin !== null ? parseFloat(avgCycleMin.toFixed(2)) : null,
+        open_job_cards:   openJCs.length,
+        ai_available:     result.ai_available,
+        ai_cached:        result.cached,
+        ai_error:         result.ai_error,
+        ai_insight:       result.data,
+      },
+    });
+  } catch (err) {
+    console.error('[WorkOrder.getAiDelayRisk]', err);
+    return res.status(500).json({ success: false, message: 'Failed to generate AI delay risk' });
+  }
+};
+
 module.exports = {
   getAll,
   getById,
   create,
   update,
   updateStatus,
+  getAiDelayRisk,
   delete: deleteWorkOrder,
 };

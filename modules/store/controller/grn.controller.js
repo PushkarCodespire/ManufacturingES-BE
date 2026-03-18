@@ -5,6 +5,7 @@ const {
 } = require('../../../models');
 const { validateCreateGrn, validateUpdateGrn } = require('../cred/grn.cred');
 const { notifyByRoles } = require('../../../services/notification.service');
+const { callClaude } = require('../../../services/ai.service');
 
 // ── Auto-number generator ─────────────────────────────────────────────────────
 async function nextGrnNo() {
@@ -297,6 +298,101 @@ exports.approve = async (req, res) => {
   } catch (err) {
     console.error('grn.approve:', err);
     res.status(500).json({ success: false, message: 'Failed to approve GRN' });
+  }
+};
+
+// ── GET /grns/:id/ai-quality-flag ─────────────────────────────────────────────
+// Analyses a GRN using its IQC results and vendor history to produce an
+// incoming quality risk flag and recommended actions.
+exports.getAiQualityFlag = async (req, res) => {
+  try {
+    const grn = await Grn.findByPk(req.params.id, {
+      include: [
+        ...HEADER_INCLUDE,
+        {
+          model:   GrnItem,
+          as:      'Items',
+          include: [{ model: Item, as: 'Item', attributes: ['id', 'name', 'code', 'unit'] }],
+        },
+      ],
+    });
+    if (!grn) return res.status(404).json({ success: false, message: 'GRN not found' });
+
+    // Fetch IQC inspections for this GRN (no direct hasMany association)
+    const iqcResults = await IqcInspection.findAll({
+      where:      { grn_id: grn.id },
+      attributes: ['id', 'inspection_no', 'result', 'disposition', 'inspection_date'],
+    });
+
+    // Last 5 GRNs for same vendor
+    const vendorHistory = grn.vendor_id ? await Grn.findAll({
+      where:      { vendor_id: grn.vendor_id, id: { [Op.ne]: grn.id } },
+      order:      [['createdAt', 'DESC']],
+      limit:      5,
+      attributes: ['grn_no', 'status', 'received_date'],
+    }) : [];
+
+    const passCount        = iqcResults.filter((i) => i.result === 'pass').length;
+    const failCount        = iqcResults.filter((i) => i.result === 'fail').length;
+    const conditionalCount = iqcResults.filter((i) => i.result === 'conditional').length;
+    const pendingCount     = iqcResults.filter((i) => i.result === 'pending').length;
+
+    const systemPrompt = `You are an incoming quality control (IQC) manager reviewing goods receipt notes for quality risks.
+Respond ONLY with a JSON object matching this schema:
+{
+  "quality_risk": "pass" | "watch" | "hold" | "reject",
+  "risk_summary": "string (2-3 sentences)",
+  "quality_concerns": ["string", ...],
+  "recommended_actions": ["string", ...],
+  "block_inventory": true | false,
+  "escalate_to_quality": true | false,
+  "confidence": "low" | "medium" | "high"
+}
+Be practical and focused on material quality.`;
+
+    const userPrompt = `GRN Details:
+- GRN No: ${grn.grn_no}
+- Vendor: ${grn.Vendor?.name || 'Unknown'}
+- Warehouse: ${grn.Warehouse?.name || 'N/A'}
+- Received Date: ${grn.received_date || 'N/A'}
+- Status: ${grn.status}
+- Linked PO: ${grn.PurchaseOrder?.po_no || 'None'}
+
+Line Items (${(grn.Items || []).length}):
+${(grn.Items || []).map((it) => `  • ${it.Item?.name || 'Unknown'} — Ordered: ${it.qty_ordered || 0}, Received: ${it.qty_received || 0}, Batch: ${it.batch_no || 'N/A'}`).join('\n') || '  None'}
+
+IQC Inspection Results (${iqcResults.length} total):
+- Passed: ${passCount}
+- Failed: ${failCount}
+- Conditional: ${conditionalCount}
+- Pending: ${pendingCount}
+
+Vendor History (last ${vendorHistory.length} GRNs):
+${vendorHistory.length === 0
+  ? 'No previous GRNs for this vendor.'
+  : vendorHistory.map((v) => `  - ${v.grn_no}: ${v.status} (${v.received_date || 'N/A'})`).join('\n')}`;
+
+    const result = await callClaude(systemPrompt, userPrompt, {
+      cacheKey:   `grn-ai-${grn.id}-${grn.status}`,
+      cacheTtlMs: 30 * 60 * 1000,
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        grn_no:      grn.grn_no,
+        vendor:      grn.Vendor,
+        status:      grn.status,
+        iqc_summary: { pass: passCount, fail: failCount, conditional: conditionalCount, pending: pendingCount },
+        ai_available: result.ai_available,
+        ai_cached:    result.cached,
+        ai_error:     result.ai_error,
+        ai_insight:   result.data,
+      },
+    });
+  } catch (err) {
+    console.error('[grn.getAiQualityFlag]', err);
+    return res.status(500).json({ success: false, message: 'Failed to generate AI quality flag' });
   }
 };
 

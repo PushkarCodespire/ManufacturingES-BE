@@ -42,4 +42,20 @@ const moldDocUpload = multer({
   fileFilter,
 });
 
-module.exports = { moldDocUpload };
+// ── Vision / AI image uploader (memory storage — no disk write) ──────────────
+// Keeps the file in req.file.buffer so the controller can base64-encode it
+// and pass it to Claude Vision. Accepts only images and PDFs, max 5 MB.
+const VISION_MIME = /^(image\/(jpeg|png|webp)|application\/pdf)$/;
+
+const visionFilter = (_req, file, cb) => {
+  if (VISION_MIME.test(file.mimetype)) return cb(null, true);
+  cb(new Error('Vision AI accepts JPEG, PNG, WebP images or PDF only.'));
+};
+
+const visionUpload = multer({
+  storage:    multer.memoryStorage(),
+  limits:     { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  fileFilter: visionFilter,
+});
+
+module.exports = { moldDocUpload, visionUpload };

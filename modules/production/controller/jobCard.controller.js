@@ -8,6 +8,7 @@ const {
   Equipment,
 } = require('../../../models');
 const { validateCreateJobCard, validateUpdateJobCard, validateCloseJobCard } = require('../cred/jobCard.cred');
+const { callClaude } = require('../../../services/ai.service');
 
 // Terminal states — a job card in these states cannot be mutated further
 const TERMINAL_STATES = ['closed', 'cancelled'];
@@ -325,6 +326,129 @@ const getActiveIdle = async (req, res) => {
   }
 };
 
+// ── GET /job-cards/:id/ai-eta ─────────────────────────────────────────────────
+// Estimates time to completion for an active job card using the current
+// production rate and historical cycle times from the same machine.
+const getAiEta = async (req, res) => {
+  try {
+    const record = await JobCard.findByPk(req.params.id, {
+      include: [
+        { model: WorkOrder, as: 'WorkOrder', attributes: ['id', 'wo_no', 'planned_qty', 'produced_qty', 'rejected_qty', 'planned_end'] },
+        { model: Machine,   as: 'Machine',   attributes: ['id', 'name'] },
+        { model: User,      as: 'Operator',  attributes: ['id', 'name'] },
+      ],
+    });
+    if (!record) return res.status(404).json({ success: false, message: 'Job card not found' });
+
+    // Historical cycle times from last 10 closed job cards on same machine
+    const history = record.machine_id ? await JobCard.findAll({
+      where: {
+        machine_id:        record.machine_id,
+        id:                { [Op.ne]: record.id },
+        status:            'closed',
+        cycle_time_actual: { [Op.ne]: null },
+      },
+      order:      [['end_time', 'DESC']],
+      limit:      10,
+      attributes: ['id', 'job_no', 'cycle_time_actual', 'qty_produced', 'qty_rejected', 'end_time'],
+    }) : [];
+
+    const histAvgCycle = history.length > 0
+      ? history.reduce((s, h) => s + parseFloat(h.cycle_time_actual), 0) / history.length
+      : null;
+
+    const now          = new Date();
+    const elapsedMin   = record.start_time ? Math.round((now - new Date(record.start_time)) / 60000) : null;
+    const qtyProduced  = parseFloat(record.qty_produced  || 0);
+    const qtyRejected  = parseFloat(record.qty_rejected  || 0);
+    const woPlannedQty = record.WorkOrder ? parseFloat(record.WorkOrder.planned_qty || 0) : 0;
+    const woProducedQty = record.WorkOrder ? parseFloat(record.WorkOrder.produced_qty || 0) : 0;
+    const woRemainingQty = Math.max(0, woPlannedQty - woProducedQty);
+
+    // Current cycle rate from this job card (pieces/min)
+    const currentCycleMin = qtyProduced > 0 && elapsedMin
+      ? elapsedMin / qtyProduced
+      : null;
+
+    // Use current rate if available, otherwise historical avg
+    const effectiveCycleMin = currentCycleMin || histAvgCycle;
+    const estMinToComplete  = effectiveCycleMin && woRemainingQty
+      ? Math.round(effectiveCycleMin * woRemainingQty)
+      : null;
+    const estCompletionTime = estMinToComplete !== null
+      ? new Date(now.getTime() + estMinToComplete * 60 * 1000).toISOString()
+      : null;
+
+    const woDue    = record.WorkOrder?.planned_end;
+    const onTrack  = woDue && estCompletionTime ? new Date(estCompletionTime) <= new Date(woDue) : null;
+
+    const systemPrompt = `You are a production floor supervisor assessing job card completion estimates.
+Respond ONLY with a JSON object matching this schema:
+{
+  "on_track": true | false | null,
+  "eta_assessment": "string (1-2 sentences on whether the job will finish on time)",
+  "current_rate_assessment": "string (is the current production rate acceptable?)",
+  "risk_factors": ["string", ...],
+  "recommended_actions": ["string", ...],
+  "confidence": "low" | "medium" | "high"
+}
+Focus on practical actions the supervisor can take immediately.`;
+
+    const fmt = (min) => min != null ? `${Math.floor(min / 60)}h ${min % 60}m` : 'Unknown';
+
+    const userPrompt = `Job Card:
+- Job No: ${record.job_no}
+- Machine: ${record.Machine?.name || 'Unknown'}
+- Operator: ${record.Operator?.name || 'Unknown'}
+- Status: ${record.status}
+- Started: ${record.start_time || 'Not started'}
+- Elapsed Time: ${elapsedMin !== null ? fmt(elapsedMin) : 'N/A'}
+- Qty Produced (this JC): ${qtyProduced}
+- Qty Rejected (this JC): ${qtyRejected}
+
+Parent Work Order (${record.WorkOrder?.wo_no || 'N/A'}):
+- Planned Qty: ${woPlannedQty}
+- Produced So Far: ${woProducedQty}
+- Remaining Qty: ${woRemainingQty}
+- Due Date: ${woDue || 'Not set'}
+
+Production Rates:
+- Current Cycle Time: ${currentCycleMin != null ? `${currentCycleMin.toFixed(1)} min/piece` : 'Not yet calculable'}
+- Historical Avg (last ${history.length} jobs, same machine): ${histAvgCycle != null ? `${histAvgCycle.toFixed(1)} min/piece` : 'No history'}
+- Est. Time to Complete WO: ${fmt(estMinToComplete)}
+- Est. Completion Time: ${estCompletionTime ? new Date(estCompletionTime).toLocaleString('en-IN') : 'Unknown'}
+- On Track for Due Date: ${onTrack !== null ? (onTrack ? 'Yes' : 'No — will be late') : 'Cannot determine'}`;
+
+    const result = await callClaude(systemPrompt, userPrompt, {
+      cacheKey:   `jc-ai-eta-${record.id}-${qtyProduced}`,
+      cacheTtlMs: 10 * 60 * 1000, // 10 min
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        job_no:               record.job_no,
+        machine:              record.Machine,
+        status:               record.status,
+        elapsed_min:          elapsedMin,
+        qty_produced:         qtyProduced,
+        wo_remaining_qty:     woRemainingQty,
+        current_cycle_min:    currentCycleMin !== null ? parseFloat(currentCycleMin.toFixed(2)) : null,
+        hist_avg_cycle_min:   histAvgCycle    !== null ? parseFloat(histAvgCycle.toFixed(2))    : null,
+        est_completion_time:  estCompletionTime,
+        on_track:             onTrack,
+        ai_available:         result.ai_available,
+        ai_cached:            result.cached,
+        ai_error:             result.ai_error,
+        ai_insight:           result.data,
+      },
+    });
+  } catch (err) {
+    console.error('[JobCard.getAiEta]', err);
+    return res.status(500).json({ success: false, message: 'Failed to generate AI ETA' });
+  }
+};
+
 module.exports = {
   getAll,
   getById,
@@ -333,5 +457,6 @@ module.exports = {
   close,
   cancel,
   getActiveIdle,
+  getAiEta,
   delete: deleteJobCard,
 };
