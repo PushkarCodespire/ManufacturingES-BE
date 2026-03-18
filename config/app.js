@@ -1,7 +1,6 @@
 const express      = require('express');
 const cors         = require('cors');
 const cookieParser = require('cookie-parser');
-const path         = require('path');
 const swaggerUi    = require('swagger-ui-express');
 require('dotenv').config();
 
@@ -36,9 +35,6 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
     filter: true,
   },
 }));
-
-// Serve uploaded files as static assets — /uploads/filename.jpg
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // Health check
 app.get('/health', (req, res) => {

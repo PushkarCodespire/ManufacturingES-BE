@@ -2,29 +2,16 @@ const express  = require('express');
 const router   = express.Router();
 const multer   = require('multer');
 const path     = require('path');
-const fs       = require('fs');
-const { authenticate } = require('../config/middleware');
+const { authenticate }            = require('../config/middleware');
+const { uploadBuffer, isConfigured } = require('../config/cloudinary');
 
-// Ensure uploads directory exists
-const UPLOAD_DIR = path.join(__dirname, '..', 'uploads');
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-}
+// ── In-memory storage (no disk writes — required for Cloudinary + Render) ─────
+const memStorage = multer.memoryStorage();
 
-// Multer storage config — saves to /uploads with unique filename
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
-  filename: (_req, file, cb) => {
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    const ext = path.extname(file.originalname);
-    cb(null, `${uniqueSuffix}${ext}`);
-  },
-});
-
-// Accept images only, max 5MB
+// Accept images only, max 5 MB
 const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  storage: memStorage,
+  limits:  { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const allowed = /jpeg|jpg|png|gif|webp|svg/;
     const extOk   = allowed.test(path.extname(file.originalname).toLowerCase());
@@ -34,12 +21,12 @@ const upload = multer({
   },
 });
 
-// Accept documents (PDF + images), max 10MB
+// Accept documents (PDF + images), max 10 MB
 const ALLOWED_DOC_EXTS  = ['pdf', 'jpg', 'jpeg', 'png'];
 const ALLOWED_DOC_MIMES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
 const uploadDoc = multer({
-  storage,
-  limits: { fileSize: 10 * 1024 * 1024 },
+  storage: memStorage,
+  limits:  { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const ext  = path.extname(file.originalname).toLowerCase().replace('.', '');
     const mime = file.mimetype;
@@ -48,55 +35,86 @@ const uploadDoc = multer({
   },
 });
 
-// ─── POST /api/upload ───────────────────────────────────────────────────────
-router.post('/', authenticate, upload.single('image'), (req, res) => {
+// ─── POST /api/upload ─────────────────────────────────────────────────────────
+router.post('/', authenticate, upload.single('image'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ success: false, message: 'No file uploaded' });
   }
 
-  // Build the URL path that maps to the static serve
-  const fileUrl = `/uploads/${req.file.filename}`;
+  try {
+    let fileUrl;
 
-  return res.json({
-    success:  true,
-    message:  'File uploaded successfully',
-    data: {
-      url:      fileUrl,
-      filename: req.file.filename,
-      size:     req.file.size,
-      mimetype: req.file.mimetype,
-    },
-  });
+    if (isConfigured) {
+      // Upload buffer to Cloudinary
+      fileUrl = await uploadBuffer(req.file.buffer, {
+        folder:        'dynatech/uploads',
+        resource_type: 'image',
+      });
+    } else {
+      // Local dev fallback — base64 data URL (images only, dev use)
+      const b64  = req.file.buffer.toString('base64');
+      fileUrl    = `data:${req.file.mimetype};base64,${b64}`;
+    }
+
+    return res.json({
+      success:  true,
+      message:  'File uploaded successfully',
+      data: {
+        url:      fileUrl,
+        filename: req.file.originalname,
+        size:     req.file.size,
+        mimetype: req.file.mimetype,
+      },
+    });
+  } catch (err) {
+    console.error('[upload]', err);
+    return res.status(500).json({ success: false, message: 'Upload failed: ' + err.message });
+  }
 });
 
-// ─── POST /api/upload/document ──────────────────────────────────────────────
-// For RFQ drawings, item datasheets, etc. Accepts PDF + PNG/JPG, max 10MB.
-router.post('/document', authenticate, uploadDoc.single('file'), (req, res) => {
+// ─── POST /api/upload/document ────────────────────────────────────────────────
+// For RFQ drawings, item datasheets, etc. Accepts PDF + PNG/JPG, max 10 MB.
+router.post('/document', authenticate, uploadDoc.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ success: false, message: 'No file uploaded' });
   }
 
-  const fileUrl = `/uploads/${req.file.filename}`;
+  try {
+    let fileUrl;
 
-  return res.json({
-    success: true,
-    message: 'Document uploaded successfully',
-    data: {
-      url:           fileUrl,
-      filename:      req.file.filename,
-      original_name: req.file.originalname,
-      size:          req.file.size,
-      mimetype:      req.file.mimetype,
-    },
-  });
+    if (isConfigured) {
+      const isPdf        = req.file.mimetype === 'application/pdf';
+      fileUrl = await uploadBuffer(req.file.buffer, {
+        folder:        'dynatech/documents',
+        resource_type: isPdf ? 'raw' : 'image',
+        use_filename:  true,
+        unique_filename: true,
+      });
+    } else {
+      const b64  = req.file.buffer.toString('base64');
+      fileUrl    = `data:${req.file.mimetype};base64,${b64}`;
+    }
+
+    return res.json({
+      success: true,
+      message: 'Document uploaded successfully',
+      data: {
+        url:           fileUrl,
+        filename:      req.file.originalname,
+        original_name: req.file.originalname,
+        size:          req.file.size,
+        mimetype:      req.file.mimetype,
+      },
+    });
+  } catch (err) {
+    console.error('[upload/document]', err);
+    return res.status(500).json({ success: false, message: 'Upload failed: ' + err.message });
+  }
 });
 
 // Error handling for multer
 router.use((err, _req, res, _next) => {
-  if (err instanceof multer.MulterError) {
-    return res.status(400).json({ success: false, message: err.message });
-  }
-  if (err) {
+  if (err instanceof multer.MulterError || err) {
     return res.status(400).json({ success: false, message: err.message });
   }
 });

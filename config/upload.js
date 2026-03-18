@@ -1,30 +1,15 @@
 /**
  * Multer file-upload configuration
  * ─────────────────────────────────────────────────────────────────────────────
- * Files are saved to:  /api/uploads/<subfolder>/<timestamp>_<originalname>
- * They are served at:  http://localhost:5000/uploads/<subfolder>/...
- *   (express.static for /uploads is registered in config/app.js)
+ * All uploads go to Cloudinary via uploadBuffer() when CLOUDINARY_CLOUD_NAME
+ * is set (production / Render).  Local dev falls back gracefully — the buffer
+ * is available via req.file.buffer for controllers to handle directly.
+ *
+ * NOTE: diskStorage is intentionally removed — Render's filesystem is ephemeral.
  */
 
 const multer = require('multer');
 const path   = require('path');
-const fs     = require('fs');
-
-/** Create diskStorage for a given subfolder, auto-creating the dir if needed */
-const makeStorage = (subfolder) => {
-  const dest = path.join(__dirname, '..', 'uploads', subfolder);
-  if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
-
-  return multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, dest),
-    filename:    (_req, file, cb) => {
-      // <timestamp>_<sanitised-original-name>  e.g.  1710000000000_spec_sheet.pdf
-      const ts   = Date.now();
-      const safe = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-      cb(null, `${ts}_${safe}`);
-    },
-  });
-};
 
 /** Allowed MIME / extension whitelist */
 const ALLOWED_EXT = /pdf|doc|docx|xls|xlsx|jpg|jpeg|png|gif|bmp|webp|svg|txt|csv/;
@@ -35,14 +20,15 @@ const fileFilter = (_req, file, cb) => {
   cb(new Error(`File type ".${ext}" is not allowed. Allowed: PDF, Word, Excel, images, text.`));
 };
 
-// ── Mold document uploader ──────────────────────────────────────────────────
+// ── Mold document uploader ────────────────────────────────────────────────────
+// Uses memoryStorage so req.file.buffer is available for Cloudinary upload.
 const moldDocUpload = multer({
-  storage:    makeStorage('mold-documents'),
+  storage:    multer.memoryStorage(),
   limits:     { fileSize: 20 * 1024 * 1024 }, // 20 MB
   fileFilter,
 });
 
-// ── Vision / AI image uploader (memory storage — no disk write) ──────────────
+// ── Vision / AI image uploader (memory storage — no disk write) ───────────────
 // Keeps the file in req.file.buffer so the controller can base64-encode it
 // and pass it to Claude Vision. Accepts only images and PDFs, max 5 MB.
 const VISION_MIME = /^(image\/(jpeg|png|webp)|application\/pdf)$/;
