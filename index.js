@@ -58,6 +58,12 @@ const IS_DEV  = process.env.NODE_ENV !== 'production';
       await runMigrations();
     }
 
+    // ── SEED_ON_START: run production seed if env var is set ─────────────
+    if (process.env.SEED_ON_START === 'true') {
+      const { seedProduction } = require('./seeders/seed-production');
+      await seedProduction();
+    }
+
     // ── Step 3 (DEV only): Pre-sync column-type fixes ────────────────────
     //    Sequelize alter:true generates TYPE changes WITHOUT a USING clause,
     //    which PostgreSQL rejects for non-trivial casts (e.g. INTEGER → VARCHAR).
