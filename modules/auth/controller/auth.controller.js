@@ -450,47 +450,4 @@ const logout = async (req, res) => {
   return res.json({ success: true, message: 'Logged out successfully' });
 };
 
-// ─── EMERGENCY RESET (temporary — remove after use) ──────────────────────────
-// Gate: requires RESET_SECRET env var to match body.reset_secret
-// Usage: POST /api/auth/emergency-reset { reset_secret, employee_id }
-// Remove this function and its route once the locked account is recovered.
-const emergencyReset = async (req, res) => {
-  try {
-    const { reset_secret, employee_id } = req.body;
-    const HARDCODED_SECRET = 'DT-RECOVER-7X2M9K';
-
-    if (!reset_secret || reset_secret !== HARDCODED_SECRET) {
-      return res.status(403).json({ success: false, message: 'Invalid reset secret' });
-    }
-    if (!employee_id?.trim()) {
-      return res.status(400).json({ success: false, message: 'employee_id is required' });
-    }
-
-    const user = await User.findOne({ where: { employee_id: employee_id.trim() } });
-    if (!user) {
-      return res.status(404).json({ success: false, message: `No employee found with ID: ${employee_id}` });
-    }
-
-    const DEFAULT_PASS = 'Dynatech@123';
-    const hash = await hashPassword(DEFAULT_PASS);
-    await user.update({ password_hash: hash, is_first_login: false });
-
-    // Clear lockout record so login isn't blocked
-    await LoginAttempt.destroy({ where: { employee_id: employee_id.trim() } });
-
-    // Revoke all active sessions
-    await Session.update({ is_revoked: true }, { where: { user_id: user.id, is_revoked: false } });
-
-    console.warn(`[EMERGENCY_RESET] Password reset for ${employee_id} at ${new Date().toISOString()}`);
-
-    return res.json({
-      success: true,
-      message: `Password reset to Dynatech@123 for ${user.name} (${user.employee_id})`,
-    });
-  } catch (err) {
-    console.error('[emergencyReset]', err);
-    return res.status(500).json({ success: false, message: 'Server error' });
-  }
-};
-
-module.exports = { login, refresh, changePassword, resetPassword, getMe, logout, emergencyReset };
+module.exports = { login, refresh, changePassword, resetPassword, getMe, logout };
