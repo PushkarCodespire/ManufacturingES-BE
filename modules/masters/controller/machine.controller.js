@@ -232,6 +232,12 @@ const updateMachineParameters = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Parameters array required' });
     }
 
+    // Validate each entry has a parameter_id
+    const invalid = parameters.filter((p) => !p.parameter_id);
+    if (invalid.length) {
+      return res.status(400).json({ success: false, message: 'Each parameter entry must include a parameter_id (integer FK to production_parameters)' });
+    }
+
     await MachineParameter.destroy({ where: { machine_id: machine.id } });
     for (const p of parameters) {
       await MachineParameter.create({

@@ -6,7 +6,7 @@ const GrnItem = sequelize.define('GrnItem', {
   grn_id:       { type: DataTypes.UUID, allowNull: false },      // FK → grns.id (UUID)
   item_id:      { type: DataTypes.INTEGER, allowNull: true },    // FK → items.id (INTEGER)
   item_code:    { type: DataTypes.STRING(100), allowNull: true },
-  description:  { type: DataTypes.STRING(255), allowNull: false },
+  description:  { type: DataTypes.STRING(255), allowNull: true, defaultValue: null },
   qty_ordered:  { type: DataTypes.DECIMAL(12, 3), allowNull: true },
   qty_received: { type: DataTypes.DECIMAL(12, 3), allowNull: false },
   unit:         { type: DataTypes.STRING(30), defaultValue: 'pcs' },

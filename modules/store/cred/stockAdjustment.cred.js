@@ -1,11 +1,14 @@
 const Joi = require('joi');
 
 const adjItemSchema = Joi.object({
-  item_id:   Joi.number().integer().positive().required().messages({ 'any.required': 'Item is required for each line' }),
-  qty_delta: Joi.number().required().messages({ 'any.required': 'Quantity delta is required' }),
-  unit:      Joi.string().trim().max(20).optional().default('pcs'),
-  notes:     Joi.string().trim().max(500).optional().allow('', null),
-});
+  item_id:    Joi.number().integer().positive().required().messages({ 'any.required': 'Item is required for each line' }),
+  qty_actual: Joi.number().optional(),
+  qty_book:   Joi.number().optional(),
+  qty_diff:   Joi.number().optional(),
+  qty_delta:  Joi.number().optional(),
+  unit:       Joi.string().trim().max(20).optional().default('pcs'),
+  notes:      Joi.string().trim().max(500).optional().allow('', null),
+}).or('qty_actual', 'qty_delta').messages({ 'object.missing': 'Either qty_actual or qty_delta is required per item' });
 
 const createAdjSchema = Joi.object({
   warehouse_id: Joi.number().integer().positive().required().messages({ 'any.required': 'Warehouse is required' }),

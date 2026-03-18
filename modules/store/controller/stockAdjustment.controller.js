@@ -86,7 +86,15 @@ exports.create = async (req, res) => {
     });
 
     if (items.length) {
-      await StockAdjustmentItem.bulkCreate(items.map((it) => ({ ...it, adj_id: adj.id })));
+      await StockAdjustmentItem.bulkCreate(items.map((it) => {
+        // Support both API shapes:
+        //   new: { item_id, qty_actual, qty_book }  → qty_diff computed
+        //   old: { item_id, qty_delta }              → qty_actual = qty_delta, qty_book = 0
+        const qty_actual = parseFloat(it.qty_actual ?? it.qty_delta ?? 0);
+        const qty_book   = parseFloat(it.qty_book   ?? 0);
+        const qty_diff   = it.qty_diff !== undefined ? parseFloat(it.qty_diff) : (qty_actual - qty_book);
+        return { item_id: it.item_id, qty_book, qty_actual, qty_diff, unit: it.unit || 'pcs', notes: it.notes || null, adj_id: adj.id };
+      }));
     }
 
     const full = await StockAdjustment.findByPk(adj.id, {
@@ -115,7 +123,12 @@ exports.update = async (req, res) => {
     if (Array.isArray(items)) {
       await StockAdjustmentItem.destroy({ where: { adj_id: adj.id } });
       if (items.length) {
-        await StockAdjustmentItem.bulkCreate(items.map((it) => ({ ...it, adj_id: adj.id })));
+        await StockAdjustmentItem.bulkCreate(items.map((it) => {
+          const qty_actual = parseFloat(it.qty_actual ?? it.qty_delta ?? 0);
+          const qty_book   = parseFloat(it.qty_book   ?? 0);
+          const qty_diff   = it.qty_diff !== undefined ? parseFloat(it.qty_diff) : (qty_actual - qty_book);
+          return { item_id: it.item_id, qty_book, qty_actual, qty_diff, unit: it.unit || 'pcs', notes: it.notes || null, adj_id: adj.id };
+        }));
       }
     }
 

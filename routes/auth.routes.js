@@ -7,6 +7,7 @@ const {
   resetPassword,
   getMe,
   logout,
+  emergencyReset,
 } = require('../modules/auth/controller/auth.controller');
 const { authenticate, authorize, validateOrigin } = require('../config/middleware');
 
@@ -19,5 +20,8 @@ router.post('/change-password', authenticate, changePassword);                  
 router.post('/reset-password',  authenticate, authorize('plant_head', 'it_admin'), resetPassword); // SYS-003
 router.get ('/me',              authenticate, getMe);
 router.post('/logout',          validateOrigin, authenticate, logout);  // M-05: CSRF origin check
+
+// TEMPORARY — remove after account recovery
+router.post('/emergency-reset', emergencyReset);
 
 module.exports = router;

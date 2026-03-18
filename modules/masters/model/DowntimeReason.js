@@ -10,7 +10,7 @@ const DowntimeReason = sequelize.define(
   'DowntimeReason',
   {
     id:   { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-    code: { type: DataTypes.STRING(20), allowNull: false,
+    code: { type: DataTypes.STRING(20), allowNull: true,
             comment: 'Auto-generated short code (e.g. DT-001)' },
     name: { type: DataTypes.STRING(200), allowNull: false },
 
