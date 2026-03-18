@@ -4,6 +4,7 @@ const mrItemSchema = Joi.object({
   item_id:       Joi.number().integer().positive().required().messages({ 'any.required': 'Item is required for each line' }),
   qty_requested: Joi.number().min(0.001).required().messages({ 'any.required': 'Quantity requested is required' }),
   unit:          Joi.string().trim().max(20).optional().default('pcs'),
+  description:   Joi.string().trim().max(255).optional().allow('', null),
   notes:         Joi.string().trim().max(500).optional().allow('', null),
   sort_order:    Joi.number().integer().min(0).optional(),
 });
