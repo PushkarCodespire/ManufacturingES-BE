@@ -45,6 +45,25 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', app: 'Dynatech ONE', version: '1.0.0' });
 });
 
+// DB diagnostic — shows table + row counts to confirm DB is seeded
+// Remove once everything is confirmed working
+app.get('/dbcheck', async (req, res) => {
+  try {
+    const { sequelize } = require('../models');
+    const tables = await sequelize.getQueryInterface().showAllTables();
+    const counts = {};
+    for (const t of ['users', 'roles', 'departments', 'sites']) {
+      try {
+        const [rows] = await sequelize.query(`SELECT COUNT(*) as count FROM "${t}"`);
+        counts[t] = parseInt(rows[0].count, 10);
+      } catch { counts[t] = 'table missing'; }
+    }
+    res.json({ total_tables: tables.length, counts });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // All API routes
 app.use('/api', routes);
 
