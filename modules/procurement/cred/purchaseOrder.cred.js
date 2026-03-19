@@ -12,6 +12,8 @@ const poItemSchema = Joi.object({
 const receiveItemSchema = Joi.object({
   id:           Joi.string().uuid().required().messages({ 'any.required': 'Item line ID is required' }),
   qty_received: Joi.number().min(0).required().messages({ 'any.required': 'Received quantity is required' }),
+  item_name:    Joi.any().strip(),   // display-only field; strip if frontend sends it
+  qty_ordered:  Joi.any().strip(),   // display-only field; strip if frontend sends it
 });
 
 const createPoSchema = Joi.object({
@@ -35,8 +37,26 @@ const receivePoSchema = Joi.object({
   items: Joi.array().items(receiveItemSchema).min(1).optional(),
 });
 
-const validateCreatePo  = (data) => createPoSchema.validate(data,  { abortEarly: false });
-const validateUpdatePo  = (data) => updatePoSchema.validate(data,  { abortEarly: false });
-const validateReceivePo = (data) => receivePoSchema.validate(data, { abortEarly: false });
+const cancelPoSchema = Joi.object({
+  cancel_reason: Joi.string().trim().max(1000).required()
+    .messages({ 'any.required': 'Cancel reason is required' }),
+});
 
-module.exports = { validateCreatePo, validateUpdatePo, validateReceivePo };
+const rejectPoSchema = Joi.object({
+  approval_notes: Joi.string().trim().max(1000).required()
+    .messages({ 'any.required': 'Rejection reason is required' }),
+});
+
+const validateCreatePo       = (data) => createPoSchema.validate(data,  { abortEarly: false });
+const validateUpdatePo       = (data) => updatePoSchema.validate(data,  { abortEarly: false });
+const validateReceivePo      = (data) => receivePoSchema.validate(data, { abortEarly: false, stripUnknown: { arrays: true, objects: true } });
+const validateCancelPo       = (data) => cancelPoSchema.validate(data,  { abortEarly: false });
+const validateRejectPo       = (data) => rejectPoSchema.validate(data,  { abortEarly: false });
+
+module.exports = {
+  validateCreatePo,
+  validateUpdatePo,
+  validateReceivePo,
+  validateCancelPo,
+  validateRejectPo,
+};

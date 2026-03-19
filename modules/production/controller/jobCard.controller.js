@@ -6,12 +6,22 @@ const {
   User,
   LotoExecution,
   Equipment,
+  RoutingStep,
+  WorkCenter,
 } = require('../../../models');
 const { validateCreateJobCard, validateUpdateJobCard, validateCloseJobCard } = require('../cred/jobCard.cred');
 const { callClaude } = require('../../../services/ai.service');
 
 // Terminal states — a job card in these states cannot be mutated further
 const TERMINAL_STATES = ['closed', 'cancelled'];
+
+// Shared eager-load for routing step + work center
+const ROUTING_INCLUDE = {
+  model: RoutingStep,
+  attributes: ['id', 'step_no', 'operation_name', 'work_center_id', 'cycle_time_min', 'setup_time_min'],
+  include: [{ model: WorkCenter, attributes: ['id', 'name', 'type'] }],
+  required: false,
+};
 
 // ── Auto-number generator ────────────────────────────────────────────────────
 async function nextJobNo() {
@@ -42,10 +52,11 @@ const getAll = async (req, res) => {
     const records = await JobCard.findAll({
       where,
       include: [
-        { model: WorkOrder, as: 'WorkOrder', attributes: ['id', 'wo_no'] },
+        { model: WorkOrder, as: 'WorkOrder', attributes: ['id', 'wo_no', 'planned_qty', 'produced_qty'] },
         { model: Machine,   as: 'Machine',   attributes: ['id', 'name'] },
         { model: User,      as: 'Operator',  attributes: ['id', 'name'] },
         { model: User,      as: 'Creator',   attributes: ['id', 'name'] },
+        ROUTING_INCLUDE,
       ],
       order: [['created_at', 'DESC']],
     });
@@ -61,10 +72,11 @@ const getById = async (req, res) => {
   try {
     const record = await JobCard.findByPk(req.params.id, {
       include: [
-        { model: WorkOrder, as: 'WorkOrder', attributes: ['id', 'wo_no'] },
+        { model: WorkOrder, as: 'WorkOrder', attributes: ['id', 'wo_no', 'planned_qty', 'produced_qty'] },
         { model: Machine,   as: 'Machine',   attributes: ['id', 'name'] },
         { model: User,      as: 'Operator',  attributes: ['id', 'name'] },
         { model: User,      as: 'Creator',   attributes: ['id', 'name'] },
+        ROUTING_INCLUDE,
       ],
     });
     if (!record) return res.status(404).json({ success: false, message: 'Job card not found' });
@@ -217,16 +229,24 @@ const close = async (req, res) => {
       cycleTimeActual = Math.round((netMin / qtyProduced) * 100) / 100;
     }
 
-    await record.update({
+    // OEE efficiency: standard CT / actual CT × 100  (>100% = faster than standard = good)
+    let efficiencyPct = null;
+    if (cycleTimeActual && record.cycle_time_min && parseFloat(record.cycle_time_min) > 0) {
+      efficiencyPct = Math.round((parseFloat(record.cycle_time_min) / cycleTimeActual) * 100);
+    }
+
+    const closeUpdate = {
       status: 'closed',
       end_time: endTime,
       qty_produced: qtyProduced,
       qty_rejected: qtyRejected,
       break_minutes: breakMin,
       cycle_time_actual: cycleTimeActual,
-      ...(notes !== undefined && { notes }),
       updated_by: req.user.id,
-    });
+    };
+    if (efficiencyPct !== null) closeUpdate.efficiency_pct = efficiencyPct;
+    if (notes !== undefined)    closeUpdate.notes = notes;
+    await record.update(closeUpdate);
 
     // M-01: Roll up quantities into the parent WorkOrder using a SUM recount —
     // idempotent and concurrent-safe. Incrementing (wo.qty + jobCard.qty) drifts
@@ -322,6 +342,77 @@ const getActiveIdle = async (req, res) => {
     return res.json({ success: true, data });
   } catch (err) {
     console.error('[JobCard.getActiveIdle]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// ── GET /job-cards/capacity-plan ──────────────────────────────────────────────
+// Returns per-work-center load from open routing-based job cards.
+// load_min = sum(remaining_qty × cycle_time_min + setup_time_min) per work center.
+const getCapacityPlan = async (req, res) => {
+  try {
+    const openCards = await JobCard.findAll({
+      where: { status: 'open', routing_step_id: { [Op.ne]: null } },
+      include: [
+        { model: WorkOrder, as: 'WorkOrder', attributes: ['id', 'wo_no', 'planned_qty', 'produced_qty'] },
+        { model: RoutingStep, attributes: ['id', 'work_center_id', 'cycle_time_min', 'setup_time_min', 'operation_name'], required: true },
+      ],
+    });
+
+    const wcMap = {};
+    for (const jc of openCards) {
+      const step = jc.RoutingStep;
+      if (!step || !step.work_center_id) continue;
+      const wcId = step.work_center_id;
+      if (!wcMap[wcId]) wcMap[wcId] = { total_load_min: 0, job_cards: [] };
+
+      const remaining = Math.max(
+        0,
+        parseFloat(jc.WorkOrder ? jc.WorkOrder.planned_qty : 0) -
+        parseFloat(jc.WorkOrder ? jc.WorkOrder.produced_qty : 0)
+      );
+      const cycleMin = parseFloat(step.cycle_time_min || 0);
+      const setupMin = parseFloat(step.setup_time_min || 0);
+      const loadMin  = remaining * cycleMin + setupMin;
+
+      wcMap[wcId].total_load_min += loadMin;
+      wcMap[wcId].job_cards.push({
+        job_no:         jc.job_no,
+        wo_no:          jc.WorkOrder ? jc.WorkOrder.wo_no : null,
+        operation_name: step.operation_name,
+        remaining_qty:  remaining,
+        cycle_time_min: cycleMin,
+        load_min:       Math.round(loadMin * 100) / 100,
+      });
+    }
+
+    const wcIds       = Object.keys(wcMap).map(Number);
+    const workCenters = wcIds.length > 0
+      ? await WorkCenter.findAll({ where: { id: wcIds }, attributes: ['id', 'name', 'type', 'capacity_per_shift', 'capacity_uom'] })
+      : [];
+
+    const SHIFT_MIN = 480; // 8-hour shift
+    const data = workCenters.map((wc) => {
+      const entry   = wcMap[wc.id] || { total_load_min: 0, job_cards: [] };
+      const loadMin = Math.round(entry.total_load_min);
+      const loadPct = Math.round((loadMin / SHIFT_MIN) * 100);
+      return {
+        work_center_id:     wc.id,
+        work_center_name:   wc.name,
+        work_center_type:   wc.type,
+        capacity_per_shift: parseFloat(wc.capacity_per_shift || 0),
+        capacity_uom:       wc.capacity_uom,
+        total_load_min:     loadMin,
+        shift_capacity_min: SHIFT_MIN,
+        load_pct:           loadPct,
+        overloaded:         loadPct > 100,
+        job_cards:          entry.job_cards,
+      };
+    }).sort((a, b) => b.load_pct - a.load_pct);
+
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error('[JobCard.getCapacityPlan]', err);
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 };
@@ -457,6 +548,7 @@ module.exports = {
   close,
   cancel,
   getActiveIdle,
+  getCapacityPlan,
   getAiEta,
   delete: deleteJobCard,
 };

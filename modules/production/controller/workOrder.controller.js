@@ -7,6 +7,8 @@ const {
   Shift,
   CustomerOrder,
   User,
+  Routing,
+  RoutingStep,
 } = require('../../../models');
 const { validateCreateWorkOrder, validateUpdateWorkOrder, validateUpdateStatus } = require('../cred/workOrder.cred');
 const { callClaude } = require('../../../services/ai.service');
@@ -44,6 +46,7 @@ const getAll = async (req, res) => {
         { model: Machine,       as: 'Machine',        attributes: ['id', 'name'] },
         { model: CustomerOrder, as: 'CustomerOrder',  attributes: ['id', 'order_no'] },
         { model: User,          as: 'Creator',        attributes: ['id', 'name'] },
+        { model: JobCard,       as: 'JobCards',       attributes: ['id', 'status', 'routing_step_id'], separate: true },
       ],
       order: [['created_at', 'DESC']],
     });
@@ -130,7 +133,8 @@ const update = async (req, res) => {
 // ── PATCH /work-orders/:id/status ────────────────────────────────────────────
 const VALID_TRANSITIONS = {
   draft:       ['open'],
-  open:        ['in_progress', 'on_hold', 'cancelled'],
+  open:        ['released', 'in_progress', 'on_hold', 'cancelled'],
+  released:    ['in_progress', 'on_hold', 'cancelled'],
   in_progress: ['completed', 'on_hold', 'cancelled'],
   on_hold:     ['open', 'in_progress', 'cancelled'],
   completed:   [],
@@ -323,6 +327,65 @@ Job Card Summary:
   }
 };
 
+// ── POST /work-orders/:id/generate-job-cards ─────────────────────────────────
+const generateJobCards = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const wo = await WorkOrder.findByPk(id, { include: [{ model: Item, as: "Item" }] });
+    if (!wo) return res.status(404).json({ success: false, message: 'Work order not found' });
+    if (!['released', 'in_progress', 'draft'].includes(wo.status)) {
+      return res.status(400).json({ success: false, message: `Cannot generate job cards for a ${wo.status} work order` });
+    }
+
+    // Find active routing for this item
+    const routing = await Routing.findOne({
+      where: { item_id: wo.item_id, status: 'active' },
+      include: [{ model: RoutingStep, separate: true, order: [['step_no', 'ASC']] }],
+    });
+    if (!routing || !routing.RoutingSteps || routing.RoutingSteps.length === 0) {
+      return res.status(400).json({ success: false, message: 'No active routing found for this item. Please create and activate a routing first.' });
+    }
+
+    // Check if job cards already exist for this WO from this routing
+    const existing = await JobCard.count({ where: { work_order_id: id, routing_step_id: { [Op.ne]: null } } });
+    if (existing > 0) {
+      return res.status(400).json({ success: false, message: `${existing} routing-based job card(s) already exist for this work order.` });
+    }
+
+    // Auto-number base
+    const lastJc = await JobCard.findOne({ order: [['createdAt', 'DESC']] });
+    let counter = 1;
+    if (lastJc && lastJc.job_no) {
+      const m = lastJc.job_no.match(/(\d+)$/);
+      if (m) counter = parseInt(m[1], 10) + 1;
+    }
+
+    const year = new Date().getFullYear();
+    const cards = await Promise.all(
+      routing.RoutingSteps.sort((a, b) => a.step_no - b.step_no).map(async (step, idx) => {
+        const job_no = `JC-${year}-${String(counter + idx).padStart(4, '0')}`;
+        return JobCard.create({
+          job_no,
+          work_order_id:   id,
+          machine_id:      step.machine_id || null,
+          routing_step_id: step.id,
+          step_no:         step.step_no,
+          operation_name:  step.operation_name,
+          setup_time_min:  step.setup_time_min,
+          cycle_time_min:  step.cycle_time_min,
+          status:          'open',
+          created_by:      req.user?.id || null,
+        });
+      })
+    );
+
+    return res.json({ success: true, message: `${cards.length} job card(s) generated from routing ${routing.code}`, data: cards });
+  } catch (err) {
+    console.error('[generateJobCards]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
 module.exports = {
   getAll,
   getById,
@@ -330,5 +393,6 @@ module.exports = {
   update,
   updateStatus,
   getAiDelayRisk,
+  generateJobCards,
   delete: deleteWorkOrder,
 };

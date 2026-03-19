@@ -5,9 +5,19 @@ const {
   Vendor,
   Item,
   User,
-}= require('../../../models');
-const { validateCreatePo, validateUpdatePo, validateReceivePo } = require('../cred/purchaseOrder.cred');
+  Grn,
+  GrnItem,
+} = require('../../../models');
+const {
+  validateCreatePo,
+  validateUpdatePo,
+  validateReceivePo,
+  validateCancelPo,
+  validateRejectPo,
+} = require('../cred/purchaseOrder.cred');
 const { callClaude } = require('../../../services/ai.service');
+
+const ADMIN_ROLES = ['plant_head', 'it_admin'];
 
 // ── Auto-number generator ────────────────────────────────────────────────────
 async function nextPoNo() {
@@ -25,20 +35,38 @@ async function nextPoNo() {
   return `${prefix}${String(seq).padStart(4, '0')}`;
 }
 
+// Shared include set for detail views
+const DETAIL_INCLUDE = [
+  { model: Vendor, as: 'Vendor', attributes: ['id', 'name', 'partner_code', 'gstin', 'address', 'city', 'state', 'mobile', 'email'] },
+  { model: User,   as: 'Creator',  attributes: ['id', 'name'] },
+  { model: User,   as: 'Approver', attributes: ['id', 'name'] },
+  {
+    model: PurchaseOrderItem,
+    as: 'Items',
+    include: [{ model: Item, as: 'Item', attributes: ['id', 'name', 'code', 'unit'] }],
+  },
+];
+
 // ── GET /purchase-orders ──────────────────────────────────────────────────────
 const getAll = async (req, res) => {
   try {
-    const { search, status, vendor_id } = req.query;
+    const { search, status, vendor_id, approval_status, overdue } = req.query;
     const where = {};
-    if (search)    where.po_no     = { [Op.iLike]: `%${search}%` };
-    if (status)    where.status    = status;
-    if (vendor_id) where.vendor_id = vendor_id;
+    if (search)          where.po_no          = { [Op.iLike]: `%${search}%` };
+    if (status)          where.status         = status;
+    if (vendor_id)       where.vendor_id      = vendor_id;
+    if (approval_status) where.approval_status = approval_status;
+    if (overdue === 'true') {
+      where.expected_date = { [Op.lt]: new Date() };
+      where.status        = { [Op.notIn]: ['received', 'cancelled'] };
+    }
 
     const records = await PurchaseOrder.findAll({
       where,
       include: [
-        { model: Vendor,           as: 'Vendor',  attributes: ['id', 'name'] },
-        { model: User,             as: 'Creator', attributes: ['id', 'name'] },
+        { model: Vendor,            as: 'Vendor',   attributes: ['id', 'name', 'partner_code'] },
+        { model: User,              as: 'Creator',  attributes: ['id', 'name'] },
+        { model: User,              as: 'Approver', attributes: ['id', 'name'] },
         { model: PurchaseOrderItem, as: 'Items' },
       ],
       order: [['order_date', 'DESC'], ['created_at', 'DESC']],
@@ -55,12 +83,19 @@ const getById = async (req, res) => {
   try {
     const record = await PurchaseOrder.findByPk(req.params.id, {
       include: [
-        { model: Vendor, as: 'Vendor',  attributes: ['id', 'name'] },
-        { model: User,   as: 'Creator', attributes: ['id', 'name'] },
+        ...DETAIL_INCLUDE,
         {
-          model: PurchaseOrderItem,
-          as: 'Items',
-          include: [{ model: Item, as: 'Item', attributes: ['id', 'name', 'code', 'unit'] }],
+          model: Grn,
+          as: 'GRNs',
+          attributes: ['id', 'grn_no', 'received_date', 'status', 'invoice_no', 'notes'],
+          include: [
+            {
+              model: GrnItem,
+              as: 'Items',
+              attributes: ['id', 'item_id', 'qty_received', 'unit', 'unit_price', 'lot_no', 'remarks'],
+              include: [{ model: Item, as: 'Item', attributes: ['id', 'name', 'code'] }],
+            },
+          ],
         },
       ],
     });
@@ -79,7 +114,13 @@ const create = async (req, res) => {
     if (error) return res.status(400).json({ success: false, message: error.details[0].message });
 
     const po_no = await nextPoNo();
-    const userId = req.user.id;
+    const userId   = req.user.id;
+    const roleName = req.user.Role?.name;
+
+    // Admins get auto-approved; others start in pending_approval
+    const approval_status = ADMIN_ROLES.includes(roleName) ? 'approved' : 'pending_approval';
+    const approved_by     = ADMIN_ROLES.includes(roleName) ? userId : null;
+    const approved_at     = ADMIN_ROLES.includes(roleName) ? new Date() : null;
 
     const { items, ...poData } = value;
 
@@ -87,6 +128,9 @@ const create = async (req, res) => {
       ...poData,
       po_no,
       status: 'draft',
+      approval_status,
+      approved_by,
+      approved_at,
       created_by: userId,
       updated_by: userId,
     });
@@ -105,17 +149,7 @@ const create = async (req, res) => {
       await PurchaseOrderItem.bulkCreate(itemRows);
     }
 
-    const created = await PurchaseOrder.findByPk(record.id, {
-      include: [
-        { model: Vendor,            as: 'Vendor',  attributes: ['id', 'name'] },
-        { model: User,              as: 'Creator', attributes: ['id', 'name'] },
-        {
-          model: PurchaseOrderItem,
-          as: 'Items',
-          include: [{ model: Item, as: 'Item', attributes: ['id', 'name', 'code', 'unit'] }],
-        },
-      ],
-    });
+    const created = await PurchaseOrder.findByPk(record.id, { include: DETAIL_INCLUDE });
     return res.status(201).json({ success: true, data: created });
   } catch (err) {
     console.error('[PurchaseOrder.create]', err);
@@ -131,16 +165,22 @@ const update = async (req, res) => {
 
     const record = await PurchaseOrder.findByPk(req.params.id);
     if (!record) return res.status(404).json({ success: false, message: 'Purchase order not found' });
-    if (record.status !== 'draft') {
-      return res.status(400).json({ success: false, message: 'Only draft purchase orders can be updated' });
+    if (!['draft', 'rejected'].includes(record.status)) {
+      return res.status(400).json({ success: false, message: 'Only draft or rejected purchase orders can be updated' });
     }
 
     const { items, ...poData } = value;
     const { vendor_id, order_date, expected_date, notes } = poData;
 
+    // Re-open for approval when a rejected PO is edited
+    const approvalReset = record.approval_status === 'rejected'
+      ? { approval_status: 'pending_approval', approved_by: null, approved_at: null, approval_notes: null }
+      : {};
+
     await record.update({
       vendor_id, order_date, expected_date, notes,
       updated_by: req.user.id,
+      ...approvalReset,
     });
 
     if (Array.isArray(items)) {
@@ -160,20 +200,74 @@ const update = async (req, res) => {
       }
     }
 
-    const updated = await PurchaseOrder.findByPk(record.id, {
-      include: [
-        { model: Vendor,            as: 'Vendor',  attributes: ['id', 'name'] },
-        { model: User,              as: 'Creator', attributes: ['id', 'name'] },
-        {
-          model: PurchaseOrderItem,
-          as: 'Items',
-          include: [{ model: Item, as: 'Item', attributes: ['id', 'name', 'code', 'unit'] }],
-        },
-      ],
-    });
+    const updated = await PurchaseOrder.findByPk(record.id, { include: DETAIL_INCLUDE });
     return res.json({ success: true, data: updated });
   } catch (err) {
     console.error('[PurchaseOrder.update]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// ── PATCH /purchase-orders/:id/submit-approval ───────────────────────────────
+const submitForApproval = async (req, res) => {
+  try {
+    const record = await PurchaseOrder.findByPk(req.params.id);
+    if (!record) return res.status(404).json({ success: false, message: 'Purchase order not found' });
+    if (record.status !== 'draft') {
+      return res.status(400).json({ success: false, message: 'Only draft POs can be submitted for approval' });
+    }
+    if (record.approval_status === 'approved') {
+      return res.status(400).json({ success: false, message: 'This PO is already approved' });
+    }
+    await record.update({ approval_status: 'pending_approval', updated_by: req.user.id });
+    return res.json({ success: true, data: record });
+  } catch (err) {
+    console.error('[PurchaseOrder.submitForApproval]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// ── PATCH /purchase-orders/:id/approve ───────────────────────────────────────
+const approve = async (req, res) => {
+  try {
+    const record = await PurchaseOrder.findByPk(req.params.id);
+    if (!record) return res.status(404).json({ success: false, message: 'Purchase order not found' });
+    if (!['draft', 'pending_approval'].includes(record.approval_status)) {
+      return res.status(400).json({ success: false, message: 'This PO cannot be approved in its current state' });
+    }
+    await record.update({
+      approval_status: 'approved',
+      approved_by:     req.user.id,
+      approved_at:     new Date(),
+      approval_notes:  req.body.approval_notes || null,
+      updated_by:      req.user.id,
+    });
+    return res.json({ success: true, data: record });
+  } catch (err) {
+    console.error('[PurchaseOrder.approve]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// ── PATCH /purchase-orders/:id/reject ────────────────────────────────────────
+const reject = async (req, res) => {
+  try {
+    const { error, value } = validateRejectPo(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
+    const record = await PurchaseOrder.findByPk(req.params.id);
+    if (!record) return res.status(404).json({ success: false, message: 'Purchase order not found' });
+    if (record.approval_status !== 'pending_approval') {
+      return res.status(400).json({ success: false, message: 'Only pending-approval POs can be rejected' });
+    }
+    await record.update({
+      approval_status: 'rejected',
+      approval_notes:  value.approval_notes,
+      updated_by:      req.user.id,
+    });
+    return res.json({ success: true, data: record });
+  } catch (err) {
+    console.error('[PurchaseOrder.reject]', err);
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 };
@@ -186,10 +280,36 @@ const send = async (req, res) => {
     if (record.status !== 'draft') {
       return res.status(400).json({ success: false, message: 'Only draft purchase orders can be sent' });
     }
+    if (record.approval_status !== 'approved') {
+      return res.status(400).json({ success: false, message: 'This PO must be approved before sending to vendor' });
+    }
     await record.update({ status: 'sent', updated_by: req.user.id });
     return res.json({ success: true, data: record });
   } catch (err) {
     console.error('[PurchaseOrder.send]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// ── PATCH /purchase-orders/:id/cancel ────────────────────────────────────────
+const cancel = async (req, res) => {
+  try {
+    const { error, value } = validateCancelPo(req.body);
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
+    const record = await PurchaseOrder.findByPk(req.params.id);
+    if (!record) return res.status(404).json({ success: false, message: 'Purchase order not found' });
+    if (['received', 'cancelled'].includes(record.status)) {
+      return res.status(400).json({ success: false, message: 'This PO cannot be cancelled' });
+    }
+    await record.update({
+      status:        'cancelled',
+      cancel_reason: value.cancel_reason,
+      updated_by:    req.user.id,
+    });
+    return res.json({ success: true, data: record });
+  } catch (err) {
+    console.error('[PurchaseOrder.cancel]', err);
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 };
@@ -207,7 +327,6 @@ const receive = async (req, res) => {
 
     const { items } = value;
 
-    // Update qty_received per item line if provided
     if (Array.isArray(items) && items.length > 0) {
       for (const itData of items) {
         if (itData.id && itData.qty_received !== undefined) {
@@ -219,7 +338,6 @@ const receive = async (req, res) => {
       }
     }
 
-    // Re-fetch items to determine partial vs fully received
     const updatedItems = await PurchaseOrderItem.findAll({ where: { po_id: record.id } });
     const isPartial = updatedItems.some(
       (it) => parseFloat(it.qty_received) < parseFloat(it.qty_ordered)
@@ -251,8 +369,6 @@ const deletePurchaseOrder = async (req, res) => {
 };
 
 // ── GET /purchase-orders/:id/ai-risk-flag ─────────────────────────────────────
-// Analyses a PO for delivery and supplier risk — overdue history, lead time,
-// outstanding qty — and returns recommended actions.
 const getAiRiskFlag = async (req, res) => {
   try {
     const record = await PurchaseOrder.findByPk(req.params.id, {
@@ -268,7 +384,6 @@ const getAiRiskFlag = async (req, res) => {
     });
     if (!record) return res.status(404).json({ success: false, message: 'Purchase order not found' });
 
-    // Count open overdue POs for same vendor
     const overduePOs = record.vendor_id ? await PurchaseOrder.count({
       where: {
         vendor_id:     record.vendor_id,
@@ -345,8 +460,12 @@ module.exports = {
   getById,
   create,
   update,
+  submitForApproval,
+  approve,
+  reject,
   send,
   receive,
+  cancel,
   getAiRiskFlag,
   delete: deletePurchaseOrder,
 };

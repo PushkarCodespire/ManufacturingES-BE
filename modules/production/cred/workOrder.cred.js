@@ -35,7 +35,7 @@ const updateWorkOrderSchema = Joi.object({
 
 const updateStatusSchema = Joi.object({
   status: Joi.string()
-    .valid('draft', 'open', 'in_progress', 'on_hold', 'completed', 'cancelled')
+    .valid('draft', 'open', 'released', 'in_progress', 'on_hold', 'completed', 'cancelled')
     .required()
     .messages({ 'any.required': 'status is required', 'any.only': 'Invalid status value' }),
 });

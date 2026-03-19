@@ -11,6 +11,7 @@ const JC_PERM = 'prod-dpr-daily_production_report-create_edit_delete';
 router.use(authenticate);
 
 router.get('/active-idle',   ctrl.getActiveIdle);
+router.get('/capacity-plan', ctrl.getCapacityPlan);
 router.get('/',              ctrl.getAll);
 router.get('/:id/ai-eta',    ctrl.getAiEta);         // AI: job completion ETA
 router.get('/:id',           ctrl.getById);

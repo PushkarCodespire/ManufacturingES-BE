@@ -10,6 +10,7 @@ const Site         = require('../modules/masters/model/Site');
 const Warehouse    = require('../modules/masters/model/Warehouse');
 const Shift        = require('../modules/masters/model/Shift');
 const Machine              = require('../modules/masters/model/Machine');
+const WorkCenter           = require('../modules/masters/model/WorkCenter');
 const Item                 = require('../modules/masters/model/Item');
 const ItemQualityParam     = require('../modules/masters/model/ItemQualityParam');
 const ProductionParameter  = require('../modules/masters/model/ProductionParameter');
@@ -50,6 +51,8 @@ const StockAdjustment      = require('../modules/store/model/StockAdjustment');
 const StockAdjustmentItem  = require('../modules/store/model/StockAdjustmentItem');
 const WorkOrder              = require('../modules/production/model/WorkOrder');
 const JobCard                = require('../modules/production/model/JobCard');
+const Routing                = require('../modules/production/model/Routing');
+const RoutingStep            = require('../modules/production/model/RoutingStep');
 const IqcInspection          = require('../modules/production/model/IqcInspection');
 const IqcInspectionResult    = require('../modules/production/model/IqcInspectionResult');
 const LqcInspection          = require('../modules/production/model/LqcInspection');
@@ -60,9 +63,20 @@ const OqcInspection          = require('../modules/production/model/OqcInspectio
 const OqcInspectionResult    = require('../modules/production/model/OqcInspectionResult');
 const ProductionSchedule     = require('../modules/production/model/ProductionSchedule');
 const ScrapVoucher           = require('../modules/production/model/ScrapVoucher');
-const PurchaseOrder          = require('../modules/procurement/model/PurchaseOrder');
-const PurchaseOrderItem      = require('../modules/procurement/model/PurchaseOrderItem');
-const Scar                   = require('../modules/procurement/model/Scar');
+const PurchaseOrder            = require('../modules/procurement/model/PurchaseOrder');
+const PurchaseOrderItem        = require('../modules/procurement/model/PurchaseOrderItem');
+const PurchaseRequisition      = require('../modules/procurement/model/PurchaseRequisition');
+const PurchaseRequisitionItem  = require('../modules/procurement/model/PurchaseRequisitionItem');
+const VendorRfq                = require('../modules/procurement/model/VendorRfq');
+const VendorRfqItem            = require('../modules/procurement/model/VendorRfqItem');
+const VendorRfqVendor          = require('../modules/procurement/model/VendorRfqVendor');
+const VendorRfqQuote           = require('../modules/procurement/model/VendorRfqQuote');
+const ProcurementBudget        = require('../modules/procurement/model/ProcurementBudget');
+const VendorInvoice            = require('../modules/procurement/model/VendorInvoice');
+const VendorInvoiceItem        = require('../modules/procurement/model/VendorInvoiceItem');
+const PurchaseReturn           = require('../modules/procurement/model/PurchaseReturn');
+const PurchaseReturnItem       = require('../modules/procurement/model/PurchaseReturnItem');
+const Scar                     = require('../modules/procurement/model/Scar');
 const SubcontractChallan     = require('../modules/subcontracting/model/SubcontractChallan');
 const SubcontractChallanItem = require('../modules/subcontracting/model/SubcontractChallanItem');
 const TrainingTopic         = require('../modules/masters/model/TrainingTopic');
@@ -436,6 +450,25 @@ JobCard.belongsTo(Machine,   { foreignKey: 'machine_id',   as: 'Machine'   });
 JobCard.belongsTo(User,      { foreignKey: 'operator_id',  as: 'Operator'  });
 JobCard.belongsTo(User,      { foreignKey: 'created_by',   as: 'Creator'   });
 
+// ── Routing & Work Center ────────────────────────────────────────────────────
+// Work Center
+WorkCenter.hasMany(RoutingStep, { foreignKey: 'work_center_id' });
+RoutingStep.belongsTo(WorkCenter, { foreignKey: 'work_center_id' });
+
+// Routing
+Routing.belongsTo(Item, { foreignKey: 'item_id' });
+Item.hasMany(Routing, { foreignKey: 'item_id' });
+Routing.hasMany(RoutingStep, { foreignKey: 'routing_id', onDelete: 'CASCADE' });
+RoutingStep.belongsTo(Routing, { foreignKey: 'routing_id' });
+
+// RoutingStep → Machine
+RoutingStep.belongsTo(Machine, { foreignKey: 'machine_id' });
+Machine.hasMany(RoutingStep, { foreignKey: 'machine_id' });
+
+// RoutingStep → JobCard
+JobCard.belongsTo(RoutingStep, { foreignKey: 'routing_step_id' });
+RoutingStep.hasMany(JobCard, { foreignKey: 'routing_step_id' });
+
 IqcInspection.belongsTo(Item,   { foreignKey: 'item_id',      as: 'Item'      });
 IqcInspection.belongsTo(Vendor, { foreignKey: 'vendor_id',    as: 'Vendor'    });
 IqcInspection.belongsTo(User,   { foreignKey: 'inspector_id', as: 'Inspector' });
@@ -483,9 +516,62 @@ ScrapVoucher.belongsTo(User,      { foreignKey: 'authorized_by', as: 'Authorized
 ScrapVoucher.belongsTo(User,      { foreignKey: 'created_by',    as: 'Creator'      });
 
 // ── Procurement module associations ─────────────────────────────────────────
-PurchaseOrder.belongsTo(Vendor, { foreignKey: 'vendor_id',  as: 'Vendor'  });
-PurchaseOrder.belongsTo(User,   { foreignKey: 'created_by', as: 'Creator' });
+PurchaseOrder.belongsTo(Vendor,              { foreignKey: 'vendor_id',  as: 'Vendor'   });
+PurchaseOrder.belongsTo(User,                { foreignKey: 'created_by', as: 'Creator'  });
+PurchaseOrder.belongsTo(User,                { foreignKey: 'approved_by', as: 'Approver' });
+PurchaseOrder.belongsTo(PurchaseRequisition, { foreignKey: 'pr_id', as: 'PurchaseRequisition' });
 PurchaseOrder.hasMany(PurchaseOrderItem, { foreignKey: 'po_id', as: 'Items', onDelete: 'CASCADE' });
+PurchaseOrder.hasMany(Grn,               { foreignKey: 'po_id', as: 'GRNs'  });
+
+// Purchase Requisition associations
+PurchaseRequisition.belongsTo(User,       { foreignKey: 'requested_by', as: 'Requester' });
+PurchaseRequisition.belongsTo(User,       { foreignKey: 'approved_by',  as: 'Approver'  });
+PurchaseRequisition.belongsTo(User,       { foreignKey: 'created_by',   as: 'Creator'   });
+PurchaseRequisition.belongsTo(Department, { foreignKey: 'department_id', as: 'Department' });
+PurchaseRequisition.hasMany(PurchaseRequisitionItem, { foreignKey: 'pr_id', as: 'Items', onDelete: 'CASCADE' });
+PurchaseRequisition.hasMany(PurchaseOrder,           { foreignKey: 'pr_id', as: 'PurchaseOrders' });
+PurchaseRequisitionItem.belongsTo(PurchaseRequisition, { foreignKey: 'pr_id',   as: 'PurchaseRequisition' });
+PurchaseRequisitionItem.belongsTo(Item,                { foreignKey: 'item_id', as: 'Item' });
+
+// Vendor RFQ associations
+VendorRfq.belongsTo(PurchaseRequisition, { foreignKey: 'pr_id',             as: 'PurchaseRequisition' });
+VendorRfq.belongsTo(Vendor,              { foreignKey: 'awarded_vendor_id',  as: 'AwardedVendor' });
+VendorRfq.belongsTo(User,               { foreignKey: 'created_by',         as: 'Creator' });
+VendorRfq.hasMany(VendorRfqItem,         { foreignKey: 'rfq_id', as: 'Items',   onDelete: 'CASCADE' });
+VendorRfq.hasMany(VendorRfqVendor,       { foreignKey: 'rfq_id', as: 'Vendors', onDelete: 'CASCADE' });
+VendorRfq.hasMany(VendorRfqQuote,        { foreignKey: 'rfq_id', as: 'Quotes',  onDelete: 'CASCADE' });
+VendorRfqItem.belongsTo(VendorRfq,  { foreignKey: 'rfq_id',  as: 'RFQ' });
+VendorRfqItem.belongsTo(Item,        { foreignKey: 'item_id', as: 'Item' });
+VendorRfqItem.hasMany(VendorRfqQuote, { foreignKey: 'rfq_item_id', as: 'Quotes', onDelete: 'CASCADE' });
+VendorRfqVendor.belongsTo(VendorRfq, { foreignKey: 'rfq_id',    as: 'RFQ' });
+VendorRfqVendor.belongsTo(Vendor,    { foreignKey: 'vendor_id', as: 'Vendor' });
+VendorRfqQuote.belongsTo(VendorRfq,     { foreignKey: 'rfq_id',      as: 'RFQ' });
+VendorRfqQuote.belongsTo(Vendor,        { foreignKey: 'vendor_id',   as: 'Vendor' });
+VendorRfqQuote.belongsTo(VendorRfqItem, { foreignKey: 'rfq_item_id', as: 'RfqItem' });
+
+// Vendor Invoice associations
+VendorInvoice.belongsTo(Vendor,       { foreignKey: 'vendor_id',   as: 'Vendor'        });
+VendorInvoice.belongsTo(PurchaseOrder,{ foreignKey: 'po_id',       as: 'PurchaseOrder' });
+VendorInvoice.belongsTo(Grn,          { foreignKey: 'grn_id',      as: 'GRN'           });
+VendorInvoice.belongsTo(User,         { foreignKey: 'approved_by', as: 'Approver'      });
+VendorInvoice.belongsTo(User,         { foreignKey: 'created_by',  as: 'Creator'       });
+VendorInvoice.hasMany(VendorInvoiceItem, { foreignKey: 'invoice_id', as: 'Items', onDelete: 'CASCADE' });
+VendorInvoiceItem.belongsTo(VendorInvoice, { foreignKey: 'invoice_id', as: 'Invoice' });
+VendorInvoiceItem.belongsTo(Item,          { foreignKey: 'item_id',    as: 'Item'    });
+
+// Purchase Return associations
+PurchaseReturn.belongsTo(PurchaseOrder, { foreignKey: 'po_id',      as: 'PurchaseOrder' });
+PurchaseReturn.belongsTo(Grn,           { foreignKey: 'grn_id',     as: 'GRN'           });
+PurchaseReturn.belongsTo(Vendor,        { foreignKey: 'vendor_id',  as: 'Vendor'        });
+PurchaseReturn.belongsTo(User,          { foreignKey: 'created_by', as: 'Creator'       });
+PurchaseReturn.hasMany(PurchaseReturnItem, { foreignKey: 'return_id', as: 'Items', onDelete: 'CASCADE' });
+PurchaseReturnItem.belongsTo(PurchaseReturn, { foreignKey: 'return_id', as: 'Return' });
+PurchaseReturnItem.belongsTo(Item,           { foreignKey: 'item_id',   as: 'Item'   });
+
+// Procurement Budget associations
+ProcurementBudget.belongsTo(Department, { foreignKey: 'department_id', as: 'Department' });
+ProcurementBudget.belongsTo(User,       { foreignKey: 'created_by',    as: 'Creator'    });
+ProcurementBudget.belongsTo(User,       { foreignKey: 'updated_by',    as: 'Updater'    });
 PurchaseOrderItem.belongsTo(PurchaseOrder, { foreignKey: 'po_id',    as: 'PurchaseOrder' });
 PurchaseOrderItem.belongsTo(Item,          { foreignKey: 'item_id',  as: 'Item'          });
 Scar.belongsTo(Vendor, { foreignKey: 'vendor_id',  as: 'Vendor'  });
@@ -1042,8 +1128,11 @@ module.exports = {
   IssueSlipItem,
   StockAdjustment,
   StockAdjustmentItem,
+  WorkCenter,
   WorkOrder,
   JobCard,
+  Routing,
+  RoutingStep,
   IqcInspection,
   IqcInspectionResult,
   LqcInspection,
@@ -1056,6 +1145,17 @@ module.exports = {
   ScrapVoucher,
   PurchaseOrder,
   PurchaseOrderItem,
+  PurchaseRequisition,
+  PurchaseRequisitionItem,
+  VendorRfq,
+  VendorRfqItem,
+  VendorRfqVendor,
+  VendorRfqQuote,
+  ProcurementBudget,
+  VendorInvoice,
+  VendorInvoiceItem,
+  PurchaseReturn,
+  PurchaseReturnItem,
   Scar,
   SubcontractChallan,
   SubcontractChallanItem,

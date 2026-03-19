@@ -13,6 +13,12 @@ const PurchaseOrder = sequelize.define('PurchaseOrder', {
   updated_by:        { type: DataTypes.INTEGER, allowNull: true },
   tally_sync_status: { type: DataTypes.STRING(20), defaultValue: 'pending' },
   tally_sync_at:     { type: DataTypes.DATE, allowNull: true },
+  // Approval workflow
+  approval_status:   { type: DataTypes.STRING(20), defaultValue: 'pending_approval' }, // pending_approval | approved | rejected
+  approved_by:       { type: DataTypes.INTEGER, allowNull: true },
+  approved_at:       { type: DataTypes.DATE, allowNull: true },
+  approval_notes:    { type: DataTypes.TEXT, allowNull: true },
+  cancel_reason:     { type: DataTypes.TEXT, allowNull: true },
 }, {
   tableName: 'purchase_orders',
   underscored: true,
