@@ -27,7 +27,7 @@ const Bom                  = require('../modules/masters/model/Bom');
 const BomLine              = require('../modules/masters/model/BomLine');
 const CycleTimeRule        = require('../modules/masters/model/CycleTimeRule');
 const DailyTarget          = require('../modules/masters/model/DailyTarget');
-const DowntimeReason       = require('../modules/masters/model/DowntimeReason');
+const DowntimeReason       = require('../modules/masters/model/DowntimeReason')(sequelize);
 const Package              = require('../modules/masters/model/Package');
 const CtqIssue             = require('../modules/masters/model/CtqIssue');
 const Tool                 = require('../modules/masters/model/Tool');
@@ -149,7 +149,7 @@ const EquipmentDocument     = require('../modules/maintenance/model/EquipmentDoc
 const EquipmentWarranty     = require('../modules/maintenance/model/EquipmentWarranty')(sequelize);
 const MaintenanceType       = require('../modules/maintenance/model/MaintenanceType')(sequelize);
 const FailureCode           = require('../modules/maintenance/model/FailureCode')(sequelize);
-const MntDowntimeReason     = require('../modules/maintenance/model/DowntimeReason')(sequelize);
+// DowntimeReason removed — DowntimeReason (masters) covers the same table
 const MaintenancePriority   = require('../modules/maintenance/model/MaintenancePriority')(sequelize);
 const BreakdownRequest      = require('../modules/maintenance/model/BreakdownRequest')(sequelize);
 const MaintenanceWorkOrder  = require('../modules/maintenance/model/MaintenanceWorkOrder')(sequelize);
@@ -915,7 +915,7 @@ MwoAssignment.belongsTo(User,                 { foreignKey: 'assigned_by',   as:
 
 // DowntimeLog
 DowntimeLog.belongsTo(Equipment,            { foreignKey: 'equipment_id',          as: 'Equipment' });
-DowntimeLog.belongsTo(MntDowntimeReason,    { foreignKey: 'reason_id',             as: 'Reason' });
+DowntimeLog.belongsTo(DowntimeReason,    { foreignKey: 'reason_id',             as: 'Reason' });
 DowntimeLog.belongsTo(MaintenanceWorkOrder, { foreignKey: 'work_order_id',         as: 'WorkOrder' });
 DowntimeLog.belongsTo(BreakdownRequest,     { foreignKey: 'breakdown_request_id',  as: 'Breakdown' });
 DowntimeLog.belongsTo(User,                 { foreignKey: 'logged_by',             as: 'LoggedBy' });
@@ -1147,7 +1147,7 @@ module.exports = {
   EquipmentWarranty,
   MaintenanceType,
   FailureCode,
-  MntDowntimeReason,
+  DowntimeReason,
   MaintenancePriority,
   BreakdownRequest,
   MaintenanceWorkOrder,

@@ -197,6 +197,12 @@ const updateMachine = async (req, res) => {
     const { id, code, createdAt, updatedAt, created_by, parameter_ids, ...updateData } = req.body;
     updateData.updated_by = req.user?.id || null;
 
+    // Coerce empty strings to null for numeric fields so Postgres doesn't reject them
+    const numericFields = ['setup_time_hrs', 'queue_time_days', 'min_batch_quantity', 'shift'];
+    for (const f of numericFields) {
+      if (updateData[f] === '') updateData[f] = null;
+    }
+
     await machine.update(updateData);
 
     // Update parameter assignments if provided

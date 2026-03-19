@@ -103,7 +103,7 @@ const getById = async (req, res) => {
   try {
     const record = await OqcInspection.findByPk(req.params.id, {
       include: [
-        { model: Item,      as: 'Item',      attributes: ['id', 'name', 'code', 'part_no'] },
+        { model: Item,      as: 'Item',      attributes: ['id', 'name', 'code'] },
         { model: Vendor,    as: 'Customer',  attributes: ['id', 'name'] },
         { model: User,      as: 'Inspector', attributes: ['id', 'name'] },
         { model: WorkOrder, as: 'WorkOrder', attributes: ['id', 'wo_no'] },
@@ -299,7 +299,7 @@ const aiIqcComparison = async (req, res) => {
   try {
     const oqc = await OqcInspection.findByPk(req.params.id, {
       include: [
-        { model: Item, as: 'Item', attributes: ['id', 'name', 'code', 'part_no'] },
+        { model: Item, as: 'Item', attributes: ['id', 'name', 'code'] },
         { model: OqcInspectionResult, as: 'Results' },
       ],
     });
@@ -339,7 +339,7 @@ const aiDetectStandards = async (req, res) => {
     const { item_id, parameters } = req.body;
     if (!item_id) return res.status(400).json({ success: false, message: 'item_id is required' });
 
-    const item = await Item.findByPk(item_id, { attributes: ['id', 'name', 'code', 'part_no', 'item_type'], raw: true });
+    const item = await Item.findByPk(item_id, { attributes: ['id', 'name', 'code', 'item_type'], raw: true });
     if (!item) return res.status(404).json({ success: false, message: 'Item not found' });
 
     const prompt = aiPrompts.standardsDetection(item, parameters || []);

@@ -2,7 +2,7 @@
 const { Op, fn, col, literal } = require('sequelize');
 const db = require('../../../models');
 
-const { DowntimeLog, MntDowntimeReason, Equipment, EquipmentCategory, MaintenanceWorkOrder } = db;
+const { DowntimeLog, DowntimeReason, Equipment, EquipmentCategory, MaintenanceWorkOrder } = db;
 
 exports.getLog = async (req, res) => {
   try {
@@ -20,7 +20,7 @@ exports.getLog = async (req, res) => {
       where,
       include: [
         { model: Equipment,         as: 'Equipment' },
-        { model: MntDowntimeReason, as: 'Reason' },
+        { model: DowntimeReason, as: 'Reason' },
       ],
       order:  [['start_time', 'DESC']],
       limit:  parseInt(limit),
@@ -103,7 +103,7 @@ exports.getPareto = async (req, res) => {
         [fn('SUM', col('duration_minutes')), 'total_minutes'],
         [fn('COUNT', col('DowntimeLog.id')), 'occurrences'],
       ],
-      include: [{ model: MntDowntimeReason, as: 'Reason', attributes: ['name', 'category'] }],
+      include: [{ model: DowntimeReason, as: 'Reason', attributes: ['name', 'category'] }],
       group: ['reason_id', 'Reason.id'],
       order: [[literal('"total_minutes"'), 'DESC']],
     });
@@ -148,7 +148,7 @@ exports.getPareto = async (req, res) => {
 
 exports.getReasons = async (req, res) => {
   try {
-    const reasons = await MntDowntimeReason.findAll({ where: { is_active: true }, order: [['name', 'ASC']] });
+    const reasons = await DowntimeReason.findAll({ where: { is_active: true }, order: [['name', 'ASC']] });
     return res.json({ success: true, data: reasons });
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Failed to fetch downtime reasons' });
@@ -157,7 +157,7 @@ exports.getReasons = async (req, res) => {
 
 exports.createReason = async (req, res) => {
   try {
-    const reason = await MntDowntimeReason.create({ ...req.body, created_by: req.user?.id });
+    const reason = await DowntimeReason.create({ ...req.body, created_by: req.user?.id });
     return res.status(201).json({ success: true, data: reason });
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Failed to create reason' });

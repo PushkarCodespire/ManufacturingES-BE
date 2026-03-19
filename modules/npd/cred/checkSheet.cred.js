@@ -32,6 +32,8 @@ const createTemplateSchema = Joi.object({
 
 // ── Template update ───────────────────────────────────────────────────────────
 const updateTemplateSchema = Joi.object({
+  drawing_id:       Joi.string().uuid().optional().allow(null),
+  item_id:          Joi.number().integer().positive().optional().allow(null),
   name:             Joi.string().trim().max(255).optional(),
   revision:         Joi.string().trim().max(10).optional(),
   applicable_gates: Joi.array().items(Joi.string().valid('iqc','lqc','pqc','oqc')).optional(),

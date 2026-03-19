@@ -6,7 +6,7 @@
 const bcrypt = require('bcryptjs');
 const {
   sequelize, Department, Role, User,
-  MaintenancePriority, EquipmentCategory, MntDowntimeReason,
+  MaintenancePriority, EquipmentCategory, DowntimeReason,
 } = require('../models');
 const { DEPARTMENTS, ROLES } = require('../config/constants');
 
@@ -123,7 +123,7 @@ async function seedProduction() {
     { name: 'Other / Unknown',           category: 'other',        is_active: true },
   ];
   for (const r of DOWNTIME_REASONS) {
-    await MntDowntimeReason.findOrCreate({ where: { name: r.name }, defaults: r });
+    await DowntimeReason.findOrCreate({ where: { name: r.name }, defaults: r });
   }
   console.log(`✅ ${DOWNTIME_REASONS.length} Downtime Reasons ready`);
 

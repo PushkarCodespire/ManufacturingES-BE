@@ -16,6 +16,7 @@ const createDrawingSchema = Joi.object({
 
 // ── Drawing update ────────────────────────────────────────────────────────────
 const updateDrawingSchema = Joi.object({
+  drawing_no:       Joi.string().trim().max(100).optional(),
   title:            Joi.string().trim().max(255).optional(),
   item_id:          Joi.number().integer().positive().optional().allow(null),
   customer:         Joi.string().trim().max(255).optional().allow('', null),

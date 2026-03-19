@@ -295,7 +295,7 @@ exports.getOverdueEffectiveness = async (req, res) => {
         check_date: { [Op.lt]: today },
         status: 'scheduled',
       },
-      include: [{ model: Capa, attributes: ['id', 'capa_no', 'title', 'status'] }],
+      include: [{ model: Capa, attributes: ['id', 'capa_no', 'problem_title', 'status'] }],
       order: [['check_date', 'ASC']],
     });
     res.json({ success: true, data: overdue });

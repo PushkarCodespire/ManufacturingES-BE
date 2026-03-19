@@ -1,6 +1,7 @@
 const {
   Mold, MoldCategory, MoldShotSummary, MoldLifeConfig, MoldIssueReturn,
-  MoldInspection, MoldRepairRequest, MoldPmSchedule, MoldCost, User, Vendor,
+  MoldInspection, MoldRepairRequest, MoldRepairType, MoldPmSchedule, MoldPmTemplate,
+  MoldCost, User, Vendor,
 } = require('../../../models');
 const { generateReport } = require('../cred/moldDocuments.cred');
 
@@ -25,9 +26,11 @@ const getMoldHistoryCard = async (req, res) => {
     });
     const repairHistory = await MoldRepairRequest.findAll({
       where: { mold_id: moldId }, order: [['created_at', 'DESC']], limit: 10,
+      include: [{ model: MoldRepairType, as: 'RepairType', attributes: ['id', 'name'] }],
     });
     const pmHistory = await MoldPmSchedule.findAll({
       where: { mold_id: moldId, status: 'completed' }, order: [['last_completed_at', 'DESC']], limit: 10,
+      include: [{ model: MoldPmTemplate, as: 'Template', attributes: ['id', 'name'] }],
     });
     const costRecords = await MoldCost.findAll({ where: { mold_id: moldId }, order: [['incurred_date', 'DESC']] });
     const totalCost = costRecords.reduce((sum, c) => sum + parseFloat(c.amount), 0);

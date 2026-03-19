@@ -7,7 +7,7 @@
  */
 
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
-const { sequelize, MaintenancePriority, EquipmentCategory, MntDowntimeReason } = require('../models');
+const { sequelize, MaintenancePriority, EquipmentCategory, DowntimeReason } = require('../models');
 
 const PRIORITIES = [
   { name: 'P1 — Critical',  response_time_minutes: 15,   description: 'Immediate response — production stopped',    color_code: '#dc2626', is_active: true },
@@ -82,7 +82,7 @@ async function seedMaintenanceMasters() {
     console.log('Seeding Downtime Reasons...');
     let reasonCount = 0;
     for (const r of DOWNTIME_REASONS) {
-      const [, created] = await MntDowntimeReason.findOrCreate({
+      const [, created] = await DowntimeReason.findOrCreate({
         where: { name: r.name },
         defaults: r,
       });

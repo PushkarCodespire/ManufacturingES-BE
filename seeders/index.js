@@ -10,7 +10,7 @@ require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') }
 const bcrypt = require('bcryptjs');
 const {
   sequelize, Department, Role, User,
-  MaintenancePriority, EquipmentCategory, MntDowntimeReason,
+  MaintenancePriority, EquipmentCategory, DowntimeReason,
 } = require('../models');
 const { DEPARTMENTS, ROLES } = require('../config/constants');
 
@@ -144,7 +144,7 @@ async function seed() {
       { name: 'Other / Unknown',           category: 'other',        is_active: true },
     ];
     for (const r of DOWNTIME_REASONS) {
-      await MntDowntimeReason.create(r);
+      await DowntimeReason.create(r);
       console.log(`  ${r.name} [${r.category}]`);
     }
     console.log(`\n✅ ${DOWNTIME_REASONS.length} Downtime Reasons seeded\n`);

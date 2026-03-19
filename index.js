@@ -89,14 +89,19 @@ const IS_DEV  = process.env.NODE_ENV !== 'production';
     //    Catches any model changes you haven't written a migration for yet.
     //    NEVER runs in production — production relies on migrations only.
     //
+    //    Set SKIP_SYNC=true in .env to skip this step for faster startup.
     //    NOTE: sequelize.sync({ alter: true }) runs all DDL in parallel, which
     //    causes PostgreSQL deadlocks when 100+ tables are altered concurrently.
-    //    Instead we sync each model serially to avoid lock contention.
-    if (IS_DEV) {
-      for (const model of Object.values(sequelize.models)) {
-        await model.sync({ alter: true });
+    //    Instead we sync each model serially in batches to avoid lock contention.
+    if (IS_DEV && process.env.SKIP_SYNC !== 'true') {
+      const models = Object.values(sequelize.models);
+      const BATCH  = 10; // sync 10 at a time — parallel within batch, serial across batches
+      for (let i = 0; i < models.length; i += BATCH) {
+        await Promise.all(models.slice(i, i + BATCH).map(m => m.sync({ alter: true })));
       }
-      console.log('✅ Models synced (dev safety net — alter mode)');
+      console.log(`✅ Models synced (${models.length} models, dev safety net — alter mode)`);
+    } else if (IS_DEV) {
+      console.log('⏭️  Model sync skipped (SKIP_SYNC=true)');
     }
 
     // ── Step 5: Start server ──────────────────────────────────────────────

@@ -81,7 +81,7 @@ const getById = async (req, res) => {
   try {
     const record = await PqcInspection.findByPk(req.params.id, {
       include: [
-        { model: Item,      as: 'Item',      attributes: ['id', 'name', 'code', 'part_no'] },
+        { model: Item,      as: 'Item',      attributes: ['id', 'name', 'code'] },
         { model: User,      as: 'Inspector', attributes: ['id', 'name'] },
         { model: WorkOrder, as: 'WorkOrder', attributes: ['id', 'wo_no'] },
         { model: Package,   as: 'Package',   attributes: ['id', 'name', 'type_of_package', 'tare_weight', 'pack_length', 'pack_width', 'pack_height'] },

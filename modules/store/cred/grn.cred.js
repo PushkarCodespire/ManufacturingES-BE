@@ -9,6 +9,9 @@ const grnItemSchema = Joi.object({
   qty_received: Joi.number().min(0.001).required().messages({ 'any.required': 'Quantity received is required' }),
   unit:         Joi.string().trim().max(20).optional().default('pcs'),
   unit_price:   Joi.number().min(0).optional().default(0),
+  discount:     Joi.number().min(0).optional().allow(null),
+  gst_rate:     Joi.number().min(0).max(100).optional().allow(null),
+  total_price:  Joi.number().min(0).optional().allow(null),
   batch_no:     Joi.string().trim().max(100).optional().allow('', null),
   lot_no:       Joi.string().trim().max(100).optional().allow('', null),
   expiry_date:  Joi.string().isoDate().optional().allow(null),
@@ -38,6 +41,7 @@ const updateGrnSchema = Joi.object({
   po_reference:  Joi.string().trim().max(100).optional().allow('', null),
   invoice_no:    Joi.string().trim().max(100).optional().allow('', null),
   grn_type:      Joi.string().valid('purchase', 'return', 'transfer', 'other').optional(),
+  status:        Joi.string().valid('pending', 'approved', 'cancelled').optional(),
   notes:         Joi.string().trim().max(2000).optional().allow('', null),
   items:         Joi.array().items(grnItemSchema).optional(),
 }).min(1).messages({ 'object.min': 'At least one field is required to update' });

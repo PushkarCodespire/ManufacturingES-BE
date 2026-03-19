@@ -13,8 +13,9 @@ const createJobCardSchema = Joi.object({
 });
 
 const updateJobCardSchema = Joi.object({
-  machine_id:   Joi.number().integer().positive().optional().allow(null),
-  operator_id:  Joi.number().integer().positive().optional().allow(null),
+  work_order_id: Joi.string().uuid().optional().allow(null),
+  machine_id:    Joi.number().integer().positive().optional().allow(null),
+  operator_id:   Joi.number().integer().positive().optional().allow(null),
   shift_id:     Joi.number().integer().positive().optional().allow(null),
   start_time:   Joi.string().isoDate().optional().allow(null),
   end_time:     Joi.string().isoDate().optional().allow(null),

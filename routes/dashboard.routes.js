@@ -4,7 +4,8 @@ const ctrl = require('../modules/production/controller/dashboard.controller');
 
 router.use(authenticate);
 
-router.get('/kpis',             ctrl.getKpis);
+router.get('/full',            ctrl.getFullDashboard);
+router.get('/kpis',            ctrl.getKpis);
 router.get('/role-stats/:role', ctrl.getRoleStats);
 
 module.exports = router;

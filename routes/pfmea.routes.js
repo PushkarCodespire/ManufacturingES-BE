@@ -15,13 +15,13 @@ router.patch('/:id',                          authorize(...npdRoles), ctrl.updat
 router.post('/:id/ai/failure-mode-suggestion', authorize(...npdRoles), ctrl.aiFailureModeSuggestion);
 router.delete('/:id',                         authorize(...npdRoles), ctrl.delete);
 
-// Items (process steps) — NOTE: /items routes must come before /:id
-router.post('/:id/items',                     authorize(...npdRoles), ctrl.addItem);
-router.patch('/items/:itemId',                authorize(...npdRoles), ctrl.updateItem);
-router.delete('/items/:itemId',               authorize(...npdRoles), ctrl.deleteItem);
+// Items (process steps)
+router.post('/:id/items',                              authorize(...npdRoles), ctrl.addItem);
+router.patch('/:id/items/:itemId',                     authorize(...npdRoles), ctrl.updateItem);
+router.delete('/:id/items/:itemId',                    authorize(...npdRoles), ctrl.deleteItem);
 
 // Actions per item
-router.post('/items/:itemId/actions',         authorize(...npdRoles), ctrl.addAction);
-router.patch('/actions/:actionId',            authorize(...npdRoles), ctrl.updateAction);
+router.post('/:id/items/:itemId/actions',              authorize(...npdRoles), ctrl.addAction);
+router.patch('/:id/items/:itemId/actions/:actionId',   authorize(...npdRoles), ctrl.updateAction);
 
 module.exports = router;

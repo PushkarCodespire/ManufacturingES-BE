@@ -1,6 +1,6 @@
 'use strict';
 
-const { Op, fn, col, literal } = require('sequelize');
+const { Op, literal } = require('sequelize');
 const {
   CustomerOrder,
   Complaint,
@@ -18,6 +18,13 @@ const {
   Item,
   Inventory,
   Instrument,
+  Ncr,
+  Capa,
+  MaterialRequest,
+  BreakdownRequest,
+  MaintenanceWorkOrder,
+  DowntimeLog,
+  TrainingRecord,
   User,
 } = require('../../../models');
 
@@ -36,13 +43,211 @@ function currentMonthKey() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+// ── GET /dashboard/full — Full Golden Dashboard ───────────────────────────────
+const getFullDashboard = async (req, res) => {
+  try {
+    const monthStart = startOfMonth();
+    const today      = startOfToday();
+    const monthKey   = currentMonthKey();
+
+    const [
+      // Production
+      activeWos,
+      inProgressWos,
+      delayedWos,
+      completedWosToday,
+      openJobCards,
+      closedJobCardsToday,
+      scrapToday,
+      fpiWaiting,
+      // Quality
+      iqcPending,
+      pqcPending,
+      oqcPending,
+      lqcToday,
+      complaintsMonth,
+      openNcrs,
+      openCapas,
+      instrumentsDue,
+      // Quality KPI
+      iqcPassMonth,
+      iqcTotalMonth,
+      pqcPassMonth,
+      pqcTotalMonth,
+      oqcPassMonth,
+      oqcTotalMonth,
+      // Inventory
+      grnPending,
+      lowStockAlerts,
+      pendingMRs,
+      totalSkus,
+      // Dispatch
+      pendingShipments,
+      dispatchedToday,
+      podPending,
+      dispatchedOnTimeMonth,
+      dispatchedTotalMonth,
+      // Maintenance
+      openBreakdowns,
+      openMwos,
+      downtimeToday,
+      // Finance
+      copqMonth,
+      // HR
+      totalUsers,
+      trainingExpired,
+      // Orders
+      openOrders,
+    ] = await Promise.all([
+      // ── Production ──
+      WorkOrder.count({ where: { status: { [Op.in]: ['open', 'in_progress'] } } }).catch(() => 0),
+      WorkOrder.count({ where: { status: 'in_progress' } }).catch(() => 0),
+      WorkOrder.count({ where: { status: 'in_progress', planned_end: { [Op.lt]: today } } }).catch(() => 0),
+      WorkOrder.count({ where: { status: 'completed', updated_at: { [Op.gte]: today } } }).catch(() => 0),
+      JobCard.count({ where: { status: 'open' } }).catch(() => 0),
+      JobCard.count({ where: { status: 'closed', updated_at: { [Op.gte]: today } } }).catch(() => 0),
+      ScrapVoucher.count({ where: { scrap_date: today } }).catch(() => 0),
+      WorkOrder.count({ where: { fpi_status: 'pending' } }).catch(() => 0),
+
+      // ── Quality ──
+      IqcInspection.count({ where: { result: 'pending' } }).catch(() => 0),
+      PqcInspection.count({ where: { result: 'pending' } }).catch(() => 0),
+      OqcInspection.count({ where: { result: 'pending' } }).catch(() => 0),
+      LqcInspection.count({ where: { inspection_date: today } }).catch(() => 0),
+      Complaint.count({ where: { created_at: { [Op.gte]: monthStart } } }).catch(() => 0),
+      Ncr.count({ where: { status: { [Op.notIn]: ['closed', 'rejected'] } } }).catch(() => 0),
+      Capa.count({ where: { status: { [Op.notIn]: ['closed', 'verified_effective'] } } }).catch(() => 0),
+      Instrument.count({ where: { next_due_at: { [Op.lte]: today }, status: 'active' } }).catch(() => 0),
+
+      // ── Quality KPI ──
+      IqcInspection.count({ where: { result: 'pass', created_at: { [Op.gte]: monthStart } } }).catch(() => 0),
+      IqcInspection.count({ where: { result: { [Op.in]: ['pass', 'fail'] }, created_at: { [Op.gte]: monthStart } } }).catch(() => 0),
+      PqcInspection.count({ where: { result: 'pass', created_at: { [Op.gte]: monthStart } } }).catch(() => 0),
+      PqcInspection.count({ where: { result: { [Op.in]: ['pass', 'fail'] }, created_at: { [Op.gte]: monthStart } } }).catch(() => 0),
+      OqcInspection.count({ where: { result: 'pass', created_at: { [Op.gte]: monthStart } } }).catch(() => 0),
+      OqcInspection.count({ where: { result: { [Op.in]: ['pass', 'fail'] }, created_at: { [Op.gte]: monthStart } } }).catch(() => 0),
+
+      // ── Inventory ──
+      Grn.count({ where: { status: 'pending' } }).catch(() => 0),
+      Inventory.count({
+        include: [{ model: Item, as: 'Item', attributes: [], where: { reorder_point: { [Op.gt]: 0 } } }],
+        where: literal('"Inventory"."qty_on_hand" <= "Item"."reorder_point"'),
+      }).catch(() => 0),
+      MaterialRequest.count({ where: { status: 'pending' } }).catch(() => 0),
+      Item.count({ where: { is_active: true } }).catch(() => 0),
+
+      // ── Dispatch ──
+      DispatchOrder.count({ where: { status: { [Op.in]: ['confirmed', 'loading'] } } }).catch(() => 0),
+      DispatchOrder.count({ where: { status: 'dispatched', dispatch_date: today } }).catch(() => 0),
+      DispatchOrder.count({ where: { status: 'dispatched', actual_delivery_date: null } }).catch(() => 0),
+      DispatchOrder.count({
+        where: { status: 'dispatched', dispatch_date: { [Op.gte]: monthStart } },
+        include: [{
+          model: CustomerOrder,
+          as: 'CustomerOrder',
+          attributes: [],
+          where: literal('"DispatchOrder"."dispatch_date" <= "CustomerOrder"."delivery_date"'),
+          required: true,
+        }],
+      }).catch(() => 0),
+      DispatchOrder.count({
+        where: { status: 'dispatched', dispatch_date: { [Op.gte]: monthStart } },
+      }).catch(() => 0),
+
+      // ── Maintenance ──
+      BreakdownRequest.count({ where: { status: { [Op.notIn]: ['closed', 'resolved'] } } }).catch(() => 0),
+      MaintenanceWorkOrder.count({ where: { status: { [Op.notIn]: ['closed', 'completed'] } } }).catch(() => 0),
+      DowntimeLog.count({ where: { created_at: { [Op.gte]: today } } }).catch(() => 0),
+
+      // ── Finance ──
+      CopqEntry.sum('cost_amount', { where: { month_key: monthKey } }).catch(() => 0),
+
+      // ── HR ──
+      User.count({ where: { is_active: true } }).catch(() => 0),
+      TrainingRecord.count({ where: { status: 'expired' } }).catch(() => 0),
+
+      // ── Orders ──
+      CustomerOrder.count({ where: { status: { [Op.in]: ['active', 'in_production'] } } }).catch(() => 0),
+    ]);
+
+    // Computed KPIs
+    const otdPct = dispatchedTotalMonth > 0
+      ? Math.round((dispatchedOnTimeMonth / dispatchedTotalMonth) * 1000) / 10
+      : null;
+
+    const totalPassMonth = iqcPassMonth + pqcPassMonth + oqcPassMonth;
+    const totalAllMonth  = iqcTotalMonth + pqcTotalMonth + oqcTotalMonth;
+    const fpyPct = totalAllMonth > 0
+      ? Math.round((totalPassMonth / totalAllMonth) * 1000) / 10
+      : null;
+
+    return res.json({
+      success: true,
+      data: {
+        month: monthKey,
+        kpis: {
+          open_orders:          openOrders,
+          customer_complaints:  complaintsMonth,
+          otd_pct:              otdPct,
+          fpy_pct:              fpyPct,
+          copq_amount:          parseFloat(copqMonth) || 0,
+          instruments_due:      instrumentsDue,
+        },
+        production: {
+          active_wos:             activeWos,
+          in_progress_wos:        inProgressWos,
+          delayed_wos:            delayedWos,
+          completed_wos_today:    completedWosToday,
+          open_job_cards:         openJobCards,
+          closed_job_cards_today: closedJobCardsToday,
+          scrap_today:            scrapToday,
+          fpi_waiting:            fpiWaiting,
+        },
+        quality: {
+          iqc_pending:       iqcPending,
+          pqc_pending:       pqcPending,
+          oqc_pending:       oqcPending,
+          lqc_checks_today:  lqcToday,
+          complaints_month:  complaintsMonth,
+          open_ncrs:         openNcrs,
+          open_capas:        openCapas,
+          instruments_due:   instrumentsDue,
+        },
+        inventory: {
+          grn_pending:               grnPending,
+          low_stock_alerts:          lowStockAlerts,
+          pending_material_requests: pendingMRs,
+          total_skus:                totalSkus,
+        },
+        dispatch: {
+          pending_shipments: pendingShipments,
+          dispatched_today:  dispatchedToday,
+          pod_pending:       podPending,
+          otd_pct:           otdPct,
+        },
+        maintenance: {
+          open_breakdowns:       openBreakdowns,
+          open_mwos:             openMwos,
+          downtime_events_today: downtimeToday,
+        },
+        hr: {
+          total_employees:  totalUsers,
+          training_expired: trainingExpired,
+        },
+      },
+    });
+  } catch (err) {
+    console.error('[Dashboard.getFullDashboard]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
 // ── GET /dashboard/kpis — Golden KPIs for Plant Head ─────────────────────────
 const getKpis = async (req, res) => {
   try {
     const monthStart = startOfMonth();
     const today = startOfToday();
 
-    // Run all KPI queries in parallel
     const [
       complaintCount,
       copqTotal,
@@ -56,23 +261,11 @@ const getKpis = async (req, res) => {
       oqcPass,
       oqcTotal,
     ] = await Promise.all([
-      // DSH-001: Customer Complaints this month
       Complaint.count({ where: { created_at: { [Op.gte]: monthStart } } }).catch(() => 0),
-
-      // DSH-004: COPQ this month
       CopqEntry.sum('cost_amount', { where: { month_key: currentMonthKey() } }).catch(() => 0),
-
-      // DSH-005: Open Orders
-      CustomerOrder.count({
-        where: { status: { [Op.in]: ['active', 'in_production'] } },
-      }).catch(() => 0),
-
-      // DSH-002: OTD — dispatched on time (dispatch_date <= CO delivery_date)
+      CustomerOrder.count({ where: { status: { [Op.in]: ['active', 'in_production'] } } }).catch(() => 0),
       DispatchOrder.count({
-        where: {
-          status: 'dispatched',
-          dispatch_date: { [Op.gte]: monthStart },
-        },
+        where: { status: 'dispatched', dispatch_date: { [Op.gte]: monthStart } },
         include: [{
           model: CustomerOrder,
           as: 'CustomerOrder',
@@ -81,41 +274,17 @@ const getKpis = async (req, res) => {
           required: true,
         }],
       }).catch(() => 0),
-
-      // DSH-002: Total dispatched this month
       DispatchOrder.count({
-        where: {
-          status: 'dispatched',
-          dispatch_date: { [Op.gte]: monthStart },
-        },
+        where: { status: 'dispatched', dispatch_date: { [Op.gte]: monthStart } },
       }).catch(() => 0),
-
-      // DSH-003: IQC pass
-      IqcInspection.count({
-        where: { result: 'pass', created_at: { [Op.gte]: monthStart } },
-      }).catch(() => 0),
-      IqcInspection.count({
-        where: { result: { [Op.in]: ['pass', 'fail'] }, created_at: { [Op.gte]: monthStart } },
-      }).catch(() => 0),
-
-      // DSH-003: PQC pass
-      PqcInspection.count({
-        where: { result: 'pass', created_at: { [Op.gte]: monthStart } },
-      }).catch(() => 0),
-      PqcInspection.count({
-        where: { result: { [Op.in]: ['pass', 'fail'] }, created_at: { [Op.gte]: monthStart } },
-      }).catch(() => 0),
-
-      // DSH-003: OQC pass
-      OqcInspection.count({
-        where: { result: 'pass', created_at: { [Op.gte]: monthStart } },
-      }).catch(() => 0),
-      OqcInspection.count({
-        where: { result: { [Op.in]: ['pass', 'fail'] }, created_at: { [Op.gte]: monthStart } },
-      }).catch(() => 0),
+      IqcInspection.count({ where: { result: 'pass', created_at: { [Op.gte]: monthStart } } }).catch(() => 0),
+      IqcInspection.count({ where: { result: { [Op.in]: ['pass', 'fail'] }, created_at: { [Op.gte]: monthStart } } }).catch(() => 0),
+      PqcInspection.count({ where: { result: 'pass', created_at: { [Op.gte]: monthStart } } }).catch(() => 0),
+      PqcInspection.count({ where: { result: { [Op.in]: ['pass', 'fail'] }, created_at: { [Op.gte]: monthStart } } }).catch(() => 0),
+      OqcInspection.count({ where: { result: 'pass', created_at: { [Op.gte]: monthStart } } }).catch(() => 0),
+      OqcInspection.count({ where: { result: { [Op.in]: ['pass', 'fail'] }, created_at: { [Op.gte]: monthStart } } }).catch(() => 0),
     ]);
 
-    // Calculate rates
     const otdPct = dispatchedTotal > 0
       ? Math.round((dispatchedOnTime / dispatchedTotal) * 1000) / 10
       : null;
@@ -159,9 +328,7 @@ const getRoleStats = async (req, res) => {
           IqcInspection.count({ where: { result: 'pending' } }).catch(() => 0),
           IqcInspection.count({ where: { result: 'pass', inspection_date: today } }).catch(() => 0),
           IqcInspection.count({ where: { result: 'fail', inspection_date: today } }).catch(() => 0),
-          Instrument.count({
-            where: { next_due_at: { [Op.lte]: today }, status: 'active' },
-          }).catch(() => 0),
+          Instrument.count({ where: { next_due_at: { [Op.lte]: today }, status: 'active' } }).catch(() => 0),
         ]);
         stats = { pending_inspections: pending, cleared_today: clearedToday, rejected_today: rejectedToday, instruments_due: instrumentsDue };
         break;
@@ -198,7 +365,8 @@ const getRoleStats = async (req, res) => {
         break;
       }
 
-      case 'store_manager': {
+      case 'store_manager':
+      case 'store_incharge': {
         const [grnPending, stockAlerts, issuedToday, totalSkus] = await Promise.all([
           Grn.count({ where: { status: 'pending' } }).catch(() => 0),
           Inventory.count({
@@ -215,18 +383,8 @@ const getRoleStats = async (req, res) => {
       case 'production_planner': {
         const [activeWos, onSchedule, delayed, shortageAlerts] = await Promise.all([
           WorkOrder.count({ where: { status: { [Op.in]: ['open', 'in_progress'] } } }).catch(() => 0),
-          WorkOrder.count({
-            where: {
-              status: 'in_progress',
-              planned_end: { [Op.gte]: today },
-            },
-          }).catch(() => 0),
-          WorkOrder.count({
-            where: {
-              status: 'in_progress',
-              planned_end: { [Op.lt]: today },
-            },
-          }).catch(() => 0),
+          WorkOrder.count({ where: { status: 'in_progress', planned_end: { [Op.gte]: today } } }).catch(() => 0),
+          WorkOrder.count({ where: { status: 'in_progress', planned_end: { [Op.lt]: today } } }).catch(() => 0),
           Inventory.count({
             include: [{ model: Item, as: 'Item', attributes: [], where: { reorder_point: { [Op.gt]: 0 } } }],
             where: literal('"Inventory"."qty_on_hand" <= "Item"."reorder_point"'),
@@ -236,7 +394,8 @@ const getRoleStats = async (req, res) => {
         break;
       }
 
-      case 'production_supervisor': {
+      case 'production_supervisor':
+      case 'production_manager': {
         const [activeJobs, completedToday, scrapToday, fpiWaiting] = await Promise.all([
           JobCard.count({ where: { status: 'open' } }).catch(() => 0),
           JobCard.count({ where: { status: 'closed', created_at: { [Op.gte]: today } } }).catch(() => 0),
@@ -280,18 +439,30 @@ const getRoleStats = async (req, res) => {
         const [copqMonth, grnPending, debitNotes] = await Promise.all([
           CopqEntry.sum('cost_amount', { where: { month_key: currentMonthKey() } }).catch(() => 0),
           Grn.count({ where: { status: 'pending' } }).catch(() => 0),
-          // Approximate debit notes this week
           CopqEntry.count({ where: { created_at: { [Op.gte]: monthStart } } }).catch(() => 0),
         ]);
         stats = { copq_month: parseFloat(copqMonth) || 0, grn_pending: grnPending, debit_notes: debitNotes };
         break;
       }
 
-      case 'hr_admin': {
-        const [totalEmployees] = await Promise.all([
+      case 'hr_admin':
+      case 'hr_manager': {
+        const [totalEmployees, trainingExpired] = await Promise.all([
           User.count({ where: { is_active: true } }).catch(() => 0),
+          TrainingRecord.count({ where: { status: 'expired' } }).catch(() => 0),
         ]);
-        stats = { total_employees: totalEmployees };
+        stats = { total_employees: totalEmployees, training_expired: trainingExpired };
+        break;
+      }
+
+      case 'quality_manager': {
+        const [openNcrs, openCapas, instrumentsDue, complaintsMonth] = await Promise.all([
+          Ncr.count({ where: { status: { [Op.notIn]: ['closed', 'rejected'] } } }).catch(() => 0),
+          Capa.count({ where: { status: { [Op.notIn]: ['closed', 'verified_effective'] } } }).catch(() => 0),
+          Instrument.count({ where: { next_due_at: { [Op.lte]: today }, status: 'active' } }).catch(() => 0),
+          Complaint.count({ where: { created_at: { [Op.gte]: monthStart } } }).catch(() => 0),
+        ]);
+        stats = { open_ncrs: openNcrs, open_capas: openCapas, instruments_due: instrumentsDue, complaints_month: complaintsMonth };
         break;
       }
 
@@ -306,4 +477,4 @@ const getRoleStats = async (req, res) => {
   }
 };
 
-module.exports = { getKpis, getRoleStats };
+module.exports = { getKpis, getRoleStats, getFullDashboard };

@@ -40,6 +40,9 @@ const d5d6Schema = Joi.object({
     action_desc:         Joi.string().trim().max(5000).required(),
     responsible_id:      Joi.number().integer().positive().optional().allow(null),
     target_date:         Joi.string().isoDate().optional().allow(null),
+    completed_date:      Joi.string().isoDate().optional().allow(null),
+    status:              Joi.string().valid('open','in_progress','completed').optional(),
+    evidence:            Joi.string().trim().max(2000).optional().allow('', null),
     verification_method: Joi.string().trim().max(2000).optional().allow('', null),
   })).optional().default([]),
 });
@@ -56,10 +59,16 @@ const effectivenessSchema = Joi.object({
 
 // ── Generic update ────────────────────────────────────────────────────────
 const updateCapaSchema = Joi.object({
+  source_type:        Joi.string().trim().max(30).optional().allow('', null),
+  source_id:          Joi.string().uuid().optional().allow('', null),
   problem_title:      Joi.string().trim().max(255).optional(),
   problem_desc:       Joi.string().trim().max(5000).optional().allow('', null),
   champion_id:        Joi.number().integer().positive().optional().allow(null),
   target_date:        Joi.string().isoDate().optional().allow(null),
+  team_members:       Joi.array().items(Joi.object({
+    user_id: Joi.number().integer().positive().required(),
+    role:    Joi.string().trim().max(50).optional().allow(null),
+  })).optional(),
   containment_action: Joi.string().trim().max(5000).optional().allow('', null),
   containment_date:   Joi.string().isoDate().optional().allow(null),
   prevention_action:  Joi.string().trim().max(5000).optional().allow('', null),
