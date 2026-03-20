@@ -2,6 +2,7 @@ const express      = require('express');
 const cors         = require('cors');
 const cookieParser = require('cookie-parser');
 const swaggerUi    = require('swagger-ui-express');
+const helmet       = require('helmet');
 require('dotenv').config();
 
 const routes      = require('../routes');
@@ -9,7 +10,22 @@ const swaggerSpec = require('./swagger');
 
 const app = express();
 
-// CORS
+// ── Trust proxy — must be set before any req.ip usage ─────────────────────────
+// Set TRUST_PROXY=1 in .env when deployed behind nginx / AWS ALB / Render proxy.
+// Keeps false (direct socket IP only) for local dev with no reverse proxy.
+if (process.env.TRUST_PROXY) {
+  app.set('trust proxy', parseInt(process.env.TRUST_PROXY, 10) || process.env.TRUST_PROXY);
+}
+
+// ── Security headers (helmet) ──────────────────────────────────────────────────
+// Adds Content-Security-Policy, X-Frame-Options, X-Content-Type-Options,
+// Strict-Transport-Security, Referrer-Policy and more in one line.
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' }, // allow frontend to load API-served assets
+  contentSecurityPolicy: false,  // disabled — frontend CSP is handled by Vite/Nginx separately
+}));
+
+// ── CORS
 app.use(
   cors({
     origin: process.env.FRONTEND_URL
@@ -26,15 +42,18 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Swagger UI — http://localhost:5000/api-docs
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  customSiteTitle: 'Dynatech ONE — API Docs',
-  swaggerOptions: {
-    persistAuthorization: true,   // keeps the token between page refreshes
-    displayRequestDuration: true,
-    filter: true,
-  },
-}));
+// ── Swagger UI — only available in non-production environments ─────────────────
+// In production, /api-docs returns 404 to avoid exposing the full API blueprint.
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    customSiteTitle: 'Dynatech ONE — API Docs',
+    swaggerOptions: {
+      persistAuthorization: true,
+      displayRequestDuration: true,
+      filter: true,
+    },
+  }));
+}
 
 // Health check
 app.get('/health', (req, res) => {

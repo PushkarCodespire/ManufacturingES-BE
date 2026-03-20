@@ -1,9 +1,9 @@
-const { Op } = require('sequelize');
+const { Op, fn, col, literal } = require('sequelize');
 const Routing     = require('../model/Routing');
 const RoutingStep = require('../model/RoutingStep');
 const WorkCenter  = require('../../masters/model/WorkCenter');
 const { validateCreate, validateUpdate } = require('../cred/routing.cred');
-const { Item, Machine } = require('../../../models');
+const { Item, Machine, JobCard } = require('../../../models');
 
 // ── Auto-code generator ────────────────────────────────────────────────────────
 async function nextRtCode() {
@@ -207,4 +207,126 @@ const remove = async (req, res) => {
   }
 };
 
-module.exports = { getAll, getById, create, update, updateStatus, remove };
+// ── GET /routing-steps/time-analysis ─────────────────────────────────────────
+// Returns all routing steps enriched with planned-vs-actual time aggregates
+// from closed job cards.
+const getTimeAnalysis = async (req, res) => {
+  try {
+    const { item_id, routing_id, work_center_id } = req.query;
+
+    // Build routing filter
+    const routingWhere = {};
+    if (item_id)    routingWhere.item_id = item_id;
+    if (routing_id) routingWhere.id      = routing_id;
+
+    const stepWhere = {};
+    if (work_center_id) stepWhere.work_center_id = work_center_id;
+
+    // Fetch all active routing steps
+    const steps = await RoutingStep.findAll({
+      where: stepWhere,
+      include: [
+        {
+          model:    Routing,
+          required: true,
+          ...(Object.keys(routingWhere).length ? { where: routingWhere } : {}),
+          attributes: ['id', 'code', 'name', 'status', 'item_id'],
+          include: [{ model: Item, attributes: ['id', 'name', 'code'] }],
+        },
+        { model: WorkCenter, attributes: ['id', 'name', 'code'] },
+        { model: Machine,    attributes: ['id', 'name', 'code'] },
+      ],
+      order: [['routing_id', 'ASC'], ['step_no', 'ASC']],
+    });
+
+    // For each step, aggregate closed job cards
+    const stepIds = steps.map((s) => s.id);
+
+    const agg = await JobCard.findAll({
+      attributes: [
+        'routing_step_id',
+        [fn('COUNT', col('id')),                     'job_count'],
+        [fn('AVG', col('cycle_time_actual')),        'avg_cycle_actual'],
+        [fn('AVG', col('setup_time_min')),           'avg_setup_actual'],
+        [fn('SUM', col('qty_produced')),             'total_produced'],
+        [fn('SUM', col('qty_rejected')),             'total_rejected'],
+      ],
+      where: {
+        routing_step_id: { [Op.in]: stepIds },
+        status:          'closed',
+      },
+      group: ['routing_step_id'],
+      raw:   true,
+    });
+
+    // Build lookup map
+    const aggMap = {};
+    for (const a of agg) aggMap[a.routing_step_id] = a;
+
+    // Merge into step objects
+    const data = steps.map((step) => {
+      const a = aggMap[step.id] || {};
+      const planCycle  = parseFloat(step.cycle_time_min)  || 0;
+      const avgActual  = parseFloat(a.avg_cycle_actual)   || 0;
+      const efficiency = planCycle > 0 && avgActual > 0
+        ? Math.round((planCycle / avgActual) * 100)
+        : null;
+
+      return {
+        ...step.toJSON(),
+        stats: {
+          job_count:        parseInt(a.job_count)    || 0,
+          avg_cycle_actual: avgActual ? +avgActual.toFixed(2) : null,
+          avg_setup_actual: a.avg_setup_actual ? +parseFloat(a.avg_setup_actual).toFixed(2) : null,
+          total_produced:   parseFloat(a.total_produced) || 0,
+          total_rejected:   parseFloat(a.total_rejected) || 0,
+          efficiency_pct:   efficiency,
+        },
+      };
+    });
+
+    return res.json({ success: true, count: data.length, data });
+  } catch (err) {
+    console.error('[Routing.getTimeAnalysis]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// ── GET /routing-steps/:id/job-card-history ───────────────────────────────────
+const getStepJobCardHistory = async (req, res) => {
+  try {
+    const stepId = parseInt(req.params.stepId, 10);
+    const { page = 1, limit = 20 } = req.query;
+    const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+
+    const step = await RoutingStep.findByPk(stepId, {
+      include: [
+        { model: Routing,    attributes: ['id', 'code', 'name'] },
+        { model: WorkCenter, attributes: ['id', 'name'] },
+        { model: Machine,    attributes: ['id', 'name'] },
+      ],
+    });
+    if (!step) return res.status(404).json({ success: false, message: 'Routing step not found' });
+
+    const { count, rows } = await JobCard.findAndCountAll({
+      where:  { routing_step_id: stepId },
+      order:  [['created_at', 'DESC']],
+      limit:  parseInt(limit, 10),
+      offset,
+    });
+
+    return res.json({
+      success: true,
+      step,
+      count,
+      page:   parseInt(page, 10),
+      pages:  Math.ceil(count / parseInt(limit, 10)),
+      data:   rows,
+    });
+  } catch (err) {
+    console.error('[Routing.getStepJobCardHistory]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+module.exports = { getAll, getById, create, update, updateStatus, remove, getTimeAnalysis, getStepJobCardHistory };

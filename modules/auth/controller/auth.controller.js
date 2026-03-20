@@ -13,9 +13,13 @@ const { MAX_LOGIN_ATTEMPTS, LOCKOUT_DURATION_MINUTES } = require('../../../confi
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Extract real client IP */
-const getIP = (req) =>
-  req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+/**
+ * Extract real client IP.
+ * Uses req.ip which Express resolves correctly when `trust proxy` is set in app.js.
+ * Falls back to socket remoteAddress. Never reads X-Forwarded-For directly —
+ * that header is user-controllable and was bypassing the rate limiter (security audit finding #4).
+ */
+const getIP = (req) => req.ip || req.socket?.remoteAddress || 'unknown';
 
 // ─── H-05: Per-IP login rate limiter ─────────────────────────────────────────
 // Prevents a single IP from triggering mass account lockouts across all employees.

@@ -13,11 +13,12 @@ const upload = multer({
   storage: memStorage,
   limits:  { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    const allowed = /jpeg|jpg|png|gif|webp|svg/;
+    // SVG excluded — it supports embedded <script> tags and causes stored XSS (security audit finding #3)
+    const allowed = /jpeg|jpg|png|gif|webp/;
     const extOk   = allowed.test(path.extname(file.originalname).toLowerCase());
     const mimeOk  = allowed.test(file.mimetype);
     if (extOk && mimeOk) return cb(null, true);
-    cb(new Error('Only image files (jpg, png, gif, webp, svg) are allowed'));
+    cb(new Error('Only image files (jpg, png, gif, webp) are allowed'));
   },
 });
 

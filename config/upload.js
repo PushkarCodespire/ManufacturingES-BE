@@ -11,8 +11,12 @@
 const multer = require('multer');
 const path   = require('path');
 
-/** Allowed MIME / extension whitelist */
-const ALLOWED_EXT = /pdf|doc|docx|xls|xlsx|jpg|jpeg|png|gif|bmp|webp|svg|txt|csv/;
+/**
+ * Allowed MIME / extension whitelist.
+ * SVG is intentionally excluded — SVG files support embedded <script> tags
+ * and JavaScript event handlers, making them a stored XSS vector (security audit finding #3).
+ */
+const ALLOWED_EXT = /pdf|doc|docx|xls|xlsx|jpg|jpeg|png|gif|bmp|webp|txt|csv/;
 
 const fileFilter = (_req, file, cb) => {
   const ext = path.extname(file.originalname).toLowerCase().replace('.', '');

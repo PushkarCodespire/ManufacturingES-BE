@@ -53,6 +53,8 @@ const WorkOrder              = require('../modules/production/model/WorkOrder');
 const JobCard                = require('../modules/production/model/JobCard');
 const Routing                = require('../modules/production/model/Routing');
 const RoutingStep            = require('../modules/production/model/RoutingStep');
+const ShiftAssignment        = require('../modules/production/model/ShiftAssignment');
+const ShiftCrewMember        = require('../modules/production/model/ShiftCrewMember');
 const IqcInspection          = require('../modules/production/model/IqcInspection');
 const IqcInspectionResult    = require('../modules/production/model/IqcInspectionResult');
 const LqcInspection          = require('../modules/production/model/LqcInspection');
@@ -468,6 +470,17 @@ Machine.hasMany(RoutingStep, { foreignKey: 'machine_id' });
 // RoutingStep → JobCard
 JobCard.belongsTo(RoutingStep, { foreignKey: 'routing_step_id' });
 RoutingStep.hasMany(JobCard, { foreignKey: 'routing_step_id' });
+
+// ── Shift Assignments (Batch 1B) ─────────────────────────────────────────────
+ShiftAssignment.belongsTo(WorkOrder, { foreignKey: 'work_order_id', as: 'WorkOrder' });
+WorkOrder.hasMany(ShiftAssignment,   { foreignKey: 'work_order_id', as: 'ShiftAssignments' });
+ShiftAssignment.belongsTo(Shift,     { foreignKey: 'shift_id',      as: 'Shift'     });
+ShiftAssignment.belongsTo(Machine,   { foreignKey: 'machine_id',    as: 'Machine'   });
+
+// Crew Members
+ShiftCrewMember.belongsTo(Shift,      { foreignKey: 'shift_id',       as: 'Shift'      });
+ShiftCrewMember.belongsTo(User,       { foreignKey: 'user_id',        as: 'User'       });
+ShiftCrewMember.belongsTo(WorkCenter, { foreignKey: 'work_center_id', as: 'WorkCenter' });
 
 IqcInspection.belongsTo(Item,   { foreignKey: 'item_id',      as: 'Item'      });
 IqcInspection.belongsTo(Vendor, { foreignKey: 'vendor_id',    as: 'Vendor'    });
@@ -1133,6 +1146,8 @@ module.exports = {
   JobCard,
   Routing,
   RoutingStep,
+  ShiftAssignment,
+  ShiftCrewMember,
   IqcInspection,
   IqcInspectionResult,
   LqcInspection,

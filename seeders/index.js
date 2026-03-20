@@ -151,7 +151,7 @@ async function seed() {
 
     console.log('─'.repeat(50));
     console.log('🎉 Seeding complete!');
-    console.log('   Default password: Dynatech@123');
+    console.log('   Default password set — refer to .env or onboarding doc (not logged for security)');
     console.log('   All users flagged as first_login → must change password on first login');
     console.log('─'.repeat(50));
 
