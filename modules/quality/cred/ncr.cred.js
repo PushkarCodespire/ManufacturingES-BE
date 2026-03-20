@@ -34,6 +34,7 @@ const dispositionSchema = Joi.object({
   decision:             Joi.string().valid('use_as_is','rework','scrap','return_to_supplier','sort_and_use').required()
                           .messages({ 'any.required': 'MRB decision is required' }),
   reason:               Joi.string().trim().max(5000).optional().allow('', null),
+  decision_date:        Joi.string().isoDate().optional().allow(null),
   scrap_voucher_id:     Joi.string().uuid().optional().allow(null),
   material_hold_notes:  Joi.string().trim().max(2000).optional().allow('', null),
   rework_notes:         Joi.string().trim().max(2000).optional().allow('', null),

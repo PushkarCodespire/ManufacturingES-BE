@@ -41,6 +41,13 @@ const stockAdjustmentRoutes      = require('./stockAdjustment.routes');
 const workOrderRoutes            = require('./workOrder.routes');
 const jobCardRoutes              = require('./jobCard.routes');
 const shiftAssignmentRoutes      = require('./shiftAssignment.routes');
+const laborLogRoutes             = require('./laborLog.routes');
+const operatorSkillRoutes        = require('./operatorSkill.routes');
+const mrpRoutes                  = require('./mrp.routes');
+const oeeRoutes                  = require('./oee.routes');
+const reworkVoucherRoutes        = require('./reworkVoucher.routes');
+const toolManagementRoutes       = require('./toolManagement.routes');
+const demandForecastRoutes       = require('./demandForecast.routes');
 const iqcInspectionRoutes        = require('./iqcInspection.routes');
 const lqcInspectionRoutes        = require('./lqcInspection.routes');
 const pqcInspectionRoutes        = require('./pqcInspection.routes');
@@ -66,6 +73,9 @@ const deliveryChallanRoutes       = require('./deliveryChallan.routes');
 const instrumentRoutes            = require('./instrument.routes');
 // Sprint 4
 const capaRoutes                  = require('./capa.routes');
+// Sprint A: PPAP + Audit Plan
+const ppapRoutes                  = require('./ppap.routes');
+const auditPlanRoutes             = require('./auditPlan.routes');
 const ncrRoutes                   = require('./ncr.routes');
 const complaintRoutes             = require('./complaint.routes');
 const drawingRoutes               = require('./drawing.routes');
@@ -95,6 +105,8 @@ const moldCostRoutes        = require('./moldCost.routes');
 const moldDocumentsRoutes   = require('./moldDocuments.routes');
 // Mold Management — Sprint 6
 const moldAiRoutes          = require('./moldAi.routes');
+// MRM Module
+const mrmRoutes               = require('./mrm.routes');
 // Maintenance — Sprint 3 & 5
 const equipmentMasterRoutes  = require('./equipmentMaster.routes');
 const equipmentHealthRoutes  = require('./equipmentHealth.routes');
@@ -147,6 +159,13 @@ router.use('/stock-adjustments',     stockAdjustmentRoutes);
 router.use('/work-orders',           workOrderRoutes);
 router.use('/job-cards',             jobCardRoutes);
 router.use('/shift-assignments',     shiftAssignmentRoutes);
+router.use('/labor-logs',            laborLogRoutes);
+router.use('/operator-skills',       operatorSkillRoutes);
+router.use('/mrp',                   mrpRoutes);
+router.use('/oee',                   oeeRoutes);
+router.use('/rework-vouchers',       reworkVoucherRoutes);
+router.use('/tool-logs',             toolManagementRoutes);
+router.use('/demand-forecast',       demandForecastRoutes);
 router.use('/iqc-inspections',       iqcInspectionRoutes);
 router.use('/lqc-inspections',       lqcInspectionRoutes);
 router.use('/pqc-inspections',       pqcInspectionRoutes);
@@ -174,6 +193,9 @@ router.use('/quality/instruments',       instrumentRoutes);
 router.use('/quality/capa',              capaRoutes);
 router.use('/quality/ncr',               ncrRoutes);
 router.use('/quality/complaints',        complaintRoutes);
+// Sprint A: PPAP + Audit Plan
+router.use('/quality/ppap',              ppapRoutes);
+router.use('/quality/audit-plans',       auditPlanRoutes);
 // Sprint 4: NPD
 router.use('/npd/drawings',              drawingRoutes);
 router.use('/npd/check-sheets',          checkSheetRoutes);
@@ -212,5 +234,7 @@ router.use('/maintenance/spare-parts', sparePartsRoutes);
 router.use('/maintenance/loto',        lotoRoutes);
 router.use('/maintenance/kpi',         maintenanceKpiRoutes);
 router.use('/maintenance/ai',          maintenanceAiRoutes);
+// MRM Module
+router.use('/mrm', mrmRoutes);
 
 module.exports = router;

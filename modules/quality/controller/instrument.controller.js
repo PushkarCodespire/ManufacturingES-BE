@@ -1,6 +1,6 @@
 'use strict';
 const { Op } = require('sequelize');
-const { Instrument, CalibrationRecord, User } = require('../../../models');
+const { Instrument, CalibrationRecord, CalibrationFailure, User } = require('../../../models');
 const { callClaude } = require('../../../services/ai.service');
 
 // ── GET /instruments ────────────────────────────────────────────────────────────
@@ -321,5 +321,105 @@ exports.getVerificationStatus = async (req, res) => {
   } catch (err) {
     console.error('instrument.getVerificationStatus:', err);
     res.status(500).json({ success: false, message: 'Failed to fetch verification status' });
+  }
+};
+
+// ── GET /instruments/:id/failures ──────────────────────────────────────────
+exports.getFailures = async (req, res) => {
+  try {
+    const row = await Instrument.findByPk(req.params.id);
+    if (!row) return res.status(404).json({ success: false, message: 'Instrument not found' });
+
+    const failures = await CalibrationFailure.findAll({
+      where: { instrument_id: row.id },
+      include: [
+        { model: User, as: 'Creator', attributes: ['id', 'name'] },
+        { model: User, as: 'ClosedBy', attributes: ['id', 'name'] },
+      ],
+      order: [['failed_date', 'DESC']],
+    });
+    res.json({ success: true, data: failures });
+  } catch (err) {
+    console.error('instrument.getFailures:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch calibration failures' });
+  }
+};
+
+// ── POST /instruments/:id/failures ─────────────────────────────────────────
+exports.logFailure = async (req, res) => {
+  try {
+    const row = await Instrument.findByPk(req.params.id);
+    if (!row) return res.status(404).json({ success: false, message: 'Instrument not found' });
+
+    const {
+      failed_date, last_passed_date, deviation_found,
+      affected_part_nos = [], affected_job_cards = [],
+      containment_action, impact_level = 'unknown',
+    } = req.body;
+
+    if (!failed_date) return res.status(400).json({ success: false, message: 'failed_date is required' });
+
+    // Auto-create CAPA
+    let capa_id = null;
+    try {
+      const { Capa } = require('../../../models');
+      const year = new Date().getFullYear();
+      const lastCapa = await Capa.findOne({ order: [['created_at', 'DESC']], attributes: ['capa_no'] });
+      const seq = lastCapa ? parseInt(lastCapa.capa_no.split('-').pop(), 10) + 1 : 1;
+      const capa_no = `CAPA-${year}-${String(seq).padStart(4, '0')}`;
+      const capa = await Capa.create({
+        capa_no,
+        title: `Calibration Failure — ${row.instrument_code} (${row.name})`,
+        description: deviation_found || `Calibration failure detected on ${failed_date}`,
+        source_type: 'calibration_failure',
+        status: 'draft',
+        created_by: req.user.id,
+      });
+      capa_id = capa.id;
+    } catch (e) { console.warn('[instrument.logFailure] CAPA auto-create (non-fatal):', e.message); }
+
+    const failure = await CalibrationFailure.create({
+      instrument_id:     row.id,
+      failed_date,
+      last_passed_date:  last_passed_date || null,
+      deviation_found:   deviation_found  || null,
+      affected_part_nos,
+      affected_job_cards,
+      containment_action: containment_action || null,
+      impact_level,
+      disposition:       'under_review',
+      capa_id,
+      created_by:        req.user.id,
+    });
+
+    // Flag the instrument as needing attention
+    await row.update({ status: 'inactive', updated_by: req.user.id });
+
+    res.status(201).json({ success: true, data: failure, message: `Calibration failure logged for ${row.instrument_code}` });
+  } catch (err) {
+    console.error('instrument.logFailure:', err);
+    res.status(500).json({ success: false, message: 'Failed to log calibration failure' });
+  }
+};
+
+// ── PATCH /instruments/failures/:failureId/close ────────────────────────────
+exports.closeFailure = async (req, res) => {
+  try {
+    const failure = await CalibrationFailure.findByPk(req.params.failureId);
+    if (!failure) return res.status(404).json({ success: false, message: 'Calibration failure not found' });
+
+    const { disposition = 'closed', containment_action } = req.body;
+
+    await failure.update({
+      disposition,
+      containment_action: containment_action || failure.containment_action,
+      closed_by: req.user.id,
+      closed_at: new Date(),
+    });
+
+    res.json({ success: true, data: failure, message: 'Calibration failure closed' });
+  } catch (err) {
+    console.error('instrument.closeFailure:', err);
+    res.status(500).json({ success: false, message: 'Failed to close calibration failure' });
   }
 };

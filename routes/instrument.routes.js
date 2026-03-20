@@ -19,4 +19,10 @@ router.patch('/:id',               authorize(...QC_MANAGE), ctrl.update);
 router.delete('/:id',              authorize(...QC_MANAGE), ctrl.delete);
 router.post('/:id/verify',         authorize(...QC_ROLES),  ctrl.verify);
 
+// Calibration Failure Impact Assessment (CAL-003 / Sprint A-A4)
+// Static /failures route must come before /:id to avoid collision
+router.patch('/failures/:failureId/close', authorize(...QC_MANAGE), ctrl.closeFailure);
+router.get('/:id/failures',              ctrl.getFailures);
+router.post('/:id/failures',             authorize(...QC_MANAGE), ctrl.logFailure);
+
 module.exports = router;

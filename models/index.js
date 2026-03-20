@@ -55,6 +55,12 @@ const Routing                = require('../modules/production/model/Routing');
 const RoutingStep            = require('../modules/production/model/RoutingStep');
 const ShiftAssignment        = require('../modules/production/model/ShiftAssignment');
 const ShiftCrewMember        = require('../modules/production/model/ShiftCrewMember');
+const LaborLog               = require('../modules/production/model/LaborLog')(sequelize);
+const OperatorSkill          = require('../modules/production/model/OperatorSkill')(sequelize);
+const OperatorSkillMatrix    = require('../modules/production/model/OperatorSkillMatrix')(sequelize);
+const ReworkVoucher          = require('../modules/production/model/ReworkVoucher')(sequelize);
+const ReworkStep             = require('../modules/production/model/ReworkStep')(sequelize);
+const ToolLog                = require('../modules/production/model/ToolLog')(sequelize);
 const IqcInspection          = require('../modules/production/model/IqcInspection');
 const IqcInspectionResult    = require('../modules/production/model/IqcInspectionResult');
 const LqcInspection          = require('../modules/production/model/LqcInspection');
@@ -101,6 +107,13 @@ const NcrDisposition     = require('../modules/quality/model/NcrDisposition')(se
 const Complaint          = require('../modules/quality/model/Complaint')(sequelize);
 const Instrument         = require('../modules/quality/model/Instrument')(sequelize);
 const CalibrationRecord  = require('../modules/quality/model/CalibrationRecord')(sequelize);
+const CalibrationFailure = require('../modules/quality/model/CalibrationFailure')(sequelize);
+// ── Sprint A: PPAP + Audit Plan ───────────────────────────────────────────────
+const PpapSubmission  = require('../modules/quality/model/PpapSubmission')(sequelize);
+const PpapElement     = require('../modules/quality/model/PpapElement')(sequelize);
+const AuditPlan       = require('../modules/quality/model/AuditPlan')(sequelize);
+const AuditItem       = require('../modules/quality/model/AuditItem')(sequelize);
+const AuditFinding    = require('../modules/quality/model/AuditFinding')(sequelize);
 // ── Sprint 4: NPD ─────────────────────────────────────────────────────────────
 const Drawing              = require('../modules/npd/model/Drawing')(sequelize);
 const DrawingVersion       = require('../modules/npd/model/DrawingVersion')(sequelize);
@@ -195,6 +208,10 @@ const DebitCreditNote       = require('../modules/accounts/model/DebitCreditNote
 const Payment               = require('../modules/accounts/model/Payment');
 const CopqEntry             = require('../modules/accounts/model/CopqEntry');
 const TallySyncLog          = require('../modules/accounts/model/TallySyncLog');
+// MRM Module
+const MrmMeeting = require('../modules/mrm/model/MrmMeeting')(sequelize);
+const MrmMinute  = require('../modules/mrm/model/MrmMinute')(sequelize);
+const MrmAction  = require('../modules/mrm/model/MrmAction')(sequelize);
 
 // ─── Associations ────────────────────────────────────────────────────────────
 
@@ -446,6 +463,9 @@ WorkOrder.belongsTo(CustomerOrder, { foreignKey: 'customer_order_id', as: 'Custo
 WorkOrder.belongsTo(User,          { foreignKey: 'created_by',        as: 'Creator'       });
 WorkOrder.belongsTo(User,          { foreignKey: 'updated_by',        as: 'Updater'       });
 WorkOrder.hasMany(JobCard,         { foreignKey: 'work_order_id',     as: 'JobCards'      });
+// Sub-assembly hierarchy (self-referencing)
+WorkOrder.belongsTo(WorkOrder, { foreignKey: 'parent_wo_id', as: 'ParentWO'      });
+WorkOrder.hasMany(WorkOrder,   { foreignKey: 'parent_wo_id', as: 'SubAssemblies' });
 
 JobCard.belongsTo(WorkOrder, { foreignKey: 'work_order_id', as: 'WorkOrder' });
 JobCard.belongsTo(Machine,   { foreignKey: 'machine_id',   as: 'Machine'   });
@@ -481,6 +501,38 @@ ShiftAssignment.belongsTo(Machine,   { foreignKey: 'machine_id',    as: 'Machine
 ShiftCrewMember.belongsTo(Shift,      { foreignKey: 'shift_id',       as: 'Shift'      });
 ShiftCrewMember.belongsTo(User,       { foreignKey: 'user_id',        as: 'User'       });
 ShiftCrewMember.belongsTo(WorkCenter, { foreignKey: 'work_center_id', as: 'WorkCenter' });
+
+// ── Batch 6A — Rework Vouchers ────────────────────────────────────────────────
+ReworkVoucher.belongsTo(WorkOrder, { foreignKey: 'work_order_id', as: 'WorkOrder' });
+ReworkVoucher.belongsTo(Item,      { foreignKey: 'item_id',       as: 'Item'      });
+ReworkVoucher.belongsTo(Machine,   { foreignKey: 'machine_id',    as: 'Machine'   });
+ReworkVoucher.belongsTo(User,      { foreignKey: 'authorized_by', as: 'AuthorizedBy', constraints: false });
+ReworkVoucher.belongsTo(User,      { foreignKey: 'created_by',    as: 'Creator'   });
+ReworkVoucher.hasMany(ReworkStep,  { foreignKey: 'rework_voucher_id', as: 'Steps', onDelete: 'CASCADE' });
+ReworkStep.belongsTo(ReworkVoucher,{ foreignKey: 'rework_voucher_id', as: 'Voucher' });
+ReworkStep.belongsTo(Machine,      { foreignKey: 'machine_id',    as: 'Machine', constraints: false });
+ReworkStep.belongsTo(User,         { foreignKey: 'completed_by',  as: 'CompletedBy', constraints: false });
+
+// ── Batch 6B — Tool Logs ──────────────────────────────────────────────────────
+ToolLog.belongsTo(Tool,    { foreignKey: 'tool_id',    as: 'Tool'    });
+ToolLog.belongsTo(Machine, { foreignKey: 'machine_id', as: 'Machine', constraints: false });
+ToolLog.belongsTo(User,    { foreignKey: 'created_by', as: 'Creator', constraints: false });
+Tool.hasMany(ToolLog,      { foreignKey: 'tool_id',    as: 'Logs'    });
+
+// Labor Logs
+LaborLog.belongsTo(JobCard,     { foreignKey: 'job_card_id',      as: 'JobCard'     });
+LaborLog.belongsTo(User,        { foreignKey: 'operator_id',      as: 'Operator'    });
+LaborLog.belongsTo(User,        { foreignKey: 'created_by',       as: 'Creator'     });
+LaborLog.belongsTo(RoutingStep, { foreignKey: 'routing_step_id',  as: 'RoutingStep', constraints: false });
+JobCard.hasMany(LaborLog,       { foreignKey: 'job_card_id',      as: 'LaborLogs'   });
+User.hasMany(LaborLog,          { foreignKey: 'operator_id',      as: 'LaborLogs'   });
+
+// Operator Skill Matrix
+OperatorSkill.hasMany(OperatorSkillMatrix,    { foreignKey: 'skill_id', as: 'Matrices'    });
+OperatorSkillMatrix.belongsTo(OperatorSkill,  { foreignKey: 'skill_id', as: 'Skill'       });
+OperatorSkillMatrix.belongsTo(User,           { foreignKey: 'user_id',  as: 'Operator'    });
+OperatorSkillMatrix.belongsTo(User,           { foreignKey: 'certified_by', as: 'CertifiedBy', constraints: false });
+User.hasMany(OperatorSkillMatrix,             { foreignKey: 'user_id',  as: 'SkillMatrix' });
 
 IqcInspection.belongsTo(Item,   { foreignKey: 'item_id',      as: 'Item'      });
 IqcInspection.belongsTo(Vendor, { foreignKey: 'vendor_id',    as: 'Vendor'    });
@@ -691,12 +743,32 @@ Ncr.hasOne(NcrDisposition, { foreignKey: 'ncr_id', as: 'Disposition', onDelete: 
 NcrDisposition.belongsTo(Ncr,  { foreignKey: 'ncr_id' });
 NcrDisposition.belongsTo(User, { foreignKey: 'decision_by', as: 'DecisionBy' });
 
-// Instrument — creator + calibration records
+// Instrument — creator + calibration records + failures
 Instrument.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
 Instrument.hasMany(CalibrationRecord, { foreignKey: 'instrument_id', as: 'CalibrationRecords', onDelete: 'CASCADE' });
 CalibrationRecord.belongsTo(Instrument, { foreignKey: 'instrument_id', as: 'Instrument' });
 CalibrationRecord.belongsTo(User, { foreignKey: 'performed_by', as: 'PerformedBy' });
 CalibrationRecord.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
+Instrument.hasMany(CalibrationFailure, { foreignKey: 'instrument_id', as: 'Failures', onDelete: 'CASCADE' });
+CalibrationFailure.belongsTo(Instrument, { foreignKey: 'instrument_id', as: 'Instrument' });
+CalibrationFailure.belongsTo(User, { foreignKey: 'created_by', as: 'Creator', constraints: false });
+CalibrationFailure.belongsTo(User, { foreignKey: 'closed_by', as: 'ClosedBy', constraints: false });
+// PPAP associations
+PpapSubmission.belongsTo(Item, { foreignKey: 'item_id', as: 'Item' });
+PpapSubmission.belongsTo(User, { foreignKey: 'created_by', as: 'Creator', constraints: false });
+PpapSubmission.belongsTo(User, { foreignKey: 'psw_signed_by', as: 'PswSignedBy', constraints: false });
+PpapSubmission.hasMany(PpapElement, { foreignKey: 'ppap_id', as: 'Elements', onDelete: 'CASCADE' });
+PpapElement.belongsTo(PpapSubmission, { foreignKey: 'ppap_id', as: 'Submission' });
+PpapElement.belongsTo(User, { foreignKey: 'completed_by', as: 'CompletedBy', constraints: false });
+// Audit Plan associations
+AuditPlan.hasMany(AuditItem, { foreignKey: 'audit_plan_id', as: 'Items', onDelete: 'CASCADE' });
+AuditPlan.belongsTo(User, { foreignKey: 'created_by', as: 'Creator', constraints: false });
+AuditPlan.belongsTo(User, { foreignKey: 'approved_by', as: 'ApprovedBy', constraints: false });
+AuditItem.belongsTo(AuditPlan, { foreignKey: 'audit_plan_id', as: 'Plan' });
+AuditItem.belongsTo(User, { foreignKey: 'auditor_id', as: 'Auditor', constraints: false });
+AuditItem.hasMany(AuditFinding, { foreignKey: 'audit_item_id', as: 'Findings', onDelete: 'CASCADE' });
+AuditFinding.belongsTo(AuditItem, { foreignKey: 'audit_item_id', as: 'AuditItem' });
+AuditFinding.belongsTo(User, { foreignKey: 'raised_by', as: 'RaisedBy', constraints: false });
 
 // Complaint — item + creator + capa + ncr chain links
 Complaint.belongsTo(Item, { foreignKey: 'item_id',    as: 'Item'    });
@@ -1091,6 +1163,16 @@ MaintenanceCost.belongsTo(MaintenanceWorkOrder, { foreignKey: 'work_order_id', a
 MaintenanceCost.belongsTo(PmWorkOrder,          { foreignKey: 'pm_wo_id',      as: 'PmWorkOrder' });
 MaintenanceCost.belongsTo(Equipment,            { foreignKey: 'equipment_id',  as: 'Equipment' });
 
+// ── MRM ──────────────────────────────────────────────────────────────────────
+MrmMeeting.hasMany(MrmMinute, { foreignKey: 'meeting_id', as: 'Minutes', onDelete: 'CASCADE' });
+MrmMinute.belongsTo(MrmMeeting, { foreignKey: 'meeting_id', as: 'Meeting' });
+MrmMeeting.hasMany(MrmAction, { foreignKey: 'meeting_id', as: 'Actions', onDelete: 'CASCADE' });
+MrmAction.belongsTo(MrmMeeting, { foreignKey: 'meeting_id', as: 'Meeting' });
+MrmAction.belongsTo(MrmMinute, { foreignKey: 'minute_id', as: 'Minute', constraints: false });
+MrmMeeting.belongsTo(User, { foreignKey: 'created_by', as: 'Creator', constraints: false });
+MrmMeeting.belongsTo(User, { foreignKey: 'signed_by', as: 'SignedBy', constraints: false });
+MrmAction.belongsTo(User, { foreignKey: 'assigned_to', as: 'AssignedTo', constraints: false });
+
 module.exports = {
   sequelize,
   Department,
@@ -1148,6 +1230,12 @@ module.exports = {
   RoutingStep,
   ShiftAssignment,
   ShiftCrewMember,
+  LaborLog,
+  OperatorSkill,
+  OperatorSkillMatrix,
+  ReworkVoucher,
+  ReworkStep,
+  ToolLog,
   IqcInspection,
   IqcInspectionResult,
   LqcInspection,
@@ -1194,6 +1282,12 @@ module.exports = {
   Complaint,
   Instrument,
   CalibrationRecord,
+  CalibrationFailure,
+  PpapSubmission,
+  PpapElement,
+  AuditPlan,
+  AuditItem,
+  AuditFinding,
   // Sprint 4: NPD
   Drawing,
   DrawingVersion,
@@ -1288,4 +1382,8 @@ module.exports = {
   LotoPermit,
   MaintenanceCost,
   ItemQualityParam,
+  // MRM Module
+  MrmMeeting,
+  MrmMinute,
+  MrmAction,
 };

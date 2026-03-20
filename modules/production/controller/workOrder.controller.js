@@ -9,6 +9,8 @@ const {
   User,
   Routing,
   RoutingStep,
+  Bom,
+  BomLine,
 } = require('../../../models');
 const { validateCreateWorkOrder, validateUpdateWorkOrder, validateUpdateStatus } = require('../cred/workOrder.cred');
 const { callClaude } = require('../../../services/ai.service');
@@ -32,12 +34,13 @@ async function nextWoNo() {
 // ── GET /work-orders ─────────────────────────────────────────────────────────
 const getAll = async (req, res) => {
   try {
-    const { search, status, machine_id, item_id } = req.query;
+    const { search, status, machine_id, item_id, wo_type } = req.query;
     const where = {};
     if (search)     where.wo_no      = { [Op.iLike]: `%${search}%` };
     if (status)     where.status     = status;
     if (machine_id) where.machine_id = machine_id;
     if (item_id)    where.item_id    = item_id;
+    if (wo_type)    where.wo_type    = wo_type;
 
     const records = await WorkOrder.findAll({
       where,
@@ -386,6 +389,123 @@ const generateJobCards = async (req, res) => {
   }
 };
 
+// ── GET /work-orders/:id/sub-assemblies ───────────────────────────────────────
+const getSubAssemblies = async (req, res) => {
+  try {
+    const parent = await WorkOrder.findByPk(req.params.id);
+    if (!parent) return res.status(404).json({ success: false, message: 'Work order not found' });
+
+    const records = await WorkOrder.findAll({
+      where: { parent_wo_id: req.params.id },
+      include: [
+        { model: Item,    as: 'Item',    attributes: ['id', 'name', 'code'] },
+        { model: Machine, as: 'Machine', attributes: ['id', 'name'] },
+        { model: User,    as: 'Creator', attributes: ['id', 'name'] },
+      ],
+      order: [['created_at', 'ASC']],
+    });
+    return res.json({ success: true, data: records });
+  } catch (err) {
+    console.error('[WorkOrder.getSubAssemblies]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// ── POST /work-orders/:id/sub-assemblies ──────────────────────────────────────
+const createSubAssembly = async (req, res) => {
+  try {
+    const parent = await WorkOrder.findByPk(req.params.id);
+    if (!parent) return res.status(404).json({ success: false, message: 'Parent work order not found' });
+
+    const { item_id, planned_qty, machine_id, shift_id, planned_start, planned_end, priority, notes, bom_line_id } = req.body;
+    if (!item_id) return res.status(400).json({ success: false, message: 'item_id is required' });
+
+    const wo_no = await nextWoNo();
+    const record = await WorkOrder.create({
+      wo_no,
+      item_id,
+      planned_qty:   planned_qty  || 0,
+      machine_id:    machine_id   || null,
+      shift_id:      shift_id     || null,
+      planned_start: planned_start || null,
+      planned_end:   planned_end   || null,
+      priority:      priority      || 'normal',
+      notes:         notes         || null,
+      wo_type:       'sub_assembly',
+      parent_wo_id:  parent.id,
+      bom_line_id:   bom_line_id  || null,
+      status:        'draft',
+      created_by:    req.user.id,
+      updated_by:    req.user.id,
+    });
+    return res.status(201).json({ success: true, data: record });
+  } catch (err) {
+    console.error('[WorkOrder.createSubAssembly]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// ── POST /work-orders/:id/generate-sub-assemblies ─────────────────────────────
+// Auto-creates one sub-assembly WO per BOM line component of the parent WO's item.
+const generateFromBom = async (req, res) => {
+  try {
+    const parent = await WorkOrder.findByPk(req.params.id, {
+      include: [{ model: Item, as: 'Item', attributes: ['id', 'name', 'code'] }],
+    });
+    if (!parent) return res.status(404).json({ success: false, message: 'Work order not found' });
+
+    // Find active BOM for this item
+    const bom = await Bom.findOne({
+      where: { item_id: parent.item_id, status: 'active' },
+      include: [{
+        model: BomLine, as: 'Lines',
+        include: [{ model: Item, as: 'Component', attributes: ['id', 'name', 'code'] }],
+      }],
+    });
+    if (!bom || !bom.Lines || bom.Lines.length === 0) {
+      return res.status(400).json({ success: false, message: 'No active BOM found for this item\'s components' });
+    }
+
+    // Skip lines whose component has its own BOM (sub-assemblies only)
+    const bomLines = bom.Lines;
+
+    // Check if sub-WOs already exist for this parent
+    const existingCount = await WorkOrder.count({ where: { parent_wo_id: parent.id } });
+    if (existingCount > 0) {
+      return res.status(400).json({ success: false, message: `${existingCount} sub-assembly work order(s) already exist for this work order` });
+    }
+
+    const created = [];
+    for (const line of bomLines) {
+      const wo_no = await nextWoNo();
+      const subWo = await WorkOrder.create({
+        wo_no,
+        item_id:      line.component_item_id,
+        planned_qty:  parseFloat(line.quantity) * parseFloat(parent.planned_qty),
+        wo_type:      'sub_assembly',
+        parent_wo_id: parent.id,
+        bom_line_id:  line.id,
+        status:       'draft',
+        priority:     parent.priority || 'normal',
+        planned_start: parent.planned_start || null,
+        planned_end:   parent.planned_end   || null,
+        created_by:   req.user.id,
+        updated_by:   req.user.id,
+      });
+      created.push({ ...subWo.toJSON(), Component: line.Component });
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: `${created.length} sub-assembly work order(s) generated from BOM`,
+      data: created,
+    });
+  } catch (err) {
+    console.error('[WorkOrder.generateFromBom]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
 module.exports = {
   getAll,
   getById,
@@ -394,5 +514,8 @@ module.exports = {
   updateStatus,
   getAiDelayRisk,
   generateJobCards,
+  getSubAssemblies,
+  createSubAssembly,
+  generateFromBom,
   delete: deleteWorkOrder,
 };

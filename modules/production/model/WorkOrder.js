@@ -18,6 +18,10 @@ const WorkOrder = sequelize.define('WorkOrder', {
   priority:          { type: DataTypes.STRING(20), defaultValue: 'normal' },
   status:            { type: DataTypes.STRING(20), defaultValue: 'draft' },
   fpi_status:        { type: DataTypes.STRING(20), defaultValue: 'not_required' }, // not_required | pending | pass | fail
+  // Sub-assembly support
+  wo_type:           { type: DataTypes.STRING(20), defaultValue: 'standard' },    // standard | sub_assembly
+  parent_wo_id:      { type: DataTypes.UUID,       allowNull: true },
+  bom_line_id:       { type: DataTypes.INTEGER,    allowNull: true },
   notes:             { type: DataTypes.TEXT, allowNull: true },
   created_by:        { type: DataTypes.INTEGER, allowNull: true },
   updated_by:        { type: DataTypes.INTEGER, allowNull: true },
