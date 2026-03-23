@@ -61,7 +61,7 @@ httpRoute:
   parentRefs:
     - name: https-gateway
       namespace: gateway-system
-      sectionname: https-dev
+      sectionName: https-dev
   hostnames:
     - mes.dev.gcp.codespiresolutions.com
   rules:
@@ -71,6 +71,7 @@ httpRoute:
             value: /
       backendRefs:
         - name: manufacturing-execution-system-api
+          port: 3000
  
 # Persistence for development (e.g., for logs or uploads)
 persistence:
