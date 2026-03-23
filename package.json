@@ -4,6 +4,7 @@
   "description": "Dynatech ONE — Backend API",
   "main": "index.js",
   "scripts": {
+    "build": "echo 'No build step required for Node.js API'",
     "start": "node index.js",
     "dev": "nodemon index.js",
     "seed": "node seeders/index.js",
