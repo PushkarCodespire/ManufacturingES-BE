@@ -1,6 +1,3 @@
-# Example development values for a Node.js application
-# Usage: helm install my-app ./nodejs -f examples/values-development.yaml
-
 fullnameOverride: "manufacturing-execution-system-api"
  
 replicaCount: 1
@@ -8,24 +5,46 @@ replicaCount: 1
 image:
   pullPolicy: Always
  
-# Plain environment variables (stored in ConfigMap)
+# Plain environment variables (ConfigMap)
 env:
   NODE_ENV: development
   LOG_LEVEL: debug
-  PORT: "3000"
+  PORT: "5000"
+  SKIP_SYNC: "true"
 
-  # Database — Cloud SQL IAM authentication
-  DATABASE_HOST: 'localhost'
-  DATABASE_PORT: '5432'
-  DATABASE_NAME: 'db_mfg_exec_system_d'
-  DATABASE_USER: 'gitlab-ci-mfg-exec-system@codespire-infra-core-prod.iam'
-  DATABASE_SSL: 'false'
- 
-# Sensitive environment variables (stored in Secret)
+  # Database (App-level config)
+  DB_HOST: "localhost"
+  DB_PORT: "5432"
+  DB_NAME: "db_mfg_exec_system_d"
+  DB_USER: "gitlab-ci-mfg-exec-system@codespire-infra-core-prod.iam"
+
+  # Cloud SQL IAM (keep if used by infra)
+  DATABASE_HOST: "localhost"
+  DATABASE_PORT: "5432"
+  DATABASE_NAME: "db_mfg_exec_system_d"
+  DATABASE_USER: "gitlab-ci-mfg-exec-system@codespire-infra-core-prod.iam"
+  DATABASE_SSL: "false"
+
+  # JWT
+  JWT_EXPIRES_IN: "8h"
+
+  # Frontend
+  FRONTEND_URL: "http://localhost:5173"
+
+  # AI Config
+  AI_ENABLED: "true"
+  AI_MODEL: "claude-haiku-4-5"
+  AI_VISION_MODEL: "claude-sonnet-4-6"
+  AI_MAX_TOKENS: "2048"
+  AI_MONTHLY_BUDGET_CENTS: "5000"
+
+# Sensitive variables (Kubernetes Secret)
 envSecret:
+  JWT_SECRET: "26832e922f8b16ce64653517e0b5ffc205bd4cbc8dfd13acb97d002a639c73f41bd51f48a4f6b09db3fc9cba28eb32d0084f7d58967b66ea7f7492b6fb8be08e"
+  ANTHROPIC_API_KEY: "sk-ant-api03-xxxxx"
   DATABASE_URL: "postgresql://gitlab-ci-mfg-exec-system%40codespire-infra-core-prod.iam@localhost:5432/db_mfg_exec_system_d"
  
-# Minimal resources for development
+# Resources
 resources:
   limits:
     cpu: 250m
@@ -34,7 +53,7 @@ resources:
     cpu: 50m
     memory: 64Mi
  
-# Relaxed probes for development
+# Probes
 livenessProbe:
   enabled: true
   type: httpGet
@@ -55,7 +74,7 @@ readinessProbe:
   periodSeconds: 10
   failureThreshold: 5
  
-# HTTPRoute for development
+# Routing
 httpRoute:
   enabled: true
   parentRefs:
@@ -71,16 +90,14 @@ httpRoute:
             value: /
       backendRefs:
         - name: manufacturing-execution-system-api
-          port: 3000
+          port: 5000
  
-# Persistence for development (e.g., for logs or uploads)
+# Persistence
 persistence:
   enabled: true
   size: 1Gi
   mountPath: /app/data
  
-# Autoscaling disabled for development
+# Autoscaling
 autoscaling:
   enabled: false
-
-  
