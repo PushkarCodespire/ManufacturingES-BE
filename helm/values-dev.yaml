@@ -1,7 +1,7 @@
 # Example development values for a Node.js application
 # Usage: helm install my-app ./nodejs -f examples/values-development.yaml
 
-fullnameOverride: "mould-lifecycle-management-api"
+fullnameOverride: "manufacturing-execution-system-api"
  
 replicaCount: 1
  
@@ -17,13 +17,13 @@ env:
   # Database — Cloud SQL IAM authentication
   DATABASE_HOST: 'localhost'
   DATABASE_PORT: '5432'
-  DATABASE_NAME: 'db_honeywell_mould_lc_d'
-  DATABASE_USER: 'gitlab-ci-honeywell-mould-lc@codespire-infra-core-prod.iam'
+  DATABASE_NAME: 'db_mfg_exec_system_d'
+  DATABASE_USER: 'gitlab-ci-mfg-exec-system@codespire-infra-core-prod.iam'
   DATABASE_SSL: 'false'
  
 # Sensitive environment variables (stored in Secret)
 envSecret:
-  DATABASE_URL: "postgresql://gitlab-ci-honeywell-mould-lc%40codespire-infra-core-prod.iam@localhost:5432/db_honeywell_mould_lc_d"
+  DATABASE_URL: "postgresql://gitlab-ci-mfg-exec-system%40codespire-infra-core-prod.iam@localhost:5432/db_mfg_exec_system_d"
  
 # Minimal resources for development
 resources:
@@ -70,7 +70,7 @@ httpRoute:
             type: PathPrefix
             value: /
       backendRefs:
-        - name: mould-lifecycle-management-api
+        - name: manufacturing-execution-system-api
  
 # Persistence for development (e.g., for logs or uploads)
 persistence:
