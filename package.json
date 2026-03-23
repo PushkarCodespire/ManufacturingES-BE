@@ -4,7 +4,7 @@
   "description": "Dynatech ONE — Backend API",
   "main": "index.js",
   "scripts": {
-    "build": "echo 'No build step required for Node.js API'",
+    "build": "rm -rf dist && mkdir -p dist && cp -r index.js config modules models routes services migrations scripts dist/ && echo 'Build complete'",
     "test": "echo 'No tests configured'",
     "test:coverage": "mkdir -p coverage && echo '<testsuites></testsuites>' > junit.xml && echo '<coverage><packages></packages></coverage>' > coverage/cobertura-coverage.xml && echo 'No tests configured'",
     "start": "node index.js",
