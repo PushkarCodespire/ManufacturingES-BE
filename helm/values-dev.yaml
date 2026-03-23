@@ -1,0 +1,82 @@
+# Example development values for a Node.js application
+# Usage: helm install my-app ./nodejs -f examples/values-development.yaml
+
+fullnameOverride: "manufacturing-execution-system"
+ 
+replicaCount: 1
+ 
+image:
+  pullPolicy: Always
+ 
+# Plain environment variables (stored in ConfigMap)
+env:
+  NODE_ENV: development
+  LOG_LEVEL: debug
+  PORT: "3000"
+
+  # Database — Cloud SQL IAM authentication
+  DATABASE_HOST: 'localhost'
+  DATABASE_PORT: '5432'
+  DATABASE_NAME: 'db_honeywell_mould_lc_d'
+  DATABASE_USER: 'gitlab-ci-honeywell-mould-lc@codespire-infra-core-prod.iam'
+  DATABASE_SSL: 'false'
+ 
+# Sensitive environment variables (stored in Secret)
+envSecret:
+  DATABASE_URL: "postgresql://gitlab-ci-honeywell-mould-lc%40codespire-infra-core-prod.iam@localhost:5432/db_honeywell_mould_lc_d"
+ 
+# Minimal resources for development
+resources:
+  limits:
+    cpu: 250m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+ 
+# Relaxed probes for development
+livenessProbe:
+  enabled: true
+  type: httpGet
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 30
+  failureThreshold: 5
+ 
+readinessProbe:
+  enabled: true
+  type: httpGet
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  failureThreshold: 5
+ 
+# HTTPRoute for development
+httpRoute:
+  enabled: true
+  parentRefs:
+    - name: dev-gateway
+      namespace: gateway-system
+  hostnames:
+    - dev-api.example.local
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+ 
+# Persistence for development (e.g., for logs or uploads)
+persistence:
+  enabled: true
+  size: 1Gi
+  mountPath: /app/data
+ 
+# Autoscaling disabled for development
+autoscaling:
+  enabled: false
+
+  
