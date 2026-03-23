@@ -85,11 +85,11 @@ app.get('/dbcheck', async (req, res) => {
 // Serves files from UPLOAD_DIR at /uploads — used for local dev and non-Cloudinary deployments.
 // In production with Cloudinary configured, this middleware is still mounted but never writes
 // new files there (all uploads go to Cloudinary instead).
-// if (!process.env.CLOUDINARY_CLOUD_NAME) {
-//   const uploadDir = path.resolve(process.env.UPLOAD_DIR || 'uploads');
-//   if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-//   app.use('/uploads', express.static(uploadDir));
-// }
+if (!process.env.CLOUDINARY_CLOUD_NAME) {
+  const uploadDir = path.resolve(process.env.UPLOAD_DIR || 'uploads');
+  if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+  app.use('/uploads', express.static(uploadDir));
+}
 
 // All API routes
 app.use('/api', routes);

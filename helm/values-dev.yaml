@@ -37,7 +37,7 @@ env:
   AI_VISION_MODEL: "claude-sonnet-4-6"
   AI_MAX_TOKENS: "2048"
   AI_MONTHLY_BUDGET_CENTS: "5000"
-  UPLOAD_DIR: "uploads"
+  UPLOAD_DIR: "/app/uploads"
 
 # Sensitive variables (Kubernetes Secret)
 envSecret:

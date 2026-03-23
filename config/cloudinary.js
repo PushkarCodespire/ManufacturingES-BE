@@ -48,9 +48,9 @@ const saveToLocal = (buffer, originalname, mimetype) => {
   const uploadDir = path.resolve(process.env.UPLOAD_DIR || 'uploads');
 
   // Create directory recursively if it doesn't exist
-  // if (!fs.existsSync(uploadDir)) {
-  //   fs.mkdirSync(uploadDir, { recursive: true });
-  // }
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
 
   // Generate a unique filename to avoid collisions: <timestamp>-<random>.<ext>
   const ext      = path.extname(originalname).toLowerCase();
