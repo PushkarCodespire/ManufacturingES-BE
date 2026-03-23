@@ -1,7 +1,7 @@
 # Example development values for a Node.js application
 # Usage: helm install my-app ./nodejs -f examples/values-development.yaml
 
-fullnameOverride: "manufacturing-execution-system"
+fullnameOverride: "manufacturing-execution-system-api"
  
 replicaCount: 1
  
@@ -59,15 +59,18 @@ readinessProbe:
 httpRoute:
   enabled: true
   parentRefs:
-    - name: dev-gateway
+    - name: https-gateway
       namespace: gateway-system
+      sectionname: https-dev
   hostnames:
-    - dev-api.example.local
+    - mes.dev.gcp.codespiresolutions.com
   rules:
     - matches:
         - path:
             type: PathPrefix
             value: /
+      backendRefs:
+        - name: manufacturing-execution-system-api
  
 # Persistence for development (e.g., for logs or uploads)
 persistence:
