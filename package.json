@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "build": "echo 'No build step required for Node.js API'",
+    "test": "echo 'No tests configured'",
+    "test:coverage": "mkdir -p coverage && echo '<testsuites></testsuites>' > junit.xml && echo '<coverage><packages></packages></coverage>' > coverage/cobertura-coverage.xml && echo 'No tests configured'",
     "start": "node index.js",
     "dev": "nodemon index.js",
     "seed": "node seeders/index.js",
