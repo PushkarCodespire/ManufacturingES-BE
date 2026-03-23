@@ -6,8 +6,9 @@ const fs      = require('fs');
 const { authenticate, authorize } = require('../config/middleware');
 const { getAll, getById, getDetail, getTracking, create, update, remove, aiExtractPo, aiDeliveryRisk, aiHealthSummary } = require('../modules/orders/controller/customerOrder.controller');
 
-// Multer for PO PDF upload (temp storage, cleaned up after extraction)
-const PO_TMP = path.join(__dirname, '..', 'uploads', 'po-tmp');
+// Multer for PO PDF upload (temp disk storage, file cleaned up after AI extraction)
+// Uses UPLOAD_DIR env var so the path works in both local dev and Kubernetes (PVC mount)
+const PO_TMP = path.join(process.env.UPLOAD_DIR || path.join(__dirname, '..', 'uploads'), 'po-tmp');
 if (!fs.existsSync(PO_TMP)) fs.mkdirSync(PO_TMP, { recursive: true });
 const poUpload = multer({
   dest: PO_TMP,
