@@ -1,7 +1,7 @@
 # Example development values for a Node.js application
 # Usage: helm install my-app ./nodejs -f examples/values-development.yaml
 
-fullnameOverride: "manufacturing-execution-system-api"
+fullnameOverride: "mould-lifecycle-management-api"
  
 replicaCount: 1
  
@@ -70,7 +70,7 @@ httpRoute:
             type: PathPrefix
             value: /
       backendRefs:
-        - name: manufacturing-execution-system-api
+        - name: mould-lifecycle-management-api
  
 # Persistence for development (e.g., for logs or uploads)
 persistence:
