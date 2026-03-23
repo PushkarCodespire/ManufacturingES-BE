@@ -3,6 +3,8 @@ const cors         = require('cors');
 const cookieParser = require('cookie-parser');
 const swaggerUi    = require('swagger-ui-express');
 const helmet       = require('helmet');
+const path         = require('path');
+const fs           = require('fs');
 require('dotenv').config();
 
 const routes      = require('../routes');
@@ -78,6 +80,16 @@ app.get('/dbcheck', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ── Local uploads fallback (only active when Cloudinary is not configured) ────
+// Serves files from UPLOAD_DIR at /uploads — used for local dev and non-Cloudinary deployments.
+// In production with Cloudinary configured, this middleware is still mounted but never writes
+// new files there (all uploads go to Cloudinary instead).
+// if (!process.env.CLOUDINARY_CLOUD_NAME) {
+//   const uploadDir = path.resolve(process.env.UPLOAD_DIR || 'uploads');
+//   if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+//   app.use('/uploads', express.static(uploadDir));
+// }
 
 // All API routes
 app.use('/api', routes);

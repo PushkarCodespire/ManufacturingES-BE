@@ -3,7 +3,7 @@ const router   = express.Router();
 const multer   = require('multer');
 const path     = require('path');
 const { authenticate }            = require('../config/middleware');
-const { uploadBuffer, isConfigured } = require('../config/cloudinary');
+const { uploadBuffer, isConfigured, saveToLocal } = require('../config/cloudinary');
 
 // ── In-memory storage (no disk writes — required for Cloudinary + Render) ─────
 const memStorage = multer.memoryStorage();
@@ -52,9 +52,8 @@ router.post('/', authenticate, upload.single('image'), async (req, res) => {
         resource_type: 'image',
       });
     } else {
-      // Local dev fallback — base64 data URL (images only, dev use)
-      const b64  = req.file.buffer.toString('base64');
-      fileUrl    = `data:${req.file.mimetype};base64,${b64}`;
+      // Local fallback — save to UPLOAD_DIR and return a /uploads/<file> URL
+      fileUrl = saveToLocal(req.file.buffer, req.file.originalname, req.file.mimetype);
     }
 
     return res.json({
@@ -92,8 +91,8 @@ router.post('/document', authenticate, uploadDoc.single('file'), async (req, res
         unique_filename: true,
       });
     } else {
-      const b64  = req.file.buffer.toString('base64');
-      fileUrl    = `data:${req.file.mimetype};base64,${b64}`;
+      // Local fallback — save to UPLOAD_DIR and return a /uploads/<file> URL
+      fileUrl = saveToLocal(req.file.buffer, req.file.originalname, req.file.mimetype);
     }
 
     return res.json({
