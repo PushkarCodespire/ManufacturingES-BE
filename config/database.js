@@ -1,31 +1,25 @@
 const { Sequelize } = require('sequelize');
 require('dotenv').config();
 
-// Render (and most cloud hosts) provide a single DATABASE_URL.
-// Local dev uses individual DB_* vars. Support both.
-const sequelize = process.env.DATABASE_URL
-  ? new Sequelize(process.env.DATABASE_URL, {
-      dialect: 'postgres',
-      logging: false,
-      dialectOptions: {
-        ssl: {
-          require: true,
-          rejectUnauthorized: false, // required for Render's self-signed cert
-        },
-      },
-      pool: { max: 5, min: 0, acquire: 30000, idle: 10000 },
-    })
-  : new Sequelize(
-      process.env.DB_NAME,
-      process.env.DB_USER,
-      process.env.DB_PASS,
-      {
-        host:    process.env.DB_HOST,
-        port:    process.env.DB_PORT || 5432,
-        dialect: 'postgres',
-        logging: false,
-        pool:    { max: 5, min: 0, acquire: 30000, idle: 10000 },
-      }
-    );
+// Build connection URL from individual DB_* env vars.
+// Using Cloud SQL IAM auth — no password required, proxy handles authentication.
+// DB_USER contains '@' (IAM service account) — encode it so the URL is valid.
+const host    = process.env.DB_HOST || 'localhost';
+const port    = process.env.DB_PORT || '5432';
+const name    = process.env.DB_NAME;
+const user    = encodeURIComponent(process.env.DB_USER || ''); // encodes '@' → '%40'
+
+const connectionUrl = `postgresql://${user}@${host}:${port}/${name}`;
+
+const sequelize = new Sequelize(connectionUrl, {
+  dialect: 'postgres',
+  logging: false,
+  dialectOptions: {
+    ssl: process.env.DATABASE_SSL === 'true'
+      ? { require: true, rejectUnauthorized: false }
+      : false,
+  },
+  pool: { max: 5, min: 0, acquire: 30000, idle: 10000 },
+});
 
 module.exports = sequelize;
