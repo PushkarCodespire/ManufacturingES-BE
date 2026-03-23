@@ -1,3 +1,7 @@
 include:
   - project: 'codespire-core/ci-templates'
     file: 'complete/nodejs-api.yml'
+
+variables:
+  GCP_ARTIFACT_REGISTRY_REPO: cs-docker-honeywell-mould-lifecycle-usc1-p
+  APP_PORT: "5000"
