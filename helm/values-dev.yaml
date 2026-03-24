@@ -4,6 +4,9 @@ replicaCount: 1
  
 image:
   pullPolicy: Always
+
+# App container port (must match PORT env var)
+containerPort: 5000
  
 # Plain environment variables (ConfigMap)
 env:
