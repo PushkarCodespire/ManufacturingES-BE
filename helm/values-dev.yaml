@@ -100,3 +100,35 @@ persistence:
 # Autoscaling
 autoscaling:
   enabled: false
+
+# Cloud SQL Auth Proxy
+cloudSqlProxy:
+  enabled: true
+  instanceConnectionName: "codespire-infra-core-prod:us-central1:cs-sql-core-usc1-p-3a5b"
+  port: 5432
+  useIamAuth: true
+  gcpServiceAccount: "gitlab-ci-mfg-exec-system@codespire-infra-core-prod.iam.gserviceaccount.com"
+  privateIp: true
+  image:
+    repository: gcr.io/cloud-sql-connectors/cloud-sql-proxy
+    tag: "2.20.0"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  healthCheck:
+    enabled: true
+    port: 9801
+  structuredLogs: true
+  debugLogs: false
+  quitquitquit:
+    enabled: true
+    port: 9091
+  maxSigtermDelay: "30s"
+  exitZeroOnSigterm: true
+  runConnectionTest: false
+  extraArgs: []
