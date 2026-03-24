@@ -1,11 +1,20 @@
 require('dotenv').config();
 
+// Normalize JWT_SECRET — K8s envFrom.secretRef injects keys as-is (lowercase),
+// so support both JWT_SECRET and jwt_secret and normalize to uppercase.
+if (!process.env.JWT_SECRET && process.env.jwt_secret) {
+  process.env.JWT_SECRET = process.env.jwt_secret;
+}
+if (!process.env.ANTHROPIC_API_KEY && process.env.anthropic_api_key) {
+  process.env.ANTHROPIC_API_KEY = process.env.anthropic_api_key;
+}
+
 // ── C-05: Startup JWT secret guard ───────────────────────────────────────────
 // Reject server start if JWT_SECRET is missing or matches any known weak value
 // that may have been committed to source control.
 const KNOWN_WEAK_JWT_SECRETS = ['dynatech_one_super_secret_jwt_key_2026'];
 if (!process.env.JWT_SECRET) {
-  console.error('❌ FATAL: JWT_SECRET is not set in .env');
+  console.error('❌ FATAL: JWT_SECRET environment variable is not set');
   console.error('   Generate one: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"');
   process.exit(1);
 }
