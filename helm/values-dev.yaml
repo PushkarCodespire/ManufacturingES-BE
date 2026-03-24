@@ -41,7 +41,20 @@ env:
   AI_MAX_TOKENS: "2048"
   AI_MONTHLY_BUDGET_CENTS: "5000"
   UPLOAD_DIR: "/app/uploads"
- 
+
+# Sensitive variables injected from Kubernetes Secret (managed by DevOps)
+envFrom:
+  - type: secret
+    name: manufacturing-execution-system-api-secret
+    key: jwt_secret
+    envName: JWT_SECRET
+    optional: false
+  - type: secret
+    name: manufacturing-execution-system-api-secret
+    key: anthropic_api_key
+    envName: ANTHROPIC_API_KEY
+    optional: false
+
 # Probes
 livenessProbe:
   enabled: true
