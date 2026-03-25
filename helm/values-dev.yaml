@@ -45,12 +45,12 @@ env:
 # Sensitive variables injected from Kubernetes Secret (managed by DevOps)
 envFrom:
   - type: secret
-    name: manufacturing-execution-system-api-secret
+    name: manufacturing-execution-system-api-external-secret
     key: JWT_SECRET
     envName: JWT_SECRET
     optional: false
   - type: secret
-    name: manufacturing-execution-system-api-secret
+    name: manufacturing-execution-system-api-external-secret
     key: ANTHROPIC_API_KEY
     envName: ANTHROPIC_API_KEY
     optional: false
@@ -75,25 +75,7 @@ readinessProbe:
   initialDelaySeconds: 5
   periodSeconds: 10
   failureThreshold: 5
- 
-# Routing
-httpRoute:
-  enabled: false
-  parentRefs:
-    - name: https-gateway
-      namespace: gateway-system
-      sectionName: https-dev
-  hostnames:
-    - mes-api.dev.gcp.codespiresolutions.com
-  rules:
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /
-      backendRefs:
-        - name: manufacturing-execution-system-api
-          port: 5000
- 
+  
 # Persistence
 persistence:
   enabled: true
