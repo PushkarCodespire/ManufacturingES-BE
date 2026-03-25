@@ -33,11 +33,11 @@ include:
       # Try to show logs from the newest 2 pods (ONLY app container if known; otherwise default container)
       echo "== Recent pod logs (tail 200) =="
       for p in $(kubectl -n "${FINAL_NAMESPACE}" get pods --sort-by=.metadata.creationTimestamp -o name | tail -n 2); do
-        echo "---- init logs (create-upload-dirs): $p ----"
-        kubectl -n "${FINAL_NAMESPACE}" logs "$p" -c create-upload-dirs --tail=200 || true
+        echo "---- app logs (nodejs): $p ----"
+        kubectl -n "${FINAL_NAMESPACE}" logs "$p" -c nodejs --tail=200 || true
  
-        echo "---- app logs (nodejs-prisma): $p ----"
-        kubectl -n "${FINAL_NAMESPACE}" logs "$p" -c nodejs-prisma --tail=200 || true
+        echo "---- sidecar logs (cloud-sql-proxy): $p ----"
+        kubectl -n "${FINAL_NAMESPACE}" logs "$p" -c cloud-sql-proxy --tail=200 || true
       done
  
  
