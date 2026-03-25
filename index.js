@@ -12,22 +12,22 @@
 // ── C-05: Startup JWT secret guard ───────────────────────────────────────────
 // Reject server start if JWT_SECRET is missing or matches any known weak value
 // that may have been committed to source control.
-// const KNOWN_WEAK_JWT_SECRETS = ['dynatech_one_super_secret_jwt_key_2026'];
-// if (!process.env.JWT_SECRET) {
-//   console.error('❌ FATAL: JWT_SECRET environment variable is not set');
-//   console.error('   Generate one: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"');
-//   process.exit(1);
-// }
-// if (KNOWN_WEAK_JWT_SECRETS.includes(process.env.JWT_SECRET)) {
-//   console.error('❌ FATAL: JWT_SECRET is a known compromised value — rotate it immediately');
-//   console.error('   Generate one: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"');
-//   process.exit(1);
-// }
-// if (process.env.JWT_SECRET.length < 32) {
-//   console.error('❌ FATAL: JWT_SECRET is too short (minimum 32 characters)');
-//   console.error('   Generate one: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"');
-//   process.exit(1);
-// }
+const KNOWN_WEAK_JWT_SECRETS = ['dynatech_one_super_secret_jwt_key_2026'];
+if (!process.env.JWT_SECRET) {
+  console.error('❌ FATAL: JWT_SECRET environment variable is not set');
+  console.error('   Generate one: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"');
+  process.exit(1);
+}
+if (KNOWN_WEAK_JWT_SECRETS.includes(process.env.JWT_SECRET)) {
+  console.error('❌ FATAL: JWT_SECRET is a known compromised value — rotate it immediately');
+  console.error('   Generate one: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"');
+  process.exit(1);
+}
+if (process.env.JWT_SECRET.length < 32) {
+  console.error('❌ FATAL: JWT_SECRET is too short (minimum 32 characters)');
+  console.error('   Generate one: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"');
+  process.exit(1);
+}
 
 const app                = require('./config/app');
 const { sequelize }      = require('./models');
@@ -38,9 +38,22 @@ const IS_DEV  = process.env.NODE_ENV !== 'production';
 
 (async () => {
   try {
-    // ── Step 1: Verify DB connection ─────────────────────────────────────
-    await sequelize.authenticate();
-    console.log('✅ Database connected');
+    // ── Step 1: Verify DB connection (with retry for Cloud SQL Proxy warm-up) ──
+    // The Cloud SQL Proxy sidecar may take a few seconds to start listening on
+    // 127.0.0.1:5432. Retry up to 10 times with a 3s delay before giving up.
+    const MAX_RETRIES = 10;
+    const RETRY_DELAY = 3000;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        await sequelize.authenticate();
+        console.log('✅ Database connected');
+        break;
+      } catch (err) {
+        if (attempt === MAX_RETRIES) throw err;
+        console.log(`⏳ DB not ready (attempt ${attempt}/${MAX_RETRIES}) — retrying in ${RETRY_DELAY / 1000}s...`);
+        await new Promise(res => setTimeout(res, RETRY_DELAY));
+      }
+    }
 
     // ── Step 2: Fresh-install detection ──────────────────────────────────
     //    Many base tables were created historically via sequelize.sync() and
