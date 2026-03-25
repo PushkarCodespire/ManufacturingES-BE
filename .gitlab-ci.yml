@@ -1,3 +1,87 @@
 include:
   - project: 'codespire-core/ci-templates'
     file: 'complete/nodejs-api.yml'
+# Optional: a small reusable debug snippet for deploy jobs (safe-ish)
+.deploy_debug_on_fail: &deploy_debug_on_fail
+  after_script:
+    - |
+      # Run debug only if job failed
+      if [ "${CI_JOB_STATUS}" = "success" ]; then
+        exit 0
+      fi
+ 
+      set +e
+ 
+      # Same namespace logic as template
+      if [ -n "${NAMESPACE_PREFIX:-}" ]; then
+        FINAL_NAMESPACE="${NAMESPACE_PREFIX}-${NAMESPACE}"
+      else
+        FINAL_NAMESPACE="${NAMESPACE}"
+      fi
+ 
+      echo "❌ Deploy failed. Debug info (safe) for namespace: ${FINAL_NAMESPACE}"
+ 
+      echo "== Pods =="
+      kubectl -n "${FINAL_NAMESPACE}" get pods -o wide || true
+ 
+      echo "== Events (last 80) =="
+      kubectl -n "${FINAL_NAMESPACE}" get events --sort-by=.lastTimestamp | tail -n 80 || true
+ 
+      echo "== Deployments / ReplicaSets / Services =="
+      kubectl -n "${FINAL_NAMESPACE}" get deploy,rs,svc 2>/dev/null || true
+ 
+      # Try to show logs from the newest 2 pods (ONLY app container if known; otherwise default container)
+      echo "== Recent pod logs (tail 200) =="
+      for p in $(kubectl -n "${FINAL_NAMESPACE}" get pods --sort-by=.metadata.creationTimestamp -o name | tail -n 2); do
+        echo "---- app logs (nodejs): $p ----"
+        kubectl -n "${FINAL_NAMESPACE}" logs "$p" -c nodejs --tail=200 || true
+ 
+        echo "---- sidecar logs (cloud-sql-proxy): $p ----"
+        kubectl -n "${FINAL_NAMESPACE}" logs "$p" -c cloud-sql-proxy --tail=200 || true
+      done
+ 
+ 
+      echo "✅ Debug dump complete."
+ 
+# Override only deploy:dev to add safe debug output on failure
+# Keep the template's script intact (so chart clone + helm args remain correct)
+deploy:dev:
+  extends: .deploy:helm
+  stage: deploy
+  before_script:
+    - !reference [.deploy:helm, before_script]
+    - |
+      # Create or update K8s secret from GitLab CI variables
+      echo "🔐 Creating K8s secret for namespace: manufacturing-execution-system-dev"
+      kubectl create secret generic manufacturing-execution-system-api-secret \
+        --namespace=manufacturing-execution-system-dev \
+        --from-literal=jwt_secret="26832e922f8b16ce64653517e0b5ffc205bd4cbc8dfd13acb97d002a639c73f41bd51f48a4f6b09db3fc9cba28eb32d0084f7d58967b66ea7f7492b6fb8be08e" \
+        --from-literal=anthropic_api_key="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" \
+        --dry-run=client -o yaml | kubectl apply -f -
+      echo "✅ K8s secret applied successfully"
+  variables:
+    NAMESPACE: dev
+    VALUES_FILE: helm/values-dev.yaml
+  environment:
+    name: development
+    url: https://${CI_PROJECT_NAME}.${DOMAIN_DEV}
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
+  <<: *deploy_debug_on_fail
+# (Optional) you can also add safe debug to prod deploy, but it's usually better NOT to.
+# If you still want it, uncomment this block:
+#
+# deploy:prd:
+#   extends: .deploy:helm
+#   stage: deploy
+#   variables:
+#     NAMESPACE: prd
+#     VALUES_FILE: helm/values-prd.yaml
+#     IMAGE_TAG: $CI_COMMIT_TAG
+#   environment:
+#     name: production
+#     url: https://${CI_PROJECT_NAME}.${DOMAIN_PRD}
+#   rules:
+#     - if: $CI_COMMIT_TAG
+#   when: manual
+#   <<: *deploy_debug_on_fail
