@@ -1,5 +1,5 @@
 const { Op, fn, col, literal } = require('sequelize');
-const { JobCard, Machine, WorkOrder, Item } = require('../../../models');
+const { JobCard, Machine, WorkOrder, Item, User } = require('../../../models');
 
 // ── OEE Calculation Helpers ───────────────────────────────────────────────────
 // Availability = Run Time / Scheduled Time
@@ -148,4 +148,72 @@ const getMachineDetail = async (req, res) => {
   }
 };
 
-module.exports = { getDashboard, getMachineDetail };
+// ── GET /oee/live ─────────────────────────────────────────────────────────────
+// Returns all currently OPEN job cards with provisional real-time OEE metrics
+const getLive = async (req, res) => {
+  try {
+    const cards = await JobCard.findAll({
+      where: {
+        status:     'open',
+        machine_id: { [Op.ne]: null },
+        start_time: { [Op.ne]: null },
+      },
+      include: [
+        { model: Machine,  as: 'Machine',  attributes: ['id', 'name'] },
+        { model: User,     as: 'Operator', attributes: ['id', 'name'] },
+        {
+          model: WorkOrder, as: 'WorkOrder',
+          attributes: ['id', 'wo_no', 'planned_qty'],
+          include: [{ model: Item, as: 'Item', attributes: ['id', 'code', 'name'] }],
+        },
+      ],
+      order: [['start_time', 'ASC']],
+    });
+
+    const now = Date.now();
+    const live = cards.map((jc) => {
+      const elapsedMin  = (now - new Date(jc.start_time).getTime()) / 60000;
+      const downMins    = (parseFloat(jc.break_minutes) || 0) + (parseFloat(jc.idle_minutes) || 0);
+      const runMin      = Math.max(0, elapsedMin - downMins);
+      const qtyProduced = parseFloat(jc.qty_produced) || 0;
+      const qtyRejected = parseFloat(jc.qty_rejected) || 0;
+      const idealMin    = (parseFloat(jc.cycle_time_min) || 0) * qtyProduced;
+
+      const availability = elapsedMin > 0 ? runMin / elapsedMin : 0;
+      const performance  = runMin > 0     ? Math.min(1, idealMin / runMin) : 0;
+      const quality      = qtyProduced > 0 ? Math.max(0, (qtyProduced - qtyRejected) / qtyProduced) : 1;
+      const oee          = availability * performance * quality;
+      const plannedQty   = parseFloat(jc.WorkOrder?.planned_qty) || 0;
+
+      return {
+        job_card_id:    jc.id,
+        job_no:         jc.job_no,
+        machine_id:     jc.machine_id,
+        machine_name:   jc.Machine?.name || `Machine #${jc.machine_id}`,
+        operator_id:    jc.operator_id,
+        operator_name:  jc.Operator?.name || '—',
+        wo_no:          jc.WorkOrder?.wo_no   || '—',
+        item_code:      jc.WorkOrder?.Item?.code || '—',
+        item_name:      jc.WorkOrder?.Item?.name || '—',
+        start_time:     jc.start_time,
+        elapsed_min:    Math.round(elapsedMin),
+        qty_produced:   qtyProduced,
+        qty_rejected:   qtyRejected,
+        planned_qty:    plannedQty,
+        progress_pct:   plannedQty > 0 ? Math.min(100, Math.round((qtyProduced / plannedQty) * 100)) : 0,
+        cycle_time_min: parseFloat(jc.cycle_time_min) || 0,
+        oee:          parseFloat((oee          * 100).toFixed(1)),
+        availability: parseFloat((availability * 100).toFixed(1)),
+        performance:  parseFloat((performance  * 100).toFixed(1)),
+        quality:      parseFloat((quality      * 100).toFixed(1)),
+      };
+    });
+
+    return res.json({ success: true, data: { live, as_of: new Date(), active_count: live.length } });
+  } catch (err) {
+    console.error('[OEE.getLive]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+module.exports = { getDashboard, getMachineDetail, getLive };

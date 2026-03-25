@@ -4,7 +4,8 @@ const ctrl = require('../modules/production/controller/oee.controller');
 
 router.use(authenticate);
 
-router.get('/dashboard',        ctrl.getDashboard);
+router.get('/live',               ctrl.getLive);
+router.get('/dashboard',          ctrl.getDashboard);
 router.get('/machine/:machineId', ctrl.getMachineDetail);
 
 module.exports = router;

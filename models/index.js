@@ -71,6 +71,10 @@ const OqcInspection          = require('../modules/production/model/OqcInspectio
 const OqcInspectionResult    = require('../modules/production/model/OqcInspectionResult');
 const ProductionSchedule     = require('../modules/production/model/ProductionSchedule');
 const ScrapVoucher           = require('../modules/production/model/ScrapVoucher');
+const LaborRateCard          = require('../modules/production/model/LaborRateCard');
+const MachineRate            = require('../modules/production/model/MachineRate');
+const OverheadRate           = require('../modules/production/model/OverheadRate');
+const JobCostSheet           = require('../modules/production/model/JobCostSheet');
 const PurchaseOrder            = require('../modules/procurement/model/PurchaseOrder');
 const PurchaseOrderItem        = require('../modules/procurement/model/PurchaseOrderItem');
 const PurchaseRequisition      = require('../modules/procurement/model/PurchaseRequisition');
@@ -212,6 +216,11 @@ const TallySyncLog          = require('../modules/accounts/model/TallySyncLog');
 const MrmMeeting = require('../modules/mrm/model/MrmMeeting')(sequelize);
 const MrmMinute  = require('../modules/mrm/model/MrmMinute')(sequelize);
 const MrmAction  = require('../modules/mrm/model/MrmAction')(sequelize);
+// ── Sprint 1: Visibility (Andon + Shift Handover) ────────────────────────────
+const AndonAlert       = require('../modules/production/model/AndonAlert')(sequelize);
+const HandoverTemplate = require('../modules/production/model/HandoverTemplate')(sequelize);
+const ShiftHandover    = require('../modules/production/model/ShiftHandover')(sequelize);
+const ShiftHandoverItem= require('../modules/production/model/ShiftHandoverItem')(sequelize);
 
 // ─── Associations ────────────────────────────────────────────────────────────
 
@@ -1173,6 +1182,23 @@ MrmMeeting.belongsTo(User, { foreignKey: 'created_by', as: 'Creator', constraint
 MrmMeeting.belongsTo(User, { foreignKey: 'signed_by', as: 'SignedBy', constraints: false });
 MrmAction.belongsTo(User, { foreignKey: 'assigned_to', as: 'AssignedTo', constraints: false });
 
+// ── Sprint 1: Visibility — AndonAlert ────────────────────────────────────────
+AndonAlert.belongsTo(Machine, { as: 'machine', foreignKey: 'machine_id' });
+AndonAlert.belongsTo(User, { as: 'raisedBy', foreignKey: 'raised_by' });
+AndonAlert.belongsTo(User, { as: 'acknowledgedBy', foreignKey: 'acknowledged_by' });
+
+// ── Sprint 1: Visibility — ShiftHandover ─────────────────────────────────────
+ShiftHandover.hasMany(ShiftHandoverItem, { as: 'items', foreignKey: 'handover_id', onDelete: 'CASCADE' });
+ShiftHandover.belongsTo(User, { as: 'outgoingSupervisor', foreignKey: 'outgoing_supervisor_id' });
+ShiftHandover.belongsTo(User, { as: 'incomingSupervisor', foreignKey: 'incoming_supervisor_id' });
+ShiftHandoverItem.belongsTo(ShiftHandover, { as: 'handover', foreignKey: 'handover_id' });
+
+// ── Cost Intelligence ─────────────────────────────────────────────────────────
+JobCostSheet.belongsTo(WorkOrder, { foreignKey: 'work_order_id' });
+WorkOrder.hasOne(JobCostSheet,    { foreignKey: 'work_order_id' });
+MachineRate.belongsTo(Machine,    { foreignKey: 'machine_id' });
+Machine.hasMany(MachineRate,      { foreignKey: 'machine_id' });
+
 module.exports = {
   sequelize,
   Department,
@@ -1246,6 +1272,10 @@ module.exports = {
   OqcInspectionResult,
   ProductionSchedule,
   ScrapVoucher,
+  LaborRateCard,
+  MachineRate,
+  OverheadRate,
+  JobCostSheet,
   PurchaseOrder,
   PurchaseOrderItem,
   PurchaseRequisition,
@@ -1386,4 +1416,9 @@ module.exports = {
   MrmMeeting,
   MrmMinute,
   MrmAction,
+  // Sprint 1: Visibility
+  AndonAlert,
+  HandoverTemplate,
+  ShiftHandover,
+  ShiftHandoverItem,
 };

@@ -54,6 +54,7 @@ const pqcInspectionRoutes        = require('./pqcInspection.routes');
 const oqcInspectionRoutes        = require('./oqcInspection.routes');
 const productionScheduleRoutes   = require('./productionSchedule.routes');
 const scrapVoucherRoutes         = require('./scrapVoucher.routes');
+const jobCostSheetRoutes         = require('./jobCostSheet.routes');
 const purchaseOrderRoutes        = require('./purchaseOrder.routes');
 const purchaseRequisitionRoutes  = require('./purchaseRequisition.routes');
 const vendorRfqRoutes            = require('./vendorRfq.routes');
@@ -107,6 +108,10 @@ const moldDocumentsRoutes   = require('./moldDocuments.routes');
 const moldAiRoutes          = require('./moldAi.routes');
 // MRM Module
 const mrmRoutes               = require('./mrm.routes');
+// Sprint 1: Visibility
+const scoreboardRoutes    = require('./scoreboard.routes');
+const andonRoutes         = require('./andon.routes');
+const shiftHandoverRoutes = require('./shiftHandover.routes');
 // Maintenance — Sprint 3 & 5
 const equipmentMasterRoutes  = require('./equipmentMaster.routes');
 const equipmentHealthRoutes  = require('./equipmentHealth.routes');
@@ -172,6 +177,7 @@ router.use('/pqc-inspections',       pqcInspectionRoutes);
 router.use('/oqc-inspections',       oqcInspectionRoutes);
 router.use('/production-schedules',  productionScheduleRoutes);
 router.use('/scrap-vouchers',        scrapVoucherRoutes);
+router.use('/job-cost-sheets',       jobCostSheetRoutes);
 router.use('/purchase-orders',        purchaseOrderRoutes);
 router.use('/purchase-requisitions',  purchaseRequisitionRoutes);
 router.use('/vendor-rfqs',            vendorRfqRoutes);
@@ -236,5 +242,9 @@ router.use('/maintenance/kpi',         maintenanceKpiRoutes);
 router.use('/maintenance/ai',          maintenanceAiRoutes);
 // MRM Module
 router.use('/mrm', mrmRoutes);
+// Sprint 1: Visibility
+router.use('/production/scoreboard',     scoreboardRoutes);
+router.use('/production/andon',          andonRoutes);
+router.use('/production/shift-handovers', shiftHandoverRoutes);
 
 module.exports = router;
