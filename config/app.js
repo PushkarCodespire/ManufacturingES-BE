@@ -5,7 +5,7 @@ const swaggerUi    = require('swagger-ui-express');
 const helmet       = require('helmet');
 const path         = require('path');
 const fs           = require('fs');
-require('dotenv').config();
+// require('dotenv').config();
 
 const routes      = require('../routes');
 const swaggerSpec = require('./swagger');

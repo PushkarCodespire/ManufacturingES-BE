@@ -1,10 +1,10 @@
-require('dotenv').config();
+// require('dotenv').config();
 
 // Normalize JWT_SECRET — K8s envFrom.secretRef injects keys as-is (lowercase),
 // so support both JWT_SECRET and jwt_secret and normalize to uppercase.
 if (!process.env.JWT_SECRET && process.env.jwt_secret) {
   process.env.JWT_SECRET = process.env.jwt_secret;
-}
+}   
 if (!process.env.ANTHROPIC_API_KEY && process.env.anthropic_api_key) {
   process.env.ANTHROPIC_API_KEY = process.env.anthropic_api_key;
 }

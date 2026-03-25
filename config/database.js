@@ -1,5 +1,5 @@
 const { Sequelize } = require('sequelize');
-require('dotenv').config();
+// require('dotenv').config();
 
 // Build connection URL from individual DB_* env vars.
 // Using Cloud SQL IAM auth — no password required, proxy handles authentication.
