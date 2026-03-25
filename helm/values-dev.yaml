@@ -42,22 +42,18 @@ env:
   AI_MONTHLY_BUDGET_CENTS: "5000"
   UPLOAD_DIR: "/app/uploads"
 
-envSecret:
-  JWT_SECRET: "26832e922f8b16ce64653517e0b5ffc205bd4cbc8dfd13acb97d002a639c73f41bd51f48a4f6b09db3fc9cba28eb32d0084f7d58967b66ea7f7492b6fb8be08e"
-  ANTHROPIC_API_KEY: "sk-ant-api03"
-
 # Sensitive variables injected from Kubernetes Secret (managed by DevOps)
-# envFrom:
-#   - type: secret
-#     name: manufacturing-execution-system-api-secret
-#     key: jwt_secret
-#     envName: JWT_SECRET
-#     optional: false
-#   - type: secret
-#     name: manufacturing-execution-system-api-secret
-#     key: anthropic_api_key
-#     envName: ANTHROPIC_API_KEY
-#     optional: false
+envFrom:
+  - type: secret
+    name: manufacturing-execution-system-api-secret
+    key: JWT_SECRET
+    envName: JWT_SECRET
+    optional: false
+  - type: secret
+    name: manufacturing-execution-system-api-secret
+    key: ANTHROPIC_API_KEY
+    envName: ANTHROPIC_API_KEY
+    optional: false
 
 # Probes
 livenessProbe:
