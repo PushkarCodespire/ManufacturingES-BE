@@ -9,6 +9,7 @@ const InventoryTxn = sequelize.define('InventoryTxn', {
   ref_type:     { type: DataTypes.STRING(30), allowNull: true, comment: 'grn|issue_slip|stock_adjustment|material_transfer|material_return' },
   ref_id:       { type: DataTypes.UUID, allowNull: true },       // FK → store doc id (UUID)
   ref_no:       { type: DataTypes.STRING(50), allowNull: true },
+  lot_no:       { type: DataTypes.STRING(100), allowNull: true },
   qty_before:   { type: DataTypes.DECIMAL(14, 3), allowNull: false },
   qty_change:   { type: DataTypes.DECIMAL(14, 3), allowNull: false },
   qty_after:    { type: DataTypes.DECIMAL(14, 3), allowNull: false },

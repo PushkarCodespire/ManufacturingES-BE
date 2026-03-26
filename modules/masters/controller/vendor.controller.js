@@ -176,129 +176,122 @@ const deleteVendor = async (req, res) => {
   }
 };
 
+// ─── Shared scorecard computation helper ─────────────────────────────────────
+const computeScorecard = async (vendor, since) => {
+  const vendorId = vendor.id;
+
+  // ── Quality score (40%): IQC pass rate ─────────────────────────────────
+  const iqcAll  = await IqcInspection.count({ where: { vendor_id: vendorId, inspection_date: { [Op.gte]: since } } });
+  const iqcPass = await IqcInspection.count({ where: { vendor_id: vendorId, inspection_date: { [Op.gte]: since }, result: 'pass' } });
+  const qualityPct  = iqcAll > 0 ? Math.round((iqcPass / iqcAll) * 100) : null;
+  const qualityScore = qualityPct !== null ? Math.round(qualityPct * 0.4) : null;
+
+  // ── Delivery score (25%): PO on-time rate ──────────────────────────────
+  let deliveryPct = null, deliveryScore = null, poOnTime = 0, poWithDelivery = 0;
+  const receivedPOs = await PurchaseOrder.findAll({
+    where: { vendor_id: vendorId, status: { [Op.in]: ['received', 'closed'] }, order_date: { [Op.gte]: since }, expected_date: { [Op.ne]: null } },
+    attributes: ['id', 'expected_date'],
+    raw: true,
+  });
+  if (receivedPOs.length > 0) {
+    const poIds = receivedPOs.map((p) => p.id);
+    const grns = await Grn.findAll({
+      where: { po_id: { [Op.in]: poIds }, status: { [Op.ne]: 'cancelled' } },
+      attributes: ['po_id', 'received_date'],
+      raw: true,
+    });
+    const grnByPo = {};
+    for (const g of grns) { if (g.po_id) grnByPo[g.po_id] = g.received_date; }
+    for (const po of receivedPOs) {
+      const grnDate = grnByPo[po.id];
+      if (grnDate) {
+        poWithDelivery++;
+        if (grnDate <= po.expected_date) poOnTime++;
+      }
+    }
+    deliveryPct   = poWithDelivery > 0 ? Math.round((poOnTime / poWithDelivery) * 100) : null;
+    deliveryScore = deliveryPct !== null ? Math.round(deliveryPct * 0.25) : null;
+  }
+
+  // ── SCAR score (20%) ───────────────────────────────────────────────────
+  const scarTotal = await Scar.count({ where: { vendor_id: vendorId } });
+  const scarOpen  = await Scar.count({ where: { vendor_id: vendorId, status: { [Op.notIn]: ['closed', 'rejected'] } } });
+  const scarPct   = scarTotal === 0 ? 100 : Math.round(((scarTotal - scarOpen) / scarTotal) * 100);
+  const scarScore = Math.round(scarPct * 0.2);
+
+  // ── Docs score (10%) ───────────────────────────────────────────────────
+  const fields = ['gstin', 'email', 'mobile', 'address', 'city', 'state', 'pincode'];
+  const filled = fields.filter((f) => vendor[f]).length;
+  const docsPct   = Math.round((filled / fields.length) * 100);
+  const docsScore = Math.round(docsPct * 0.1);
+
+  // ── Price score (5%) ───────────────────────────────────────────────────
+  let pricePct = null, priceScore = null, priceDetail = 'No pricing data';
+  const vendorCostings = await VendorCosting.findAll({
+    where: { vendor_id: vendorId, type: 'purchase', is_active: true },
+    attributes: ['item_id', 'price_per_unit'],
+    raw: true,
+  });
+  if (vendorCostings.length > 0) {
+    const itemIds = vendorCostings.map((c) => c.item_id);
+    const allCostings = await VendorCosting.findAll({
+      where: { item_id: { [Op.in]: itemIds }, type: 'purchase', is_active: true },
+      attributes: ['item_id', 'price_per_unit'],
+      raw: true,
+    });
+    const avgByItem = {};
+    for (const c of allCostings) {
+      if (!avgByItem[c.item_id]) avgByItem[c.item_id] = { sum: 0, count: 0 };
+      avgByItem[c.item_id].sum   += parseFloat(c.price_per_unit);
+      avgByItem[c.item_id].count += 1;
+    }
+    let totalRatio = 0, compared = 0;
+    for (const vc of vendorCostings) {
+      const avg = avgByItem[vc.item_id];
+      if (avg && avg.count > 1) {
+        const avgPrice = avg.sum / avg.count;
+        const vp = parseFloat(vc.price_per_unit);
+        if (vp > 0) { totalRatio += Math.min(avgPrice / vp, 1.5); compared++; }
+      }
+    }
+    if (compared > 0) {
+      pricePct   = Math.min(100, Math.round((totalRatio / compared) * 100));
+      priceScore = Math.round(pricePct * 0.05);
+      priceDetail = `${compared} items compared vs market avg`;
+    } else {
+      priceDetail = `${vendorCostings.length} items priced, no peer comparison`;
+    }
+  }
+
+  const components = [
+    { key: 'quality',  label: 'Quality',             weight: 40, pct: qualityPct,  score: qualityScore,  detail: `${iqcPass}/${iqcAll} IQC passes` },
+    { key: 'delivery', label: 'On-Time Delivery',    weight: 25, pct: deliveryPct, score: deliveryScore, detail: poWithDelivery > 0 ? `${poOnTime}/${poWithDelivery} POs on time` : `${receivedPOs.length} POs, no GRN data` },
+    { key: 'scar',     label: 'SCAR Resolution',     weight: 20, pct: scarPct,     score: scarScore,     detail: `${scarTotal} total, ${scarOpen} open` },
+    { key: 'docs',     label: 'Documentation',       weight: 10, pct: docsPct,     score: docsScore,     detail: `${filled}/${fields.length} fields complete` },
+    { key: 'price',    label: 'Price Competitiveness',weight: 5,  pct: pricePct,    score: priceScore,    detail: priceDetail },
+  ];
+
+  const totalScore = components.reduce((sum, c) => sum + (c.score ?? 0), 0);
+  const rating = totalScore >= 80 ? 'A' : totalScore >= 65 ? 'B' : totalScore >= 50 ? 'C' : 'D';
+
+  return { total_score: totalScore, rating, components };
+};
+
 // ─── GET /vendors/:id/scorecard — Supplier Scorecard (PRC-003) ───────────────
-// Computes a 5-component scorecard: Quality 40%, Delivery 25%, SCAR 20%, Docs 10%, Price 5%
 const getVendorScorecard = async (req, res) => {
   try {
     const vendor = await Vendor.findByPk(req.params.id);
     if (!vendor) return res.status(404).json({ success: false, message: 'Vendor not found' });
 
-    const now   = new Date();
-    const since = new Date(now.getFullYear(), now.getMonth() - 12, 1); // last 12 months
-
-    // ── Quality score (40%): IQC pass rate ─────────────────────────────────
-    const iqcAll  = await IqcInspection.count({ where: { vendor_id: vendor.id, inspection_date: { [Op.gte]: since } } });
-    const iqcPass = await IqcInspection.count({ where: { vendor_id: vendor.id, inspection_date: { [Op.gte]: since }, result: 'pass' } });
-    const qualityPct  = iqcAll > 0 ? Math.round((iqcPass / iqcAll) * 100) : null;
-    const qualityScore = qualityPct !== null ? Math.round(qualityPct * 0.4) : null;
-
-    // ── Delivery score (25%): PO on-time rate (GRN received_date vs PO expected_date) ──
-    let deliveryPct = null;
-    let deliveryScore = null;
-    let poOnTime = 0;
-    let poWithDelivery = 0;
-    const receivedPOs = await PurchaseOrder.findAll({
-      where: { vendor_id: vendor.id, status: { [Op.in]: ['received', 'closed'] }, order_date: { [Op.gte]: since }, expected_date: { [Op.ne]: null } },
-      attributes: ['id', 'expected_date'],
-      raw: true,
-    });
-    if (receivedPOs.length > 0) {
-      const poIds = receivedPOs.map((p) => p.id);
-      const grns = await Grn.findAll({
-        where: { po_id: { [Op.in]: poIds }, status: { [Op.ne]: 'cancelled' } },
-        attributes: ['po_id', 'received_date'],
-        raw: true,
-      });
-      const grnByPo = {};
-      for (const g of grns) { if (g.po_id) grnByPo[g.po_id] = g.received_date; }
-      for (const po of receivedPOs) {
-        const grnDate = grnByPo[po.id];
-        if (grnDate) {
-          poWithDelivery++;
-          if (grnDate <= po.expected_date) poOnTime++;
-        }
-      }
-      deliveryPct   = poWithDelivery > 0 ? Math.round((poOnTime / poWithDelivery) * 100) : null;
-      deliveryScore = deliveryPct !== null ? Math.round(deliveryPct * 0.25) : null;
-    }
-
-    // ── SCAR score (20%): fewer / resolved SCARs = better ──────────────────
-    const scarTotal    = await Scar.count({ where: { vendor_id: vendor.id } });
-    const scarOpen     = await Scar.count({ where: { vendor_id: vendor.id, status: { [Op.notIn]: ['closed', 'rejected'] } } });
-    const scarPct      = scarTotal === 0 ? 100 : Math.round(((scarTotal - scarOpen) / scarTotal) * 100);
-    const scarScore    = Math.round(scarPct * 0.2);
-
-    // ── Docs score (10%): vendor profile completeness ──────────────────────
-    const fields = ['gstin', 'email', 'mobile', 'address', 'city', 'state', 'pincode'];
-    const filled = fields.filter((f) => vendor[f]).length;
-    const docsPct   = Math.round((filled / fields.length) * 100);
-    const docsScore = Math.round(docsPct * 0.1);
-
-    // ── Price score (5%): compare vendor prices vs avg across all vendors per item ──
-    let pricePct   = null;
-    let priceScore = null;
-    let priceDetail = 'No pricing data';
-    const vendorCostings = await VendorCosting.findAll({
-      where: { vendor_id: vendor.id, type: 'purchase', is_active: true },
-      attributes: ['item_id', 'price_per_unit'],
-      raw: true,
-    });
-    if (vendorCostings.length > 0) {
-      const itemIds = vendorCostings.map((c) => c.item_id);
-      const allCostings = await VendorCosting.findAll({
-        where: { item_id: { [Op.in]: itemIds }, type: 'purchase', is_active: true },
-        attributes: ['item_id', 'price_per_unit'],
-        raw: true,
-      });
-      // Group avg price per item across all vendors
-      const avgByItem = {};
-      for (const c of allCostings) {
-        if (!avgByItem[c.item_id]) avgByItem[c.item_id] = { sum: 0, count: 0 };
-        avgByItem[c.item_id].sum   += parseFloat(c.price_per_unit);
-        avgByItem[c.item_id].count += 1;
-      }
-      // For each vendor item, ratio = avg / vendor_price (lower price = higher score)
-      let totalRatio = 0;
-      let compared = 0;
-      for (const vc of vendorCostings) {
-        const avg = avgByItem[vc.item_id];
-        if (avg && avg.count > 1) {
-          const avgPrice = avg.sum / avg.count;
-          const vp = parseFloat(vc.price_per_unit);
-          if (vp > 0) {
-            totalRatio += Math.min(avgPrice / vp, 1.5); // cap at 150%
-            compared++;
-          }
-        }
-      }
-      if (compared > 0) {
-        pricePct   = Math.min(100, Math.round((totalRatio / compared) * 100));
-        priceScore = Math.round(pricePct * 0.05);
-        priceDetail = `${compared} items compared vs market avg`;
-      } else {
-        priceDetail = `${vendorCostings.length} items priced, no peer comparison`;
-      }
-    }
-
-    const components = [
-      { key: 'quality',  label: 'Quality',          weight: 40, pct: qualityPct,   score: qualityScore,  detail: `${iqcPass}/${iqcAll} IQC passes (last 12 months)` },
-      { key: 'delivery', label: 'On-Time Delivery',  weight: 25, pct: deliveryPct,   score: deliveryScore, detail: poWithDelivery > 0 ? `${poOnTime}/${poWithDelivery} POs delivered on time (last 12 months)` : `${receivedPOs.length} POs, no GRN data` },
-      { key: 'scar',     label: 'SCAR Resolution',   weight: 20, pct: scarPct,      score: scarScore,     detail: `${scarTotal} total SCARs, ${scarOpen} open` },
-      { key: 'docs',     label: 'Documentation',     weight: 10, pct: docsPct,      score: docsScore,     detail: `${filled}/${fields.length} profile fields complete` },
-      { key: 'price',    label: 'Price Competitiveness', weight: 5, pct: pricePct, score: priceScore,    detail: priceDetail },
-    ];
-
-    const totalScore = components.reduce((sum, c) => sum + (c.score ?? 0), 0);
-    const rating = totalScore >= 80 ? 'A' : totalScore >= 65 ? 'B' : totalScore >= 50 ? 'C' : 'D';
+    const since = new Date(new Date().getFullYear(), new Date().getMonth() - 12, 1);
+    const scorecard = await computeScorecard(vendor, since);
 
     return res.json({
       success: true,
       data: {
-        vendor:       { id: vendor.id, name: vendor.name, partner_code: vendor.partner_code },
-        total_score:  totalScore,
-        rating,
-        components,
-        period:       'Last 12 months',
+        vendor: { id: vendor.id, name: vendor.name, partner_code: vendor.partner_code },
+        ...scorecard,
+        period: 'Last 12 months',
       },
     });
   } catch (err) {
@@ -307,4 +300,96 @@ const getVendorScorecard = async (req, res) => {
   }
 };
 
-module.exports = { getAllVendors, getVendorById, createVendor, updateVendor, deleteVendor, getVendorScorecard };
+// ─── GET /vendors/scorecard/avl — Approved Vendor List with scores ───────────
+const getVendorAvl = async (req, res) => {
+  try {
+    const vendors = await Vendor.findAll({
+      where: { type: 'vendor', is_active: true },
+      order: [['name', 'ASC']],
+    });
+
+    const since = new Date(new Date().getFullYear(), new Date().getMonth() - 12, 1);
+    const results = [];
+
+    for (const vendor of vendors) {
+      const scorecard = await computeScorecard(vendor, since);
+      const compMap = {};
+      for (const c of scorecard.components) compMap[c.key] = c.pct;
+      results.push({
+        id:           vendor.id,
+        name:         vendor.name,
+        partner_code: vendor.partner_code,
+        total_score:  scorecard.total_score,
+        rating:       scorecard.rating,
+        quality_pct:  compMap.quality,
+        delivery_pct: compMap.delivery,
+        scar_pct:     compMap.scar,
+        components:   scorecard.components,
+      });
+    }
+
+    results.sort((a, b) => b.total_score - a.total_score);
+
+    return res.json({ success: true, data: results });
+  } catch (err) {
+    console.error('[getVendorAvl]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// ─── GET /vendors/:id/scorecard/trend — Monthly trend (Quality + Delivery) ───
+const getVendorScorecardTrend = async (req, res) => {
+  try {
+    const vendor = await Vendor.findByPk(req.params.id);
+    if (!vendor) return res.status(404).json({ success: false, message: 'Vendor not found' });
+
+    const now = new Date();
+    const months = [];
+    const quality = [];
+    const delivery = [];
+
+    for (let i = 11; i >= 0; i--) {
+      const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const end   = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
+      const label = start.toLocaleString('en-IN', { month: 'short', year: '2-digit' });
+      months.push(label);
+
+      // Quality: IQC pass rate for this month
+      const iqcAll  = await IqcInspection.count({ where: { vendor_id: vendor.id, inspection_date: { [Op.gte]: start, [Op.lte]: end } } });
+      const iqcPass = await IqcInspection.count({ where: { vendor_id: vendor.id, inspection_date: { [Op.gte]: start, [Op.lte]: end }, result: 'pass' } });
+      quality.push(iqcAll > 0 ? Math.round((iqcPass / iqcAll) * 100) : null);
+
+      // Delivery: PO on-time rate for this month
+      const pos = await PurchaseOrder.findAll({
+        where: { vendor_id: vendor.id, status: { [Op.in]: ['received', 'closed'] }, order_date: { [Op.gte]: start, [Op.lte]: end }, expected_date: { [Op.ne]: null } },
+        attributes: ['id', 'expected_date'],
+        raw: true,
+      });
+      if (pos.length > 0) {
+        const poIds = pos.map((p) => p.id);
+        const grns = await Grn.findAll({
+          where: { po_id: { [Op.in]: poIds }, status: { [Op.ne]: 'cancelled' } },
+          attributes: ['po_id', 'received_date'],
+          raw: true,
+        });
+        const grnByPo = {};
+        for (const g of grns) { if (g.po_id) grnByPo[g.po_id] = g.received_date; }
+        let onTime = 0, withGrn = 0;
+        for (const po of pos) {
+          const gd = grnByPo[po.id];
+          if (gd) { withGrn++; if (gd <= po.expected_date) onTime++; }
+        }
+        delivery.push(withGrn > 0 ? Math.round((onTime / withGrn) * 100) : null);
+      } else {
+        delivery.push(null);
+      }
+    }
+
+    return res.json({ success: true, data: { months, quality, delivery } });
+  } catch (err) {
+    console.error('[getVendorScorecardTrend]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+module.exports = { getAllVendors, getVendorById, createVendor, updateVendor, deleteVendor, getVendorScorecard, getVendorAvl, getVendorScorecardTrend };

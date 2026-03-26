@@ -39,21 +39,36 @@ exports.getAll = async (req, res) => {
       if (date_to)   where.calculated_at[Op.lte] = new Date(date_to + 'T23:59:59');
     }
 
+    // Step 1: Fetch cost sheets (flat — no nested includes to avoid EagerLoadingError)
     const sheets = await JobCostSheet.findAll({
       where,
       limit: parseInt(limit),
       order: [['calculated_at', 'DESC'], ['created_at', 'DESC']],
-      include: [{
-        model: WorkOrder,
-        as: 'WorkOrder',
-        attributes: ['id','wo_no','planned_qty','produced_qty','status','actual_start','actual_end'],
-        include: [
-          { model: Item,          as: 'Item',          attributes: ['id','name','code'] },
-          { model: CustomerOrder, as: 'CustomerOrder', attributes: ['id','order_no'], required: false },
-        ],
-      }],
     });
-    return res.json({ success: true, data: sheets });
+
+    if (!sheets.length) return res.json({ success: true, data: [] });
+
+    // Step 2: Fetch related WorkOrders with Item + CustomerOrder
+    const woIds = [...new Set(sheets.map(s => s.work_order_id).filter(Boolean))];
+    const workOrders = await WorkOrder.findAll({
+      where: { id: { [Op.in]: woIds } },
+      attributes: ['id','wo_no','planned_qty','produced_qty','status','actual_start','actual_end','item_id','customer_order_id'],
+      include: [
+        { model: Item,          as: 'Item',          attributes: ['id','name','code'] },
+        { model: CustomerOrder, as: 'CustomerOrder', attributes: ['id','order_no'], required: false },
+      ],
+    });
+
+    // Step 3: Build lookup map and merge
+    const woMap = {};
+    for (const wo of workOrders) woMap[wo.id] = wo;
+
+    const result = sheets.map(s => ({
+      ...s.toJSON(),
+      WorkOrder: woMap[s.work_order_id] ? woMap[s.work_order_id].toJSON() : null,
+    }));
+
+    return res.json({ success: true, data: result });
   } catch (err) {
     console.error('[jobCostSheet.getAll]', err);
     return res.status(500).json({ success: false, message: 'Server error' });
@@ -69,10 +84,8 @@ exports.calculate = async (req, res) => {
     const { WorkOrder, Item, Bom, BomLine, JobCard, LaborLog, ScrapVoucher,
             VendorCosting, OverheadRate, JobCostSheet, Machine } = db();
 
-    // 1. Fetch work order
-    const wo = await WorkOrder.findByPk(work_order_id, {
-      include: [{ model: Item, as: 'Item', attributes: ['id','name','code'] }],
-    });
+    // 1. Fetch work order (flat, then fetch Item separately to avoid nested include bug)
+    const wo = await WorkOrder.findByPk(work_order_id);
     if (!wo) return res.status(404).json({ success: false, message: 'Work order not found' });
 
     // 2. Material cost via BOM × VendorCosting (purchase direction)
@@ -226,7 +239,7 @@ exports.getRateCards = async (req, res) => {
       LaborRateCard.findAll({ order: [['labor_type','ASC'],['effective_from','DESC']] }),
       MachineRate.findAll({
         order: [['effective_from','DESC']],
-        include: [{ model: Machine, attributes: ['id','name'], required: false }],
+        include: [{ model: Machine, as: 'Machine', attributes: ['id','name'], required: false }],
       }),
       OverheadRate.findAll({ order: [['sort_order','ASC'],['overhead_name','ASC']] }),
     ]);
@@ -355,21 +368,31 @@ exports.getProfitability = async (req, res) => {
       if (date_to)   where.calculated_at[Op.lte] = new Date(date_to + 'T23:59:59');
     }
 
-    const sheets = await JobCostSheet.findAll({
-      where,
-      include: [{
-        model: WorkOrder,
-        as: 'WorkOrder',
-        attributes: ['id','wo_no','planned_qty','produced_qty','item_id','customer_order_id'],
-        include: [
-          { model: Item,          as: 'Item',          attributes: ['id','name','code'] },
-          { model: CustomerOrder, as: 'CustomerOrder', attributes: ['id','order_no','total_amount'], required: false },
-        ],
-      }],
+    // Step 1: Flat fetch
+    const sheets = await JobCostSheet.findAll({ where });
+
+    if (!sheets.length) {
+      return res.json({ success: true, data: { by_item: [], by_customer: [], total_sheets: 0, total_cost: 0, total_revenue: 0 } });
+    }
+
+    // Step 2: Fetch WorkOrders with Item + CustomerOrder separately
+    const woIds = [...new Set(sheets.map(s => s.work_order_id).filter(Boolean))];
+    const workOrders = await WorkOrder.findAll({
+      where: { id: { [Op.in]: woIds } },
+      attributes: ['id','wo_no','planned_qty','produced_qty','item_id','customer_order_id'],
+      include: [
+        { model: Item,          as: 'Item',          attributes: ['id','name','code'] },
+        { model: CustomerOrder, as: 'CustomerOrder', attributes: ['id','order_no','total_amount'], required: false },
+      ],
     });
+    const woMap = {};
+    for (const wo of workOrders) woMap[wo.id] = wo.toJSON();
+
+    // Merge
+    const merged = sheets.map(s => ({ ...s.toJSON(), WorkOrder: woMap[s.work_order_id] || null }));
 
     const byItem = {}, byCustomer = {};
-    for (const s of sheets) {
+    for (const s of merged) {
       const itemKey  = s.WorkOrder?.item_id  || 'unknown';
       const itemName = s.WorkOrder?.Item?.name || 'Unknown Item';
       const revenue  = fmtDec(s.WorkOrder?.CustomerOrder?.total_amount);
@@ -399,9 +422,9 @@ exports.getProfitability = async (req, res) => {
       data: {
         by_item:       addMargin(byItem),
         by_customer:   addMargin(byCustomer),
-        total_sheets:  sheets.length,
-        total_cost:    sheets.reduce((s, r) => s + fmtDec(r.total_actual_cost), 0),
-        total_revenue: sheets.reduce((s, r) => s + fmtDec(r.WorkOrder?.CustomerOrder?.total_amount), 0),
+        total_sheets:  merged.length,
+        total_cost:    merged.reduce((s, r) => s + fmtDec(r.total_actual_cost), 0),
+        total_revenue: merged.reduce((s, r) => s + fmtDec(r.WorkOrder?.CustomerOrder?.total_amount), 0),
       },
     });
   } catch (err) {

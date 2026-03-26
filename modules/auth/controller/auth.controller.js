@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const {
-  User, Role, Department, LoginAttempt, AuditLog, Session, Notification,
+  User, Role, Department, Site, LoginAttempt, AuditLog, Session, Notification,
 } = require('../../../models');
 const {
   validateLogin,
@@ -118,6 +118,7 @@ const login = async (req, res) => {
       include: [
         { model: Role,       attributes: ['id', 'name', 'label'] },
         { model: Department, attributes: ['id', 'code', 'name']  },
+        { model: Site,       attributes: ['id', 'name', 'code'], through: { attributes: [] } },
       ],
     });
 
@@ -213,6 +214,7 @@ const login = async (req, res) => {
           phone:          user.phone,
           role:           user.Role,
           department:     user.Department,
+          sites:          user.Sites || [],
           is_first_login: user.is_first_login,
           permissions:    user.permissions ?? [],
         },

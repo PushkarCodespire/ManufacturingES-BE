@@ -10,6 +10,9 @@ const ProductionSchedule = sequelize.define('ProductionSchedule', {
   item_id:       { type: DataTypes.INTEGER, allowNull: true },
   work_order_id: { type: DataTypes.UUID, allowNull: true },
   planned_qty:   { type: DataTypes.DECIMAL(14,3), defaultValue: 0 },
+  start_time:    { type: DataTypes.DATE, allowNull: true },
+  end_time:      { type: DataTypes.DATE, allowNull: true },
+  duration_min:  { type: DataTypes.INTEGER, allowNull: true },
   status:        { type: DataTypes.STRING(20), defaultValue: 'draft' }, // draft | published | completed
   notes:         { type: DataTypes.TEXT, allowNull: true },
   created_by:    { type: DataTypes.INTEGER, allowNull: true },

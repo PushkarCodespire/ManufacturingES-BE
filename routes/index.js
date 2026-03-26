@@ -55,6 +55,7 @@ const oqcInspectionRoutes        = require('./oqcInspection.routes');
 const productionScheduleRoutes   = require('./productionSchedule.routes');
 const scrapVoucherRoutes         = require('./scrapVoucher.routes');
 const jobCostSheetRoutes         = require('./jobCostSheet.routes');
+const productionAnalyticsRoutes  = require('./productionAnalytics.routes');
 const purchaseOrderRoutes        = require('./purchaseOrder.routes');
 const purchaseRequisitionRoutes  = require('./purchaseRequisition.routes');
 const vendorRfqRoutes            = require('./vendorRfq.routes');
@@ -74,6 +75,8 @@ const deliveryChallanRoutes       = require('./deliveryChallan.routes');
 const instrumentRoutes            = require('./instrument.routes');
 // Sprint 4
 const capaRoutes                  = require('./capa.routes');
+// Sprint 6: Global Search
+const searchRoutes = require('./search.routes');
 // Sprint A: PPAP + Audit Plan
 const ppapRoutes                  = require('./ppap.routes');
 const auditPlanRoutes             = require('./auditPlan.routes');
@@ -91,6 +94,7 @@ const dashboardRoutes             = require('./dashboard.routes');
 // Sprint 5: Admin Control Room & Madad AI
 const adminControlRoomRoutes      = require('./admin.routes');
 const madadRoutes                 = require('./madad.routes');
+const whatsappRoutes              = require('./whatsapp.routes');
 // Mold Management — Sprint 3
 const moldMasterRoutes      = require('./moldMaster.routes');
 const moldCavityRoutes      = require('./moldCavity.routes');
@@ -112,6 +116,10 @@ const mrmRoutes               = require('./mrm.routes');
 const scoreboardRoutes    = require('./scoreboard.routes');
 const andonRoutes         = require('./andon.routes');
 const shiftHandoverRoutes = require('./shiftHandover.routes');
+// EWI — Electronic Work Instructions
+const ewiRoutes = require('./ewi.routes');
+// Lot / Batch Traceability
+const traceabilityRoutes     = require('./traceability.routes');
 // Maintenance — Sprint 3 & 5
 const equipmentMasterRoutes  = require('./equipmentMaster.routes');
 const equipmentHealthRoutes  = require('./equipmentHealth.routes');
@@ -178,6 +186,8 @@ router.use('/oqc-inspections',       oqcInspectionRoutes);
 router.use('/production-schedules',  productionScheduleRoutes);
 router.use('/scrap-vouchers',        scrapVoucherRoutes);
 router.use('/job-cost-sheets',       jobCostSheetRoutes);
+router.use('/production-analytics', productionAnalyticsRoutes);
+router.use('/search',               searchRoutes);
 router.use('/purchase-orders',        purchaseOrderRoutes);
 router.use('/purchase-requisitions',  purchaseRequisitionRoutes);
 router.use('/vendor-rfqs',            vendorRfqRoutes);
@@ -214,6 +224,7 @@ router.use('/tally-sync',               tallySyncRoutes);
 router.use('/dashboard',                dashboardRoutes);
 // Sprint 5: Admin Control Room & Madad AI
 router.use('/admin/control-room',        adminControlRoomRoutes);
+router.use('/admin/whatsapp',            whatsappRoutes);
 router.use('/madad',                     madadRoutes);
 // Mold Management — Sprint 3
 router.use('/mold/masters',      moldMasterRoutes);
@@ -240,11 +251,32 @@ router.use('/maintenance/spare-parts', sparePartsRoutes);
 router.use('/maintenance/loto',        lotoRoutes);
 router.use('/maintenance/kpi',         maintenanceKpiRoutes);
 router.use('/maintenance/ai',          maintenanceAiRoutes);
+// Process Recipes
+const processRecipeRoutes = require('./processRecipe.routes');
+// Capacity Scheduler
+const capacitySchedulerRoutes = require('./capacityScheduler.routes');
+// SPC Control Charts
+const spcRoutes = require('./spc.routes');
+// WIP Tracking
+const wipRoutes = require('./wip.routes');
+// QR Code Lookup
+const qrLookupRoutes = require('./qrLookup.routes');
+router.use('/process-recipes', processRecipeRoutes);
+router.use('/capacity-scheduler', capacitySchedulerRoutes);
+router.use('/quality/spc', spcRoutes);
+router.use('/wip', wipRoutes);
+router.use('/qr-lookup', qrLookupRoutes);
+// Lot / Batch Traceability
+router.use('/ewi', ewiRoutes);
+router.use('/traceability', traceabilityRoutes);
 // MRM Module
 router.use('/mrm', mrmRoutes);
 // Sprint 1: Visibility
 router.use('/production/scoreboard',     scoreboardRoutes);
 router.use('/production/andon',          andonRoutes);
 router.use('/production/shift-handovers', shiftHandoverRoutes);
+// Mobile Operator Interface
+const operatorRoutes = require('./operator.routes');
+router.use('/operator', operatorRoutes);
 
 module.exports = router;

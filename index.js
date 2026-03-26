@@ -1,4 +1,4 @@
-// require('dotenv').config();
+require('dotenv').config();
 
 // Normalize JWT_SECRET — K8s envFrom.secretRef injects keys as-is (lowercase),
 // so support both JWT_SECRET and jwt_secret and normalize to uppercase.
@@ -32,7 +32,6 @@ if (process.env.JWT_SECRET.length < 32) {
 const app                = require('./config/app');
 const { sequelize }      = require('./models');
 const { runMigrations }  = require('./config/migrator');
-
 const PORT    = process.env.PORT    || 5000;
 const IS_DEV  = process.env.NODE_ENV !== 'production';
 
@@ -79,6 +78,10 @@ const IS_DEV  = process.env.NODE_ENV !== 'production';
       //    Runs in BOTH dev and production.
       await runMigrations();
     }
+
+    // ── Safe seed: insert default users if DB is empty ───────────────────
+    const { seed } = require('./seeders/index');
+    await seed();
 
     // ── SEED_ON_START: run production seed if env var is set ─────────────
     if (process.env.SEED_ON_START === 'true') {

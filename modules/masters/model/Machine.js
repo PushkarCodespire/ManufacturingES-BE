@@ -35,6 +35,7 @@ const Machine = sequelize.define(
     serialization:       { type: DataTypes.BOOLEAN, defaultValue: false },
 
     // Audit
+    site_id:     { type: DataTypes.INTEGER, allowNull: true, comment: 'FK to sites.id — plant affinity' },
     created_by:  { type: DataTypes.INTEGER, allowNull: true, comment: 'FK to users.id' },
     updated_by:  { type: DataTypes.INTEGER, allowNull: true, comment: 'FK to users.id' },
   },

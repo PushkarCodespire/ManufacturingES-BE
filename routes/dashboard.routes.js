@@ -6,6 +6,7 @@ router.use(authenticate);
 
 router.get('/full',            ctrl.getFullDashboard);
 router.get('/kpis',            ctrl.getKpis);
+router.get('/multi-plant',     ctrl.getMultiPlant);
 router.get('/role-stats/:role', ctrl.getRoleStats);
 
 module.exports = router;

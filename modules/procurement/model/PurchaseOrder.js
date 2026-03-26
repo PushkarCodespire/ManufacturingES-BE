@@ -19,6 +19,14 @@ const PurchaseOrder = sequelize.define('PurchaseOrder', {
   approved_at:       { type: DataTypes.DATE, allowNull: true },
   approval_notes:    { type: DataTypes.TEXT, allowNull: true },
   cancel_reason:     { type: DataTypes.TEXT, allowNull: true },
+  // GST Compliance
+  cgst_amount:       { type: DataTypes.DECIMAL(14, 2), allowNull: true, defaultValue: 0 },
+  sgst_amount:       { type: DataTypes.DECIMAL(14, 2), allowNull: true, defaultValue: 0 },
+  igst_amount:       { type: DataTypes.DECIMAL(14, 2), allowNull: true, defaultValue: 0 },
+  tax_amount:        { type: DataTypes.DECIMAL(14, 2), allowNull: true, defaultValue: 0 },
+  total_amount:      { type: DataTypes.DECIMAL(14, 2), allowNull: true, defaultValue: 0 },
+  supply_type:       { type: DataTypes.STRING(10), allowNull: true }, // intra | inter
+  e_way_bill_no:     { type: DataTypes.STRING(20), allowNull: true },
 }, {
   tableName: 'purchase_orders',
   underscored: true,

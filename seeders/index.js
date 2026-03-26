@@ -1,12 +1,15 @@
 /**
- * Dynatech ONE — Database Seeder
+ * Dynatech ONE — Safe Database Seeder
  * Seeds: 8 Departments, 16 Roles, 16 Users (one per role)
+ * + Maintenance Priorities, Equipment Categories, Downtime Reasons
  *
- * Run: npm run seed
+ * SAFE: Checks if users exist first — skips entirely if data is present.
+ * Uses findOrCreate — never drops or overwrites existing data.
+ *
+ * Can be called on every server startup or manually via: npm run seed
  * Default password for all users: Dynatech@123
  */
 
-require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 const bcrypt = require('bcryptjs');
 const {
   sequelize, Department, Role, User,
@@ -43,55 +46,57 @@ const SEED_USERS = [
 
 async function seed() {
   try {
-    console.log('🌱 Starting Dynatech ONE seed...\n');
+    // ── Guard: skip if users already exist ──────────────────────────────────
+    const userCount = await User.count();
+    if (userCount > 0) {
+      console.log(`⏭️  Seed skipped — ${userCount} users already exist`);
+      return;
+    }
 
-    await sequelize.authenticate();
-    console.log('✅ DB connected');
-
-    // Drop & recreate all tables
-    await sequelize.sync({ force: true });
-    console.log('✅ Tables reset\n');
+    console.log('🌱 No users found — seeding Dynatech ONE defaults...\n');
 
     // ── Step 1: Departments ──────────────────────────────────────────────────
     const deptMap = {}; // code → id
     for (const d of DEPARTMENTS) {
-      const dept = await Department.create({ code: d.code, name: d.name });
+      const [dept] = await Department.findOrCreate({
+        where: { code: d.code },
+        defaults: { name: d.name },
+      });
       deptMap[d.code] = dept.id;
-      console.log(`  Dept ${d.code} — ${d.name}`);
     }
-    console.log(`\n✅ ${DEPARTMENTS.length} Departments seeded\n`);
+    console.log(`✅ ${DEPARTMENTS.length} Departments ready`);
 
     // ── Step 2: Roles ────────────────────────────────────────────────────────
     const roleMap = {}; // name → { id, dept_id }
     for (const r of ROLES) {
-      const role = await Role.create({
-        name: r.name,
-        label: r.label,
-        department_id: deptMap[r.dept_code],
+      const [role] = await Role.findOrCreate({
+        where: { name: r.name },
+        defaults: { label: r.label, department_id: deptMap[r.dept_code] },
       });
       roleMap[r.name] = { id: role.id, dept_id: deptMap[r.dept_code] };
-      console.log(`  ${r.label} (Dept ${r.dept_code})`);
     }
-    console.log(`\n✅ ${ROLES.length} Roles seeded\n`);
+    console.log(`✅ ${ROLES.length} Roles ready`);
 
     // ── Step 3: Users ────────────────────────────────────────────────────────
     const passwordHash = await bcrypt.hash('Dynatech@123', 10);
-
+    let created = 0;
     for (const u of SEED_USERS) {
-      await User.create({
-        employee_id: u.employee_id,
-        name: u.name,
-        email: u.email,
-        phone: u.phone,
-        password_hash: passwordHash,
-        role_id: roleMap[u.role].id,
-        department_id: roleMap[u.role].dept_id,
-        is_first_login: true,
-        is_active: true,
+      const [, wasCreated] = await User.findOrCreate({
+        where: { employee_id: u.employee_id },
+        defaults: {
+          name: u.name,
+          email: u.email,
+          phone: u.phone,
+          password_hash: passwordHash,
+          role_id: roleMap[u.role].id,
+          department_id: roleMap[u.role].dept_id,
+          is_first_login: false,
+          is_active: true,
+        },
       });
-      console.log(`  ${u.employee_id} — ${u.name} [${u.role}]`);
+      if (wasCreated) created++;
     }
-    console.log(`\n✅ ${SEED_USERS.length} Users seeded\n`);
+    console.log(`✅ ${created} Users seeded (password: Dynatech@123)`);
 
     // ── Step 4: Maintenance Priorities ──────────────────────────────────────
     const PRIORITIES = [
@@ -101,10 +106,9 @@ async function seed() {
       { name: 'P4 — Low',       response_time_minutes: 1440, description: 'Scheduled — no immediate production impact',  color_code: '#2563eb', is_active: true },
     ];
     for (const p of PRIORITIES) {
-      await MaintenancePriority.create(p);
-      console.log(`  ${p.name} (${p.response_time_minutes} min)`);
+      await MaintenancePriority.findOrCreate({ where: { name: p.name }, defaults: p });
     }
-    console.log(`\n✅ ${PRIORITIES.length} Maintenance Priorities seeded\n`);
+    console.log(`✅ ${PRIORITIES.length} Maintenance Priorities ready`);
 
     // ── Step 5: Equipment Categories ─────────────────────────────────────────
     const EQUIP_CATEGORIES = [
@@ -118,10 +122,9 @@ async function seed() {
       { name: 'General',             description: 'General purpose equipment',           default_criticality: 'C', is_active: true },
     ];
     for (const c of EQUIP_CATEGORIES) {
-      await EquipmentCategory.create(c);
-      console.log(`  ${c.name}`);
+      await EquipmentCategory.findOrCreate({ where: { name: c.name }, defaults: c });
     }
-    console.log(`\n✅ ${EQUIP_CATEGORIES.length} Equipment Categories seeded\n`);
+    console.log(`✅ ${EQUIP_CATEGORIES.length} Equipment Categories ready`);
 
     // ── Step 6: Downtime Reasons ──────────────────────────────────────────────
     const DOWNTIME_REASONS = [
@@ -144,23 +147,20 @@ async function seed() {
       { name: 'Other / Unknown',           category: 'other',        is_active: true },
     ];
     for (const r of DOWNTIME_REASONS) {
-      await DowntimeReason.create(r);
-      console.log(`  ${r.name} [${r.category}]`);
+      await DowntimeReason.findOrCreate({ where: { name: r.name }, defaults: r });
     }
-    console.log(`\n✅ ${DOWNTIME_REASONS.length} Downtime Reasons seeded\n`);
+    console.log(`✅ ${DOWNTIME_REASONS.length} Downtime Reasons ready`);
 
-    console.log('─'.repeat(50));
-    console.log('🎉 Seeding complete!');
-    console.log('   Default password set — refer to .env or onboarding doc (not logged for security)');
-    console.log('   All users flagged as first_login → must change password on first login');
-    console.log('─'.repeat(50));
-
-    process.exit(0);
+    console.log('\n🎉 Seeding complete!\n');
   } catch (err) {
     console.error('❌ Seeding failed:', err.message);
-    console.error(err);
-    process.exit(1);
   }
 }
 
-seed();
+// Support both: require() from index.js AND standalone `npm run seed`
+module.exports = { seed };
+
+// Run standalone if called directly: node seeders/index.js
+if (require.main === module) {
+  seed().then(() => process.exit(0)).catch(() => process.exit(1));
+}

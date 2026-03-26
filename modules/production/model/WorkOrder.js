@@ -17,6 +17,7 @@ const WorkOrder = sequelize.define('WorkOrder', {
   actual_end:        { type: DataTypes.DATE, allowNull: true },
   priority:          { type: DataTypes.STRING(20), defaultValue: 'normal' },
   status:            { type: DataTypes.STRING(20), defaultValue: 'draft' },
+  manufactured_batch_no: { type: DataTypes.STRING(30), allowNull: true }, // auto-generated BAT-YYYY-XXXX on completion
   fpi_status:        { type: DataTypes.STRING(20), defaultValue: 'not_required' }, // not_required | pending | pass | fail
   // Sub-assembly support
   wo_type:           { type: DataTypes.STRING(20), defaultValue: 'standard' },    // standard | sub_assembly

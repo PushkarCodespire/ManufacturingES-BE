@@ -12,6 +12,11 @@ const VendorInvoice = sequelize.define('VendorInvoice', {
   due_date:        { type: DataTypes.DATEONLY, allowNull: true },
   invoice_amount:  { type: DataTypes.DECIMAL(14, 2), allowNull: false },
   tax_amount:      { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+  cgst_amount:     { type: DataTypes.DECIMAL(14, 2), allowNull: true, defaultValue: 0 },
+  sgst_amount:     { type: DataTypes.DECIMAL(14, 2), allowNull: true, defaultValue: 0 },
+  igst_amount:     { type: DataTypes.DECIMAL(14, 2), allowNull: true, defaultValue: 0 },
+  supply_type:     { type: DataTypes.STRING(10), allowNull: true },
+  e_way_bill_no:   { type: DataTypes.STRING(20), allowNull: true },
   total_amount:    { type: DataTypes.DECIMAL(14, 2), allowNull: false },       // invoice_amount + tax_amount
   match_status:    { type: DataTypes.STRING(20), defaultValue: 'pending' },    // pending | matched | partial_match | disputed
   status:          { type: DataTypes.STRING(20), defaultValue: 'pending' },    // pending | approved | disputed | paid | cancelled

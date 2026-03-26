@@ -42,6 +42,7 @@ async function deductInventory(items, warehouseId, refId, refNo, userId) {
       ref_type:     'issue_slip',
       ref_id:       refId,
       ref_no:       refNo,
+      lot_no:       it.lot_no || null,
       qty_before:   qtyBefore,
       qty_change:   -qty,
       qty_after:    qtyAfter,

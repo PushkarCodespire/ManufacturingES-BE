@@ -11,6 +11,14 @@ const PurchaseOrderItem = sequelize.define('PurchaseOrderItem', {
   unit:         { type: DataTypes.STRING(30), defaultValue: 'pcs' },
   notes:        { type: DataTypes.TEXT, allowNull: true },
   sort_order:   { type: DataTypes.INTEGER, defaultValue: 0 },
+  // GST Compliance
+  hsn_code:     { type: DataTypes.STRING(20), allowNull: true },
+  gst_rate:     { type: DataTypes.DECIMAL(5, 2), allowNull: true, defaultValue: 0 },
+  cgst_amount:  { type: DataTypes.DECIMAL(14, 2), allowNull: true, defaultValue: 0 },
+  sgst_amount:  { type: DataTypes.DECIMAL(14, 2), allowNull: true, defaultValue: 0 },
+  igst_amount:  { type: DataTypes.DECIMAL(14, 2), allowNull: true, defaultValue: 0 },
+  tax_amount:   { type: DataTypes.DECIMAL(14, 2), allowNull: true, defaultValue: 0 },
+  total_price:  { type: DataTypes.DECIMAL(14, 2), allowNull: true, defaultValue: 0 },
 }, { tableName: 'purchase_order_items', underscored: true });
 
 module.exports = PurchaseOrderItem;

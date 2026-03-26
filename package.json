@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Dynatech ONE — Backend API",
   "main": "index.js",
+  "type": "commonjs",
   "scripts": {
     "build": "rm -rf dist && mkdir -p dist && cp -r index.js config modules models routes services migrations scripts dist/ && echo 'Build complete'",
     "test": "echo 'No tests configured'",

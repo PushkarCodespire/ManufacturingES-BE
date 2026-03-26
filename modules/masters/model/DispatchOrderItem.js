@@ -10,6 +10,7 @@ const DispatchOrderItem = sequelize.define(
     quantity:          { type: DataTypes.DECIMAL(12,3), allowNull: false },
     unit:              { type: DataTypes.STRING(30),    allowNull: true },
     weight:            { type: DataTypes.DECIMAL(10,3), allowNull: true },
+    lot_no:            { type: DataTypes.STRING(100),   allowNull: true },
     notes:             { type: DataTypes.TEXT,          allowNull: true },
     created_by:        { type: DataTypes.INTEGER,       allowNull: true },
     updated_by:        { type: DataTypes.INTEGER,       allowNull: true },

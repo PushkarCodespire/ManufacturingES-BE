@@ -26,6 +26,9 @@ const {
   DowntimeLog,
   TrainingRecord,
   User,
+  Site,
+  Machine,
+  Equipment,
 } = require('../../../models');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -43,12 +46,42 @@ function currentMonthKey() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+// ── Helper: get machine IDs for a site (or all if no site_id) ────────────────
+async function getMachineIdsForSite(siteId) {
+  if (!siteId) return null; // null means no filter
+  const machines = await Machine.findAll({
+    where: { site_id: siteId, is_active: true },
+    attributes: ['id'],
+    raw: true,
+  });
+  return machines.map((m) => m.id);
+}
+
+// ── Helper: get equipment IDs for a set of machineIds (or null = no filter) ──
+async function getEquipmentIdsForMachines(machineIds) {
+  if (!machineIds) return null;
+  if (machineIds.length === 0) return [];
+  const rows = await Equipment.findAll({
+    where: { machine_id: { [Op.in]: machineIds } },
+    attributes: ['id'],
+    raw: true,
+  });
+  return rows.map((e) => e.id);
+}
+
+function woSiteWhere(machineIds, extraWhere = {}) {
+  if (!machineIds) return extraWhere;
+  return { ...extraWhere, machine_id: { [Op.in]: machineIds } };
+}
+
 // ── GET /dashboard/full — Full Golden Dashboard ───────────────────────────────
 const getFullDashboard = async (req, res) => {
   try {
     const monthStart = startOfMonth();
     const today      = startOfToday();
     const monthKey   = currentMonthKey();
+    const machineIds    = await getMachineIdsForSite(req.query.site_id);
+    const equipmentIds  = await getEquipmentIdsForMachines(machineIds);
 
     const [
       // Production
@@ -99,15 +132,15 @@ const getFullDashboard = async (req, res) => {
       // Orders
       openOrders,
     ] = await Promise.all([
-      // ── Production ──
-      WorkOrder.count({ where: { status: { [Op.in]: ['open', 'in_progress'] } } }).catch(() => 0),
-      WorkOrder.count({ where: { status: 'in_progress' } }).catch(() => 0),
-      WorkOrder.count({ where: { status: 'in_progress', planned_end: { [Op.lt]: today } } }).catch(() => 0),
-      WorkOrder.count({ where: { status: 'completed', updated_at: { [Op.gte]: today } } }).catch(() => 0),
-      JobCard.count({ where: { status: 'open' } }).catch(() => 0),
-      JobCard.count({ where: { status: 'closed', updated_at: { [Op.gte]: today } } }).catch(() => 0),
+      // ── Production (site-filtered via machine_id) ──
+      WorkOrder.count({ where: woSiteWhere(machineIds, { status: { [Op.in]: ['open', 'in_progress'] } }) }).catch(() => 0),
+      WorkOrder.count({ where: woSiteWhere(machineIds, { status: 'in_progress' }) }).catch(() => 0),
+      WorkOrder.count({ where: woSiteWhere(machineIds, { status: 'in_progress', planned_end: { [Op.lt]: today } }) }).catch(() => 0),
+      WorkOrder.count({ where: woSiteWhere(machineIds, { status: 'completed', updated_at: { [Op.gte]: today } }) }).catch(() => 0),
+      JobCard.count({ where: { status: 'open', ...(machineIds ? { machine_id: { [Op.in]: machineIds } } : {}) } }).catch(() => 0),
+      JobCard.count({ where: { status: 'closed', updated_at: { [Op.gte]: today }, ...(machineIds ? { machine_id: { [Op.in]: machineIds } } : {}) } }).catch(() => 0),
       ScrapVoucher.count({ where: { scrap_date: today } }).catch(() => 0),
-      WorkOrder.count({ where: { fpi_status: 'pending' } }).catch(() => 0),
+      WorkOrder.count({ where: woSiteWhere(machineIds, { fpi_status: 'pending' }) }).catch(() => 0),
 
       // ── Quality ──
       IqcInspection.count({ where: { result: 'pending' } }).catch(() => 0),
@@ -154,10 +187,12 @@ const getFullDashboard = async (req, res) => {
         where: { status: 'dispatched', dispatch_date: { [Op.gte]: monthStart } },
       }).catch(() => 0),
 
-      // ── Maintenance ──
-      BreakdownRequest.count({ where: { status: { [Op.notIn]: ['closed', 'resolved'] } } }).catch(() => 0),
+      // ── Maintenance (site-filtered via equipment_id when equipmentIds available) ──
+      (equipmentIds !== null && equipmentIds.length === 0)
+        ? Promise.resolve(0)
+        : BreakdownRequest.count({ where: { status: { [Op.notIn]: ['closed', 'resolved'] }, ...(equipmentIds ? { equipment_id: { [Op.in]: equipmentIds } } : {}) } }).catch(() => 0),
       MaintenanceWorkOrder.count({ where: { status: { [Op.notIn]: ['closed', 'completed'] } } }).catch(() => 0),
-      DowntimeLog.count({ where: { created_at: { [Op.gte]: today } } }).catch(() => 0),
+      DowntimeLog.count({ where: { createdAt: { [Op.gte]: today } } }).catch(() => 0),
 
       // ── Finance ──
       CopqEntry.sum('cost_amount', { where: { month_key: monthKey } }).catch(() => 0),
@@ -367,7 +402,7 @@ const getRoleStats = async (req, res) => {
 
       case 'store_manager':
       case 'store_incharge': {
-        const [grnPending, stockAlerts, issuedToday, totalSkus] = await Promise.all([
+        const [grnPending, stockAlerts, issuedToday, totalSkus, pendingMRs] = await Promise.all([
           Grn.count({ where: { status: 'pending' } }).catch(() => 0),
           Inventory.count({
             include: [{ model: Item, as: 'Item', attributes: [], where: { reorder_point: { [Op.gt]: 0 } } }],
@@ -375,8 +410,13 @@ const getRoleStats = async (req, res) => {
           }).catch(() => 0),
           JobCard.count({ where: { status: 'closed', created_at: { [Op.gte]: today } } }).catch(() => 0),
           Item.count().catch(() => 0),
+          MaterialRequest.count({ where: { status: 'pending' } }).catch(() => 0),
         ]);
-        stats = { grn_pending: grnPending, stock_alerts: stockAlerts, issued_today: issuedToday, total_skus: totalSkus };
+        stats = {
+          grn_pending: grnPending, stock_alerts: stockAlerts,
+          issued_today: issuedToday, total_skus: totalSkus,
+          pending_material_requests: pendingMRs,
+        };
         break;
       }
 
@@ -394,8 +434,7 @@ const getRoleStats = async (req, res) => {
         break;
       }
 
-      case 'production_supervisor':
-      case 'production_manager': {
+      case 'production_supervisor': {
         const [activeJobs, completedToday, scrapToday, fpiWaiting] = await Promise.all([
           JobCard.count({ where: { status: 'open' } }).catch(() => 0),
           JobCard.count({ where: { status: 'closed', created_at: { [Op.gte]: today } } }).catch(() => 0),
@@ -403,6 +442,33 @@ const getRoleStats = async (req, res) => {
           WorkOrder.count({ where: { fpi_status: 'pending' } }).catch(() => 0),
         ]);
         stats = { active_jobs: activeJobs, completed_today: completedToday, scrap_today: scrapToday, fpi_waiting: fpiWaiting };
+        break;
+      }
+
+      case 'production_manager': {
+        const [
+          activeJobs, completedToday, scrapToday, fpiWaiting,
+          activeWos, inProgressWos, delayedWos, completedWosToday,
+          openBreakdowns, openMwos,
+        ] = await Promise.all([
+          JobCard.count({ where: { status: 'open' } }).catch(() => 0),
+          JobCard.count({ where: { status: 'closed', created_at: { [Op.gte]: today } } }).catch(() => 0),
+          ScrapVoucher.count({ where: { scrap_date: today } }).catch(() => 0),
+          WorkOrder.count({ where: { fpi_status: 'pending' } }).catch(() => 0),
+          WorkOrder.count({ where: { status: { [Op.in]: ['open', 'in_progress'] } } }).catch(() => 0),
+          WorkOrder.count({ where: { status: 'in_progress' } }).catch(() => 0),
+          WorkOrder.count({ where: { status: 'in_progress', planned_end: { [Op.lt]: today } } }).catch(() => 0),
+          WorkOrder.count({ where: { status: 'completed', updated_at: { [Op.gte]: today } } }).catch(() => 0),
+          BreakdownRequest.count({ where: { status: { [Op.notIn]: ['closed', 'resolved'] } } }).catch(() => 0),
+          MaintenanceWorkOrder.count({ where: { status: { [Op.notIn]: ['closed', 'completed'] } } }).catch(() => 0),
+        ]);
+        stats = {
+          active_jobs: activeJobs, completed_today: completedToday,
+          scrap_today: scrapToday, fpi_waiting: fpiWaiting,
+          active_wos: activeWos, in_progress_wos: inProgressWos,
+          delayed_wos: delayedWos, completed_wos_today: completedWosToday,
+          open_breakdowns: openBreakdowns, open_mwos: openMwos,
+        };
         break;
       }
 
@@ -456,13 +522,25 @@ const getRoleStats = async (req, res) => {
       }
 
       case 'quality_manager': {
-        const [openNcrs, openCapas, instrumentsDue, complaintsMonth] = await Promise.all([
+        const [
+          openNcrs, openCapas, instrumentsDue, complaintsMonth,
+          iqcPending, pqcPending, oqcPending, lqcToday,
+        ] = await Promise.all([
           Ncr.count({ where: { status: { [Op.notIn]: ['closed', 'rejected'] } } }).catch(() => 0),
           Capa.count({ where: { status: { [Op.notIn]: ['closed', 'verified_effective'] } } }).catch(() => 0),
           Instrument.count({ where: { next_due_at: { [Op.lte]: today }, status: 'active' } }).catch(() => 0),
           Complaint.count({ where: { created_at: { [Op.gte]: monthStart } } }).catch(() => 0),
+          IqcInspection.count({ where: { result: 'pending' } }).catch(() => 0),
+          PqcInspection.count({ where: { result: 'pending' } }).catch(() => 0),
+          OqcInspection.count({ where: { result: 'pending' } }).catch(() => 0),
+          LqcInspection.count({ where: { inspection_date: today } }).catch(() => 0),
         ]);
-        stats = { open_ncrs: openNcrs, open_capas: openCapas, instruments_due: instrumentsDue, complaints_month: complaintsMonth };
+        stats = {
+          open_ncrs: openNcrs, open_capas: openCapas,
+          instruments_due: instrumentsDue, complaints_month: complaintsMonth,
+          iqc_pending: iqcPending, pqc_pending: pqcPending,
+          oqc_pending: oqcPending, lqc_checks_today: lqcToday,
+        };
         break;
       }
 
@@ -477,4 +555,81 @@ const getRoleStats = async (req, res) => {
   }
 };
 
-module.exports = { getKpis, getRoleStats, getFullDashboard };
+// ── GET /dashboard/multi-plant — Corporate KPIs per site ─────────────────────
+const getMultiPlant = async (req, res) => {
+  try {
+    const sites = await Site.findAll({ where: { is_active: true }, attributes: ['id', 'name', 'code'], order: [['name', 'ASC']] });
+    const month = startOfMonth();
+
+    const plants = [];
+    const totals = { open_wos: 0, produced_qty: 0, complaints: 0, breakdowns: 0, open_ncrs: 0 };
+
+    for (const site of sites) {
+      // Get machines for this site
+      const machineIds = (await Machine.findAll({
+        where: { site_id: site.id, is_active: true },
+        attributes: ['id'],
+        raw: true,
+      })).map((m) => m.id);
+
+      let open_wos = 0, produced_qty = 0, complaints = 0, breakdowns = 0, open_ncrs = 0;
+
+      if (machineIds.length > 0) {
+        // WOs on this site's machines
+        open_wos = await WorkOrder.count({
+          where: { machine_id: { [Op.in]: machineIds }, status: { [Op.in]: ['released', 'in_progress'] } },
+        });
+
+        // Produced this month
+        const woData = await WorkOrder.findAll({
+          where: { machine_id: { [Op.in]: machineIds }, status: { [Op.in]: ['in_progress', 'completed'] }, actual_start: { [Op.gte]: month } },
+          attributes: ['produced_qty'],
+          raw: true,
+        });
+        produced_qty = woData.reduce((s, w) => s + parseFloat(w.produced_qty || 0), 0);
+      }
+
+      // Complaints this month (site-agnostic, count all)
+      complaints = await Complaint.count({ where: { created_at: { [Op.gte]: month } } });
+
+      // Breakdowns this month — BreakdownRequest links to Equipment, not Machine directly
+      const equipmentIds = machineIds.length > 0
+        ? (await Equipment.findAll({ where: { machine_id: { [Op.in]: machineIds } }, attributes: ['id'], raw: true })).map((e) => e.id)
+        : [];
+      breakdowns = await BreakdownRequest.count({
+        where: {
+          ...(equipmentIds.length > 0 ? { equipment_id: { [Op.in]: equipmentIds } } : {}),
+          createdAt: { [Op.gte]: month },
+        },
+      });
+
+      // Open NCRs
+      open_ncrs = await Ncr.count({ where: { status: { [Op.notIn]: ['closed', 'rejected'] } } });
+
+      plants.push({
+        site_id: site.id,
+        site_name: site.name,
+        site_code: site.code,
+        machines: machineIds.length,
+        open_wos,
+        produced_qty: Math.round(produced_qty),
+        complaints,
+        breakdowns,
+        open_ncrs,
+      });
+
+      totals.open_wos += open_wos;
+      totals.produced_qty += Math.round(produced_qty);
+      totals.complaints = complaints; // same global count
+      totals.breakdowns += breakdowns;
+      totals.open_ncrs = open_ncrs; // same global count
+    }
+
+    return res.json({ success: true, data: { plants, totals, as_of: new Date().toISOString() } });
+  } catch (err) {
+    console.error('[dashboard/multiPlant]', err);
+    return res.status(500).json({ success: false, message: err.message || 'Server error' });
+  }
+};
+
+module.exports = { getKpis, getRoleStats, getFullDashboard, getMultiPlant };

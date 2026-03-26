@@ -75,6 +75,10 @@ const LaborRateCard          = require('../modules/production/model/LaborRateCar
 const MachineRate            = require('../modules/production/model/MachineRate');
 const OverheadRate           = require('../modules/production/model/OverheadRate');
 const JobCostSheet           = require('../modules/production/model/JobCostSheet');
+const EwiDocument       = require('../modules/production/model/EwiDocument');
+const EwiStep           = require('../modules/production/model/EwiStep');
+const EwiAcknowledgment = require('../modules/production/model/EwiAcknowledgment');
+const WipMovement       = require('../modules/production/model/WipMovement');
 const PurchaseOrder            = require('../modules/procurement/model/PurchaseOrder');
 const PurchaseOrderItem        = require('../modules/procurement/model/PurchaseOrderItem');
 const PurchaseRequisition      = require('../modules/procurement/model/PurchaseRequisition');
@@ -118,6 +122,12 @@ const PpapElement     = require('../modules/quality/model/PpapElement')(sequeliz
 const AuditPlan       = require('../modules/quality/model/AuditPlan')(sequelize);
 const AuditItem       = require('../modules/quality/model/AuditItem')(sequelize);
 const AuditFinding    = require('../modules/quality/model/AuditFinding')(sequelize);
+// SPC Control Charts
+const SpcConfig       = require('../modules/quality/model/SpcConfig');
+const SpcReading      = require('../modules/quality/model/SpcReading');
+// Process Recipes
+const ProcessRecipe   = require('../modules/production/model/ProcessRecipe');
+const ProcessReading  = require('../modules/production/model/ProcessReading');
 // ── Sprint 4: NPD ─────────────────────────────────────────────────────────────
 const Drawing              = require('../modules/npd/model/Drawing')(sequelize);
 const DrawingVersion       = require('../modules/npd/model/DrawingVersion')(sequelize);
@@ -132,6 +142,7 @@ const FeatureSetting   = require('../modules/admin/model/FeatureSetting')(sequel
 const FieldVisibility  = require('../modules/admin/model/FieldVisibility')(sequelize);
 const AiAgentSetting   = require('../modules/admin/model/AiAgentSetting')(sequelize);
 const AdminAuditLog    = require('../modules/admin/model/AdminAuditLog')(sequelize);
+const WhatsappLog      = require('../modules/admin/model/WhatsappLog')(sequelize);
 // ── Sprint 4b: Madad Chat ────────────────────────────────────────────────────
 const MadadChat        = require('../modules/ai/model/MadadChat')(sequelize);
 // ── Mold Management Module ───────────────────────────────────────────────────
@@ -269,6 +280,7 @@ Machine.belongsTo(Machine, { foreignKey: 'parent_id', as: 'Parent' });
 Machine.hasMany(Machine,   { foreignKey: 'parent_id', as: 'Children' });
 
 // Machine audit — created_by / updated_by
+Machine.belongsTo(Site, { foreignKey: 'site_id', as: 'Site' });
 Machine.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
 Machine.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
 
@@ -500,6 +512,19 @@ Machine.hasMany(RoutingStep, { foreignKey: 'machine_id' });
 JobCard.belongsTo(RoutingStep, { foreignKey: 'routing_step_id' });
 RoutingStep.hasMany(JobCard, { foreignKey: 'routing_step_id' });
 
+// EWI
+EwiDocument.belongsTo(Item,        { as: 'Item',        foreignKey: 'item_id' });
+EwiDocument.belongsTo(Routing,     { as: 'Routing',     foreignKey: 'routing_id' });
+EwiDocument.belongsTo(RoutingStep, { as: 'RoutingStep', foreignKey: 'routing_step_id' });
+EwiDocument.belongsTo(User,        { as: 'ApprovedBy',  foreignKey: 'approved_by' });
+EwiDocument.belongsTo(User,        { as: 'Creator',     foreignKey: 'created_by' });
+EwiDocument.hasMany(EwiStep,           { as: 'Steps',           foreignKey: 'ewi_id' });
+EwiDocument.hasMany(EwiAcknowledgment, { as: 'Acknowledgments', foreignKey: 'ewi_id' });
+EwiStep.belongsTo(EwiDocument,         { as: 'Document',        foreignKey: 'ewi_id' });
+EwiAcknowledgment.belongsTo(EwiDocument, { as: 'Document',      foreignKey: 'ewi_id' });
+EwiAcknowledgment.belongsTo(User,        { as: 'AcknowledgedBy',foreignKey: 'acknowledged_by' });
+EwiAcknowledgment.belongsTo(JobCard,     { as: 'JobCard',       foreignKey: 'job_card_id' });
+
 // ── Shift Assignments (Batch 1B) ─────────────────────────────────────────────
 ShiftAssignment.belongsTo(WorkOrder, { foreignKey: 'work_order_id', as: 'WorkOrder' });
 WorkOrder.hasMany(ShiftAssignment,   { foreignKey: 'work_order_id', as: 'ShiftAssignments' });
@@ -510,6 +535,12 @@ ShiftAssignment.belongsTo(Machine,   { foreignKey: 'machine_id',    as: 'Machine
 ShiftCrewMember.belongsTo(Shift,      { foreignKey: 'shift_id',       as: 'Shift'      });
 ShiftCrewMember.belongsTo(User,       { foreignKey: 'user_id',        as: 'User'       });
 ShiftCrewMember.belongsTo(WorkCenter, { foreignKey: 'work_center_id', as: 'WorkCenter' });
+
+// ── WIP Movements ────────────────────────────────────────────────────────────
+WipMovement.belongsTo(WorkOrder,  { foreignKey: 'work_order_id',  as: 'WorkOrder'  });
+WipMovement.belongsTo(WorkCenter, { foreignKey: 'work_center_id', as: 'WorkCenter' });
+WipMovement.belongsTo(User,       { foreignKey: 'performed_by',   as: 'Performer'  });
+WorkOrder.hasMany(WipMovement,    { foreignKey: 'work_order_id',  as: 'WipMovements' });
 
 // ── Batch 6A — Rework Vouchers ────────────────────────────────────────────────
 ReworkVoucher.belongsTo(WorkOrder, { foreignKey: 'work_order_id', as: 'WorkOrder' });
@@ -779,6 +810,22 @@ AuditItem.hasMany(AuditFinding, { foreignKey: 'audit_item_id', as: 'Findings', o
 AuditFinding.belongsTo(AuditItem, { foreignKey: 'audit_item_id', as: 'AuditItem' });
 AuditFinding.belongsTo(User, { foreignKey: 'raised_by', as: 'RaisedBy', constraints: false });
 
+// ── SPC Control Charts ───────────────────────────────────────────────────────
+SpcConfig.belongsTo(Item, { foreignKey: 'item_id', as: 'Item' });
+SpcConfig.belongsTo(User, { foreignKey: 'created_by', as: 'Creator', constraints: false });
+SpcConfig.hasMany(SpcReading, { foreignKey: 'spc_config_id', as: 'Readings', onDelete: 'CASCADE' });
+SpcReading.belongsTo(SpcConfig, { foreignKey: 'spc_config_id', as: 'Config' });
+
+// ── Process Recipes ──────────────────────────────────────────────────────────
+ProcessRecipe.belongsTo(Item,                { foreignKey: 'item_id',      as: 'Item'      });
+ProcessRecipe.belongsTo(Machine,             { foreignKey: 'machine_id',   as: 'Machine'   });
+ProcessRecipe.belongsTo(ProductionParameter, { foreignKey: 'parameter_id', as: 'Parameter' });
+ProcessRecipe.belongsTo(User,                { foreignKey: 'created_by',   as: 'Creator', constraints: false });
+ProcessRecipe.hasMany(ProcessReading,        { foreignKey: 'recipe_id',    as: 'Readings', onDelete: 'CASCADE' });
+ProcessReading.belongsTo(ProcessRecipe,      { foreignKey: 'recipe_id',    as: 'Recipe'   });
+ProcessReading.belongsTo(JobCard,            { foreignKey: 'job_card_id',  as: 'JobCard', constraints: false });
+ProcessReading.belongsTo(User,               { foreignKey: 'recorded_by',  as: 'Recorder', constraints: false });
+
 // Complaint — item + creator + capa + ncr chain links
 Complaint.belongsTo(Item, { foreignKey: 'item_id',    as: 'Item'    });
 Complaint.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
@@ -791,6 +838,8 @@ Ncr.belongsTo(Capa,      { foreignKey: 'capa_id',      as: 'Capa'      });
 
 // AdminAuditLog — actor
 AdminAuditLog.belongsTo(User, { foreignKey: 'actor_id', as: 'Actor' });
+// WhatsappLog — user
+WhatsappLog.belongsTo(User, { foreignKey: 'user_id', as: 'User' });
 
 // MadadChat — user
 MadadChat.belongsTo(User, { foreignKey: 'user_id', as: 'User' });
@@ -1194,10 +1243,10 @@ ShiftHandover.belongsTo(User, { as: 'incomingSupervisor', foreignKey: 'incoming_
 ShiftHandoverItem.belongsTo(ShiftHandover, { as: 'handover', foreignKey: 'handover_id' });
 
 // ── Cost Intelligence ─────────────────────────────────────────────────────────
-JobCostSheet.belongsTo(WorkOrder, { foreignKey: 'work_order_id' });
-WorkOrder.hasOne(JobCostSheet,    { foreignKey: 'work_order_id' });
-MachineRate.belongsTo(Machine,    { foreignKey: 'machine_id' });
-Machine.hasMany(MachineRate,      { foreignKey: 'machine_id' });
+JobCostSheet.belongsTo(WorkOrder, { foreignKey: 'work_order_id', as: 'WorkOrder'     });
+WorkOrder.hasOne(JobCostSheet,    { foreignKey: 'work_order_id', as: 'JobCostSheet'  });
+MachineRate.belongsTo(Machine,    { foreignKey: 'machine_id',    as: 'Machine'       });
+Machine.hasMany(MachineRate,      { foreignKey: 'machine_id',    as: 'MachineRates'  });
 
 module.exports = {
   sequelize,
@@ -1276,6 +1325,10 @@ module.exports = {
   MachineRate,
   OverheadRate,
   JobCostSheet,
+  EwiDocument,
+  EwiStep,
+  EwiAcknowledgment,
+  WipMovement,
   PurchaseOrder,
   PurchaseOrderItem,
   PurchaseRequisition,
@@ -1318,6 +1371,10 @@ module.exports = {
   AuditPlan,
   AuditItem,
   AuditFinding,
+  SpcConfig,
+  SpcReading,
+  ProcessRecipe,
+  ProcessReading,
   // Sprint 4: NPD
   Drawing,
   DrawingVersion,
@@ -1377,6 +1434,7 @@ module.exports = {
   FieldVisibility,
   AiAgentSetting,
   AdminAuditLog,
+  WhatsappLog,
   MadadChat,
   // Maintenance Sprint 3
   EquipmentCategory,

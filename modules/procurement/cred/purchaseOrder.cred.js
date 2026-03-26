@@ -7,6 +7,8 @@ const poItemSchema = Joi.object({
   unit:         Joi.string().trim().max(20).optional().default('pcs'),
   notes:        Joi.string().trim().max(500).optional().allow('', null),
   sort_order:   Joi.number().integer().min(0).optional(),
+  gst_rate:     Joi.number().min(0).max(28).optional().default(0),
+  hsn_code:     Joi.string().trim().max(20).optional().allow('', null),
 });
 
 const receiveItemSchema = Joi.object({
@@ -17,20 +19,22 @@ const receiveItemSchema = Joi.object({
 });
 
 const createPoSchema = Joi.object({
-  vendor_id:     Joi.number().integer().positive().required().messages({ 'any.required': 'Vendor is required' }),
-  order_date:    Joi.string().isoDate().required().messages({ 'any.required': 'Order date is required' }),
-  expected_date: Joi.string().isoDate().optional().allow(null),
-  notes:         Joi.string().trim().max(2000).optional().allow('', null),
-  items:         Joi.array().items(poItemSchema).min(1).required()
+  vendor_id:      Joi.number().integer().positive().required().messages({ 'any.required': 'Vendor is required' }),
+  order_date:     Joi.string().isoDate().required().messages({ 'any.required': 'Order date is required' }),
+  expected_date:  Joi.string().isoDate().optional().allow(null),
+  e_way_bill_no:  Joi.string().trim().max(20).optional().allow('', null),
+  notes:          Joi.string().trim().max(2000).optional().allow('', null),
+  items:          Joi.array().items(poItemSchema).min(1).required()
     .messages({ 'array.min': 'At least one item line is required', 'any.required': 'Items are required' }),
 });
 
 const updatePoSchema = Joi.object({
-  vendor_id:     Joi.number().integer().positive().optional(),
-  order_date:    Joi.string().isoDate().optional(),
-  expected_date: Joi.string().isoDate().optional().allow(null),
-  notes:         Joi.string().trim().max(2000).optional().allow('', null),
-  items:         Joi.array().items(poItemSchema).min(1).optional(),
+  vendor_id:      Joi.number().integer().positive().optional(),
+  order_date:     Joi.string().isoDate().optional(),
+  expected_date:  Joi.string().isoDate().optional().allow(null),
+  e_way_bill_no:  Joi.string().trim().max(20).optional().allow('', null),
+  notes:          Joi.string().trim().max(2000).optional().allow('', null),
+  items:          Joi.array().items(poItemSchema).min(1).optional(),
 }).min(1).messages({ 'object.min': 'At least one field is required to update' });
 
 const receivePoSchema = Joi.object({

@@ -26,6 +26,7 @@ const orderSchema = Joi.object({
     quantity: Joi.number().positive().required(),
     unit:     Joi.string().trim().max(30).allow('', null).optional(),
     weight:   Joi.number().min(0).allow(null).optional(),
+    lot_no:   Joi.string().trim().max(100).allow('', null).optional(),
     notes:    Joi.string().trim().max(1000).allow('', null).optional(),
   })).default([]),
 });
