@@ -11,6 +11,7 @@ const {
 } = require('../../../models');
 const { validateCreateJobCard, validateUpdateJobCard, validateCloseJobCard } = require('../cred/jobCard.cred');
 const { callClaude } = require('../../../services/ai.service');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
 // Terminal states — a job card in these states cannot be mutated further
 const TERMINAL_STATES = ['closed', 'cancelled'];
@@ -23,21 +24,8 @@ const ROUTING_INCLUDE = {
   required: false,
 };
 
-// ── Auto-number generator ────────────────────────────────────────────────────
-async function nextJobNo() {
-  const year = new Date().getFullYear();
-  const prefix = `JC-${year}-`;
-  const last = await JobCard.findOne({
-    where: { job_no: { [Op.like]: `${prefix}%` } },
-    order: [['job_no', 'DESC']],
-  });
-  let seq = 1;
-  if (last) {
-    const parts = last.job_no.split('-');
-    seq = parseInt(parts[parts.length - 1], 10) + 1;
-  }
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number shorthand ────────────────────────────────────────────────────
+const nextJobNo = () => generateAutoNumber(JobCard, 'job_no', 'JC');
 
 // ── GET /job-cards ────────────────────────────────────────────────────────────
 const getAll = async (req, res) => {

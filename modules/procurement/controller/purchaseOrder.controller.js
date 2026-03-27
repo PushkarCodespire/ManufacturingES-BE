@@ -18,24 +18,12 @@ const {
   validateRejectPo,
 } = require('../cred/purchaseOrder.cred');
 const { callClaude } = require('../../../services/ai.service');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
 const ADMIN_ROLES = ['plant_head', 'it_admin'];
 
-// ── Auto-number generator ────────────────────────────────────────────────────
-async function nextPoNo() {
-  const year = new Date().getFullYear();
-  const prefix = `PO-${year}-`;
-  const last = await PurchaseOrder.findOne({
-    where: { po_no: { [Op.like]: `${prefix}%` } },
-    order: [['po_no', 'DESC']],
-  });
-  let seq = 1;
-  if (last) {
-    const parts = last.po_no.split('-');
-    seq = parseInt(parts[parts.length - 1], 10) + 1;
-  }
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number shorthand ────────────────────────────────────────────────────
+const nextPoNo = () => generateAutoNumber(PurchaseOrder, 'po_no', 'PO');
 
 // Shared include set for detail views
 const DETAIL_INCLUDE = [

@@ -2,22 +2,10 @@ const { Op } = require('sequelize');
 const { Scar, Vendor, User } = require('../../../models');
 const { validateCreateScar, validateUpdateScar } = require('../cred/scar.cred');
 const { callClaude } = require('../../../services/ai.service');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
-// ── Auto-number ───────────────────────────────────────────────────────────────
-async function nextScarNo() {
-  const year = new Date().getFullYear();
-  const prefix = `SCAR-${year}-`;
-  const last = await Scar.findOne({
-    where: { scar_no: { [Op.like]: `${prefix}%` } },
-    order: [['scar_no', 'DESC']],
-  });
-  let seq = 1;
-  if (last) {
-    const parts = last.scar_no.split('-');
-    seq = parseInt(parts[parts.length - 1], 10) + 1;
-  }
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number shorthand ─────────────────────────────────────────────────────
+const nextScarNo = () => generateAutoNumber(Scar, 'scar_no', 'SCAR');
 
 const INCLUDES = [
   { model: Vendor, as: 'Vendor', attributes: ['id', 'name'] },

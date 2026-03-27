@@ -4,19 +4,10 @@ const {
   Grn, GrnItem,
 } = require('../../../models');
 const { validateCreateIssueSlip } = require('../cred/issueSlip.cred');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
-// ── Auto-number generator ─────────────────────────────────────────────────────
-async function nextSlipNo() {
-  const year   = new Date().getFullYear();
-  const prefix = `IS-${year}-`;
-  const last   = await IssueSlip.findOne({
-    where:      { slip_no: { [Op.like]: `${prefix}%` } },
-    order:      [['slip_no', 'DESC']],
-    attributes: ['slip_no'],
-  });
-  const seq = last ? parseInt(last.slip_no.split('-')[2], 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number shorthand ─────────────────────────────────────────────────────
+const nextSlipNo = () => generateAutoNumber(IssueSlip, 'slip_no', 'IS');
 
 // ── Inventory deduction helper ────────────────────────────────────────────────
 async function deductInventory(items, warehouseId, refId, refNo, userId) {

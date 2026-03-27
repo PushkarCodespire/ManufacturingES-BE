@@ -2,22 +2,10 @@ const { Op, fn, col, literal } = require('sequelize');
 const {
   ProductionSchedule, WorkOrder, Machine, Item, Shift, Routing, RoutingStep, User,
 } = require('../../../models');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
-// ── Auto-number ──────────────────────────────────────────────────────────────
-async function nextScheduleNo() {
-  const year = new Date().getFullYear();
-  const prefix = `PS-${year}-`;
-  const last = await ProductionSchedule.findOne({
-    where: { schedule_no: { [Op.like]: `${prefix}%` } },
-    order: [['schedule_no', 'DESC']],
-  });
-  let seq = 1;
-  if (last) {
-    const parts = last.schedule_no.split('-');
-    seq = parseInt(parts[parts.length - 1], 10) + 1;
-  }
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number shorthand ────────────────────────────────────────────────────
+const nextScheduleNo = () => generateAutoNumber(ProductionSchedule, 'schedule_no', 'PS');
 
 // ── Helper: get shift available minutes ──────────────────────────────────────
 async function getShiftMinutes() {

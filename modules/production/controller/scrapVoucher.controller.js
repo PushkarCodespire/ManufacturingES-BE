@@ -8,21 +8,9 @@ const {
   CopqEntry,
 } = require('../../../models');
 const { validateCreateScrap, validateUpdateScrap } = require('../cred/scrapVoucher.cred');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
-async function nextVoucherNo() {
-  const year = new Date().getFullYear();
-  const prefix = `SV-${year}-`;
-  const last = await ScrapVoucher.findOne({
-    where: { voucher_no: { [Op.like]: `${prefix}%` } },
-    order: [['voucher_no', 'DESC']],
-  });
-  let seq = 1;
-  if (last) {
-    const parts = last.voucher_no.split('-');
-    seq = parseInt(parts[parts.length - 1], 10) + 1;
-  }
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+const nextVoucherNo = () => generateAutoNumber(ScrapVoucher, 'voucher_no', 'SV');
 
 const getAll = async (req, res) => {
   try {

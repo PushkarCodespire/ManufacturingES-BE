@@ -5,19 +5,10 @@ const {
   validatePfmeaItem, validateUpdatePfmeaItem,
   validatePfmeaAction, validateUpdatePfmeaAction,
 } = require('../cred/pfmea.cred');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
-// ── Auto-number ───────────────────────────────────────────────────────────────
-async function nextPfmeaNo() {
-  const year   = new Date().getFullYear();
-  const prefix = `PFMEA-${year}-`;
-  const last   = await Pfmea.findOne({
-    where:      { pfmea_no: { [Op.like]: `${prefix}%` } },
-    order:      [['pfmea_no', 'DESC']],
-    attributes: ['pfmea_no'],
-  });
-  const seq = last ? parseInt(last.pfmea_no.split('-')[2], 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number shorthand ─────────────────────────────────────────────────────
+const nextPfmeaNo = () => generateAutoNumber(Pfmea, 'pfmea_no', 'PFMEA');
 
 const BASE_INCLUDE = [
   { model: Item,    as: 'Item',    attributes: ['id', 'name', 'code'] },

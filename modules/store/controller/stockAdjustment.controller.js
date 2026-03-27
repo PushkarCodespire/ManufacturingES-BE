@@ -3,19 +3,10 @@ const {
   StockAdjustment, StockAdjustmentItem, Inventory, InventoryTxn, Warehouse, Item, User,
 } = require('../../../models');
 const { validateCreateAdj, validateUpdateAdj } = require('../cred/stockAdjustment.cred');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
-// ── Auto-number generator ─────────────────────────────────────────────────────
-async function nextAdjNo() {
-  const year   = new Date().getFullYear();
-  const prefix = `SA-${year}-`;
-  const last   = await StockAdjustment.findOne({
-    where:      { adj_no: { [Op.like]: `${prefix}%` } },
-    order:      [['adj_no', 'DESC']],
-    attributes: ['adj_no'],
-  });
-  const seq = last ? parseInt(last.adj_no.split('-')[2], 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number shorthand ─────────────────────────────────────────────────────
+const nextAdjNo = () => generateAutoNumber(StockAdjustment, 'adj_no', 'SA');
 
 // ── Shared includes ───────────────────────────────────────────────────────────
 const HEADER_INCLUDE = [

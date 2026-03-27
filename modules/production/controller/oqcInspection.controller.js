@@ -16,6 +16,7 @@ const { validateCreateOqc, validateUpdateResult } = require('../cred/oqcInspecti
 const aiService = require('../../../services/ai.service');
 const aiPrompts = require('../../../config/ai-prompts');
 const { notifyByRoles } = require('../../../services/notification.service');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
 // ── Check if all WOs for a CustomerOrder have passed OQC → promote to 'ready' ──
 async function checkAndPromoteOrderStatus(workOrderId, userId) {
@@ -50,21 +51,8 @@ async function checkAndPromoteOrderStatus(workOrderId, userId) {
   }
 }
 
-// ── Auto-number generator ────────────────────────────────────────────────────
-async function nextInspectionNo() {
-  const year   = new Date().getFullYear();
-  const prefix = `OQC-${year}-`;
-  const last   = await OqcInspection.findOne({
-    where: { inspection_no: { [Op.like]: `${prefix}%` } },
-    order: [['inspection_no', 'DESC']],
-  });
-  let seq = 1;
-  if (last) {
-    const parts = last.inspection_no.split('-');
-    seq = parseInt(parts[parts.length - 1], 10) + 1;
-  }
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number shorthand ────────────────────────────────────────────────────
+const nextInspectionNo = () => generateAutoNumber(OqcInspection, 'inspection_no', 'OQC');
 
 // ── GET /oqc-inspections ─────────────────────────────────────────────────────
 const getAll = async (req, res) => {

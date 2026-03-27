@@ -5,19 +5,10 @@ const {
 const { notifyByRoles } = require('../../../services/notification.service');
 const { validateCreateNcr, validateUpdateNcr, validateDisposition } = require('../cred/ncr.cred');
 const { callClaude } = require('../../../services/ai.service');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
-// ── Auto-number ───────────────────────────────────────────────────────────────
-async function nextNcrNo() {
-  const year   = new Date().getFullYear();
-  const prefix = `NCR-${year}-`;
-  const last   = await Ncr.findOne({
-    where:      { ncr_no: { [Op.like]: `${prefix}%` } },
-    order:      [['ncr_no', 'DESC']],
-    attributes: ['ncr_no'],
-  });
-  const seq = last ? parseInt(last.ncr_no.split('-')[2], 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number shorthand ─────────────────────────────────────────────────────
+const nextNcrNo = () => generateAutoNumber(Ncr, 'ncr_no', 'NCR');
 
 const HEADER_INCLUDE = [
   { model: Item,      as: 'Item',      attributes: ['id', 'name', 'code'] },

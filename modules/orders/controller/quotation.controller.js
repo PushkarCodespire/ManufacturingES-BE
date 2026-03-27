@@ -3,6 +3,7 @@ const { Quotation, QuotationItem, Rfq, Vendor, Item, User } = require('../../../
 const { validateCreateQuotation, validateUpdateQuotation } = require('../cred/quotation.cred');
 const aiService = require('../../../services/ai.service');
 const aiPrompts = require('../../../config/ai-prompts');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
 // ── Shared includes ──────────────────────────────────────────────────────────
 const HEADER_INCLUDE = [
@@ -15,18 +16,8 @@ const ITEM_INCLUDE = [
   { model: Item, as: 'Item', attributes: ['id', 'name', 'code', 'unit', 'item_type', 'gst_rate'] },
 ];
 
-// ── Auto-number generator ────────────────────────────────────────────────────
-async function nextQuotationNo() {
-  const year   = new Date().getFullYear();
-  const prefix = `QT-${year}-`;
-  const last   = await Quotation.findOne({
-    where:  { quotation_no: { [Op.like]: `${prefix}%` } },
-    order:  [['quotation_no', 'DESC']],
-    attributes: ['quotation_no'],
-  });
-  const seq = last ? parseInt(last.quotation_no.split('-')[2], 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number shorthand ────────────────────────────────────────────────────
+const nextQuotationNo = () => generateAutoNumber(Quotation, 'quotation_no', 'QT');
 
 // ── GET /quotations ──────────────────────────────────────────────────────────
 exports.getAll = async (req, res) => {

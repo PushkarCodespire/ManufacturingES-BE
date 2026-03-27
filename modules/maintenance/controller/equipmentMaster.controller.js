@@ -7,18 +7,12 @@ const {
   EquipmentHealthScore, MachineStatus, EquipmentHierarchy,
   BreakdownRequest, MaintenanceWorkOrder,
 } = db;
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
 // Auto-generate equipment code: EQP-YYYY-XXXX
-async function generateEquipmentCode() {
-  const year  = new Date().getFullYear();
-  const prefix = `EQP-${year}-`;
-  const last   = await Equipment.findOne({
-    where: { equipment_code: { [Op.like]: `${prefix}%` } },
-    order: [['id', 'DESC']],
-  });
-  const seq = last ? parseInt(last.equipment_code.split('-')[2], 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+const generateEquipmentCode = () => generateAutoNumber(
+  Equipment, 'equipment_code', 'EQP', { orderBy: 'id' },
+);
 
 exports.getAll = async (req, res) => {
   try {

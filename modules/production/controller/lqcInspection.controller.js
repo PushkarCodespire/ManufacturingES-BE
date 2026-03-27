@@ -10,22 +10,10 @@ const {
 } = require('../../../models');
 const { validateCreateLqc, validateUpdateResult } = require('../cred/lqcInspection.cred');
 const { callClaude } = require('../../../services/ai.service');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
-// ── Auto-number generator ────────────────────────────────────────────────────
-async function nextInspectionNo() {
-  const year = new Date().getFullYear();
-  const prefix = `LQC-${year}-`;
-  const last = await LqcInspection.findOne({
-    where: { inspection_no: { [Op.like]: `${prefix}%` } },
-    order: [['inspection_no', 'DESC']],
-  });
-  let seq = 1;
-  if (last) {
-    const parts = last.inspection_no.split('-');
-    seq = parseInt(parts[parts.length - 1], 10) + 1;
-  }
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number shorthand ────────────────────────────────────────────────────
+const nextInspectionNo = () => generateAutoNumber(LqcInspection, 'inspection_no', 'LQC');
 
 // ── GET /lqc-inspections ──────────────────────────────────────────────────────
 const getAll = async (req, res) => {

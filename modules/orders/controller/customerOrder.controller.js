@@ -8,6 +8,7 @@ const {
 const { validateCreateOrder, validateUpdateOrder } = require('../cred/customerOrder.cred');
 const aiService = require('../../../services/ai.service');
 const aiPrompts = require('../../../config/ai-prompts');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
 // ── Valid state transitions ─────────────────────────────────────────────────
 const VALID_TRANSITIONS = {
@@ -30,18 +31,8 @@ const ITEM_INCLUDE = [
   { model: Item, as: 'Item', attributes: ['id', 'name', 'code', 'unit', 'item_type'] },
 ];
 
-// ── Auto-number generator ────────────────────────────────────────────────────
-async function nextOrderNo() {
-  const year   = new Date().getFullYear();
-  const prefix = `SO-${year}-`;
-  const last   = await CustomerOrder.findOne({
-    where:  { order_no: { [Op.like]: `${prefix}%` } },
-    order:  [['order_no', 'DESC']],
-    attributes: ['order_no'],
-  });
-  const seq = last ? parseInt(last.order_no.split('-')[2], 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number shorthand ────────────────────────────────────────────────────
+const nextOrderNo = () => generateAutoNumber(CustomerOrder, 'order_no', 'SO');
 
 // ── GET /customer-orders ─────────────────────────────────────────────────────
 exports.getAll = async (req, res) => {

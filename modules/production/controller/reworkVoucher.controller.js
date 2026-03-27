@@ -1,21 +1,9 @@
 const { Op } = require('sequelize');
 const { ReworkVoucher, ReworkStep, Item, Machine, WorkOrder, JobCard, User } = require('../../../models');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
-// ── Auto-number helper ────────────────────────────────────────────────────────
-async function nextVoucherNo() {
-  const year   = new Date().getFullYear();
-  const prefix = `RW-${year}-`;
-  const last   = await ReworkVoucher.findOne({
-    where: { voucher_no: { [Op.like]: `${prefix}%` } },
-    order: [['voucher_no', 'DESC']],
-  });
-  let seq = 1;
-  if (last) {
-    const parts = last.voucher_no.split('-');
-    seq = parseInt(parts[parts.length - 1], 10) + 1;
-  }
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number shorthand ─────────────────────────────────────────────────────
+const nextVoucherNo = () => generateAutoNumber(ReworkVoucher, 'voucher_no', 'RW');
 
 const INCLUDES = [
   { model: Item,      as: 'Item',         attributes: ['id', 'name', 'code'] },

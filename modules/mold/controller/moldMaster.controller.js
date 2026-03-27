@@ -7,21 +7,13 @@ const {
 } = require('../../../models');
 const { validateCreate, validateUpdate, validatePartMapping, validateMachineCompat } = require('../cred/moldMaster.cred');
 const { saveToDisk } = require('../../../config/fileStorage');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
 // ── Audit attributes for Creator / Updater includes ────────────────────────
 const AUDIT_ATTRS = ['id', 'name', 'employee_id'];
 
-// ── Auto-number generator: MOL-YYYY-XXXX ────────────────────────────────────
-const generateMoldCode = async () => {
-  const year = new Date().getFullYear();
-  const prefix = `MOL-${year}-`;
-  const last = await Mold.findOne({
-    where: { mold_code: { [Op.like]: prefix + '%' } },
-    order: [['mold_code', 'DESC']],
-  });
-  const seq = last ? parseInt(last.mold_code.slice(-4), 10) + 1 : 1;
-  return prefix + String(seq).padStart(4, '0');
-};
+// ── Auto-number shorthand: MOL-YYYY-XXXX ─────────────────────────────────────
+const generateMoldCode = () => generateAutoNumber(Mold, 'mold_code', 'MOL');
 
 // ── GET /molds ──────────────────────────────────────────────────────────────
 const getAll = async (req, res) => {

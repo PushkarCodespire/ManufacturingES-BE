@@ -5,6 +5,7 @@ const {
   PurchaseRequisition, PurchaseRequisitionItem, User,
   PurchaseOrderItem,
 } = require('../../../models');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
 // ── MRP Engine ────────────────────────────────────────────────────────────────
 // Explodes open work orders through their BOMs and calculates net requirements.
@@ -48,7 +49,7 @@ const runMrp = async (req, res) => {
       if (plannedQty <= 0) continue;
 
       const bom = await Bom.findOne({
-        where:   { item_id: wo.item_id, status: 'active' },
+        where:   { item_id: wo.item_id, status: { [Op.in]: ['active', 'finalized', 'draft'] } },
         include: [{
           model: BomLine, as: 'Lines',
           include: [{ model: Item, as: 'Component', attributes: ['id', 'name', 'code', 'unit', 'reorder_point'] }],
@@ -157,21 +158,8 @@ const runMrp = async (req, res) => {
   }
 };
 
-// ── Auto-number PR ────────────────────────────────────────────────────────────
-async function nextPrNo() {
-  const year   = new Date().getFullYear();
-  const prefix = `PR-${year}-`;
-  const last   = await PurchaseRequisition.findOne({
-    where: { pr_no: { [Op.like]: `${prefix}%` } },
-    order: [['pr_no', 'DESC']],
-  });
-  let seq = 1;
-  if (last) {
-    const parts = last.pr_no.split('-');
-    seq = parseInt(parts[parts.length - 1], 10) + 1;
-  }
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number PR shorthand ──────────────────────────────────────────────────
+const nextPrNo = () => generateAutoNumber(PurchaseRequisition, 'pr_no', 'PR');
 
 // ── POST /mrp/generate-pr ─────────────────────────────────────────────────────
 // Body: { items: [{item_id, qty_required, unit, justification}], required_date, notes }

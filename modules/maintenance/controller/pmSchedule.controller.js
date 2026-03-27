@@ -4,13 +4,9 @@ const {
   PmTemplate, PmTemplateItem, PmSchedule, PmWorkOrder, PmWoChecklist,
   Equipment, EquipmentCategory, MaintenanceType, User,
 } = require('../../../models');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
-async function genPmWoNumber() {
-  const yr = new Date().getFullYear();
-  const last = await PmWorkOrder.findOne({ where: { wo_number: { [Op.like]: `MWO-P-${yr}-%` } }, order: [['id', 'DESC']] });
-  const seq = last ? parseInt(last.wo_number.split('-')[3], 10) + 1 : 1;
-  return `MWO-P-${yr}-${String(seq).padStart(4, '0')}`;
-}
+const genPmWoNumber = () => generateAutoNumber(PmWorkOrder, 'wo_number', 'MWO-P', { orderBy: 'id' });
 
 function calcNextDue(fromDate, tmpl) {
   const d = new Date(fromDate || Date.now());

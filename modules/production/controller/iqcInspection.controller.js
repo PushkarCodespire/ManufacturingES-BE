@@ -26,6 +26,7 @@ const { notifyByRoles } = require('../../../services/notification.service');
 const iqcCascadeService = require('../../../services/iqcCascade.service');
 const aiService = require('../../../services/ai.service');
 const aiPrompts = require('../../../config/ai-prompts');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
 // ── L-03: Shared calibration-status helper ───────────────────────────────────
 // Called at inspection CREATE and again at results SUBMIT (updateResults).
@@ -74,21 +75,9 @@ async function checkInstrumentCalibration() {
   }
 }
 
-// ── Auto-number generators ───────────────────────────────────────────────────
-async function nextAutoNo(Model, field, prefix) {
-  const year   = new Date().getFullYear();
-  const full   = `${prefix}-${year}-`;
-  const last   = await Model.findOne({
-    where: { [field]: { [Op.like]: `${full}%` } },
-    order: [[field, 'DESC']],
-  });
-  const seq = last ? parseInt(last[field].split('-').pop(), 10) + 1 : 1;
-  return `${full}${String(seq).padStart(4, '0')}`;
-}
-
 // Only the IQC sequence is needed in the controller; CAPA/NCR/SCAR sequences
 // are generated inside iqcCascade.service.js (L-01).
-const nextInspectionNo = () => nextAutoNo(IqcInspection, 'inspection_no', 'IQC');
+const nextInspectionNo = () => generateAutoNumber(IqcInspection, 'inspection_no', 'IQC');
 
 const INCLUDES = [
   { model: Item,   as: 'Item',      attributes: ['id', 'name', 'code'] },

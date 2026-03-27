@@ -6,6 +6,7 @@ const {
   PqcInspection, PqcInspectionResult,
   OqcInspection, OqcInspectionResult,
 } = require('../../../models');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
 // ── A2, D3, D4 constants for X-bar/R charts (subgroup size 2–10) ─────────────
 const A2 = { 2: 1.880, 3: 1.023, 4: 0.729, 5: 0.577, 6: 0.483, 7: 0.419, 8: 0.373, 9: 0.337, 10: 0.308 };
@@ -20,18 +21,8 @@ const SOURCE_MAP = {
   oqc: { Inspection: OqcInspection, Result: OqcInspectionResult, dateField: 'inspection_date' },
 };
 
-// ── NCR auto-number (reuse pattern from ncr.controller) ──────────────────────
-async function nextNcrNo() {
-  const year = new Date().getFullYear();
-  const prefix = `NCR-${year}-`;
-  const last = await Ncr.findOne({
-    where: { ncr_no: { [Op.like]: `${prefix}%` } },
-    order: [['ncr_no', 'DESC']],
-    attributes: ['ncr_no'],
-  });
-  const seq = last ? parseInt(last.ncr_no.split('-')[2], 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── NCR auto-number shorthand ─────────────────────────────────────────────────
+const nextNcrNo = () => generateAutoNumber(Ncr, 'ncr_no', 'NCR');
 
 // ── Western Electric Rules ───────────────────────────────────────────────────
 function checkWesternElectric(readings, cl, ucl, lcl) {

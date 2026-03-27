@@ -1,19 +1,10 @@
 const { Op } = require('sequelize');
 const { MaterialRequest, MaterialRequestItem, Warehouse, Item, User } = require('../../../models');
 const { validateCreateMr, validateUpdateMr } = require('../cred/materialRequest.cred');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
-// ── Auto-number generator ─────────────────────────────────────────────────────
-async function nextRequestNo() {
-  const year   = new Date().getFullYear();
-  const prefix = `MR-${year}-`;
-  const last   = await MaterialRequest.findOne({
-    where:      { request_no: { [Op.like]: `${prefix}%` } },
-    order:      [['request_no', 'DESC']],
-    attributes: ['request_no'],
-  });
-  const seq = last ? parseInt(last.request_no.split('-')[2], 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number shorthand ─────────────────────────────────────────────────────
+const nextRequestNo = () => generateAutoNumber(MaterialRequest, 'request_no', 'MR');
 
 // ── Shared includes ───────────────────────────────────────────────────────────
 const HEADER_INCLUDE = [

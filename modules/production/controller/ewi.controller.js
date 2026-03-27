@@ -1,18 +1,9 @@
 const { Op } = require('sequelize');
 const db = () => require('../../../models');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
-/* ── Auto-number ────────────────────────────────────────────────────────── */
-async function nextDocNo() {
-  const year   = new Date().getFullYear();
-  const prefix = `EWI-${year}-`;
-  const last   = await db().EwiDocument.findOne({
-    where:      { doc_no: { [Op.like]: `${prefix}%` } },
-    order:      [['doc_no', 'DESC']],
-    attributes: ['doc_no'],
-  });
-  const seq = last ? parseInt(last.doc_no.split('-')[2], 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+/* ── Auto-number shorthand ──────────────────────────────────────────────── */
+const nextDocNo = () => generateAutoNumber(db().EwiDocument, 'doc_no', 'EWI');
 
 /* ── LIST ────────────────────────────────────────────────────────────────── */
 exports.getAll = async (req, res) => {

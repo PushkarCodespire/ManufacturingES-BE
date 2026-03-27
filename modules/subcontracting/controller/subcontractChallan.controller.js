@@ -8,25 +8,13 @@ const {
   User,
 }= require('../../../models');
 const { validateCreateChallan } = require('../cred/subcontractChallan.cred');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
-// ── Auto-number generator ────────────────────────────────────────────────────
-async function nextChallanNo(type) {
-  const year   = new Date().getFullYear();
-  const prefix = type === 'outward' ? `OC-${year}-` : `IC-${year}-`;
-  const last   = await SubcontractChallan.findOne({
-    where: {
-      challan_no: { [Op.like]: `${prefix}%` },
-      type,
-    },
-    order: [['challan_no', 'DESC']],
-  });
-  let seq = 1;
-  if (last) {
-    const parts = last.challan_no.split('-');
-    seq = parseInt(parts[parts.length - 1], 10) + 1;
-  }
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number shorthand ────────────────────────────────────────────────────
+const nextChallanNo = (type) => generateAutoNumber(
+  SubcontractChallan, 'challan_no', type === 'outward' ? 'OC' : 'IC',
+  { extraWhere: { type } },
+);
 
 // ── GET /subcontract-challans ─────────────────────────────────────────────────
 const getAll = async (req, res) => {

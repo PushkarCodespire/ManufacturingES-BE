@@ -12,6 +12,7 @@ const {
 const { validateCreatePqc, validateUpdateResult } = require('../cred/pqcInspection.cred');
 const aiService = require('../../../services/ai.service');
 const aiPrompts = require('../../../config/ai-prompts');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
 // ── Notify users by role (non-fatal) ────────────────────────────────────────
 async function notifyByRoles(roleNames, type, title, message) {
@@ -28,21 +29,8 @@ async function notifyByRoles(roleNames, type, title, message) {
   }
 }
 
-// ── Auto-number generator ────────────────────────────────────────────────────
-async function nextInspectionNo() {
-  const year   = new Date().getFullYear();
-  const prefix = `PQC-${year}-`;
-  const last   = await PqcInspection.findOne({
-    where: { inspection_no: { [Op.like]: `${prefix}%` } },
-    order: [['inspection_no', 'DESC']],
-  });
-  let seq = 1;
-  if (last) {
-    const parts = last.inspection_no.split('-');
-    seq = parseInt(parts[parts.length - 1], 10) + 1;
-  }
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number shorthand ────────────────────────────────────────────────────
+const nextInspectionNo = () => generateAutoNumber(PqcInspection, 'inspection_no', 'PQC');
 
 // ── GET /pqc-inspections ─────────────────────────────────────────────────────
 const getAll = async (req, res) => {

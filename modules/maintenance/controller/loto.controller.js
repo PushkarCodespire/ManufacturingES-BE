@@ -1,13 +1,9 @@
 'use strict';
 const { Op } = require('sequelize');
 const { LotoProcedure, LotoExecution, LotoPermit, Equipment, User, MaintenanceWorkOrder, PmWorkOrder } = require('../../../models');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
-async function genPermitNumber() {
-  const yr = new Date().getFullYear();
-  const last = await LotoPermit.findOne({ where: { permit_number: { [Op.like]: `LP-${yr}-%` } }, order: [['id','DESC']] });
-  const seq = last ? parseInt(last.permit_number.split('-')[2], 10) + 1 : 1;
-  return `LP-${yr}-${String(seq).padStart(4, '0')}`;
-}
+const genPermitNumber = () => generateAutoNumber(LotoPermit, 'permit_number', 'LP', { orderBy: 'id' });
 
 exports.getProcedures = async (req, res) => {
   try {

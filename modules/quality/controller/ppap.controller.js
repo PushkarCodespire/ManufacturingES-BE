@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const { PpapSubmission, PpapElement, Item, User } = require('../../../models');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
 // Standard 18 PPAP elements (AIAG)
 const STANDARD_ELEMENTS = [
@@ -32,17 +33,7 @@ const REQUIRED_BY_LEVEL = {
   5: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18],
 };
 
-async function nextPpapNo() {
-  const year   = new Date().getFullYear();
-  const prefix = `PPAP-${year}-`;
-  const last   = await PpapSubmission.findOne({
-    where: { ppap_no: { [Op.like]: `${prefix}%` } },
-    order: [['ppap_no', 'DESC']],
-    attributes: ['ppap_no'],
-  });
-  const seq = last ? parseInt(last.ppap_no.split('-')[2], 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+const nextPpapNo = () => generateAutoNumber(PpapSubmission, 'ppap_no', 'PPAP');
 
 const INCLUDES = [
   { model: Item, as: 'Item', attributes: ['id', 'name', 'code'] },

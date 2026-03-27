@@ -14,35 +14,11 @@ const {
 } = require('../../../models');
 const { validateCreateWorkOrder, validateUpdateWorkOrder, validateUpdateStatus } = require('../cred/workOrder.cred');
 const { callClaude } = require('../../../services/ai.service');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
-// ── Batch number generator (for manufactured output) ─────────────────────────
-async function nextBatchNo() {
-  const year   = new Date().getFullYear();
-  const prefix = `BAT-${year}-`;
-  const last   = await WorkOrder.findOne({
-    where: { manufactured_batch_no: { [Op.like]: `${prefix}%` } },
-    order: [['manufactured_batch_no', 'DESC']],
-    attributes: ['manufactured_batch_no'],
-  });
-  const seq = last ? parseInt(last.manufactured_batch_no.split('-')[2], 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
-
-// ── Auto-number generator ────────────────────────────────────────────────────
-async function nextWoNo() {
-  const year = new Date().getFullYear();
-  const prefix = `WO-${year}-`;
-  const last = await WorkOrder.findOne({
-    where: { wo_no: { [Op.like]: `${prefix}%` } },
-    order: [['wo_no', 'DESC']],
-  });
-  let seq = 1;
-  if (last) {
-    const parts = last.wo_no.split('-');
-    seq = parseInt(parts[parts.length - 1], 10) + 1;
-  }
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number shorthands ──────────────────────────────────────────────────
+const nextBatchNo = () => generateAutoNumber(WorkOrder, 'manufactured_batch_no', 'BAT');
+const nextWoNo    = () => generateAutoNumber(WorkOrder, 'wo_no', 'WO');
 
 // ── GET /work-orders ─────────────────────────────────────────────────────────
 const getAll = async (req, res) => {

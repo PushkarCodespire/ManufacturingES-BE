@@ -6,19 +6,10 @@ const {
   validateCreateCapa, validateD4, validateD5D6, validateEffectiveness, validateUpdateCapa,
 } = require('../cred/capa.cred');
 const { notifyByRoles } = require('../../../services/notification.service');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
-// ── Auto-number ───────────────────────────────────────────────────────────────────
-async function nextCapaNo() {
-  const year   = new Date().getFullYear();
-  const prefix = `CAPA-${year}-`;
-  const last   = await Capa.findOne({
-    where:      { capa_no: { [Op.like]: `${prefix}%` } },
-    order:      [['capa_no', 'DESC']],
-    attributes: ['capa_no'],
-  });
-  const seq = last ? parseInt(last.capa_no.split('-')[2], 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number shorthand ─────────────────────────────────────────────────────────
+const nextCapaNo = () => generateAutoNumber(Capa, 'capa_no', 'CAPA');
 
 // ── Full CAPA include ─────────────────────────────────────────────────────────────
 const FULL_INCLUDE = [

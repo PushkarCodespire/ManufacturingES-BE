@@ -6,19 +6,10 @@ const {
 const { validateCreateGrn, validateUpdateGrn } = require('../cred/grn.cred');
 const { notifyByRoles } = require('../../../services/notification.service');
 const { callClaude } = require('../../../services/ai.service');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
-// ── Auto-number generator ─────────────────────────────────────────────────────
-async function nextGrnNo() {
-  const year   = new Date().getFullYear();
-  const prefix = `GRN-${year}-`;
-  const last   = await Grn.findOne({
-    where:      { grn_no: { [Op.like]: `${prefix}%` } },
-    order:      [['grn_no', 'DESC']],
-    attributes: ['grn_no'],
-  });
-  const seq = last ? parseInt(last.grn_no.split('-')[2], 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number shorthand ─────────────────────────────────────────────────────
+const nextGrnNo = () => generateAutoNumber(Grn, 'grn_no', 'GRN');
 
 // ── Inventory helper ──────────────────────────────────────────────────────────
 async function updateInventory(items, warehouseId, refType, refId, refNo, userId, txnType, multiplier) {
@@ -53,17 +44,8 @@ async function updateInventory(items, warehouseId, refType, refId, refNo, userId
   }
 }
 
-// ── IQC auto-number generator ────────────────────────────────────────────────
-async function nextIqcNo() {
-  const year   = new Date().getFullYear();
-  const prefix = `IQC-${year}-`;
-  const last   = await IqcInspection.findOne({
-    where: { inspection_no: { [Op.like]: `${prefix}%` } },
-    order: [['inspection_no', 'DESC']],
-  });
-  const seq = last ? parseInt(last.inspection_no.split('-').pop(), 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── IQC auto-number shorthand ─────────────────────────────────────────────────
+const nextIqcNo = () => generateAutoNumber(IqcInspection, 'inspection_no', 'IQC');
 
 // ── Shared includes ───────────────────────────────────────────────────────────
 const HEADER_INCLUDE = [

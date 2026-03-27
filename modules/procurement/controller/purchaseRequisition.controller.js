@@ -16,39 +16,14 @@ const {
   validateConvertToPo,
 } = require('../cred/purchaseRequisition.cred');
 
+const { generateAutoNumber } = require('../../../utils/autoNumber');
+
 const ADMIN_ROLES    = ['plant_head', 'it_admin'];
 const APPROVER_ROLES = ['plant_head', 'it_admin', 'procurement_manager'];
 
-// ── Auto-number ───────────────────────────────────────────────────────────────
-async function nextPrNo() {
-  const year   = new Date().getFullYear();
-  const prefix = `PR-${year}-`;
-  const last   = await PurchaseRequisition.findOne({
-    where: { pr_no: { [Op.like]: `${prefix}%` } },
-    order: [['pr_no', 'DESC']],
-  });
-  let seq = 1;
-  if (last) {
-    const parts = last.pr_no.split('-');
-    seq = parseInt(parts[parts.length - 1], 10) + 1;
-  }
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
-
-async function nextPoNo() {
-  const year   = new Date().getFullYear();
-  const prefix = `PO-${year}-`;
-  const last   = await PurchaseOrder.findOne({
-    where: { po_no: { [Op.like]: `${prefix}%` } },
-    order: [['po_no', 'DESC']],
-  });
-  let seq = 1;
-  if (last) {
-    const parts = last.po_no.split('-');
-    seq = parseInt(parts[parts.length - 1], 10) + 1;
-  }
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number shorthands ──────────────────────────────────────────────────
+const nextPrNo = () => generateAutoNumber(PurchaseRequisition, 'pr_no', 'PR');
+const nextPoNo = () => generateAutoNumber(PurchaseOrder, 'po_no', 'PO');
 
 const DETAIL_INCLUDE = [
   { model: User,       as: 'Requester',  attributes: ['id', 'name', 'employee_id'] },

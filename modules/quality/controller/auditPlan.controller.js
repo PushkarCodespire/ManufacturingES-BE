@@ -1,17 +1,8 @@
 const { Op } = require('sequelize');
 const { AuditPlan, AuditItem, AuditFinding, User, Capa } = require('../../../models');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
-async function nextPlanNo() {
-  const year   = new Date().getFullYear();
-  const prefix = `AUP-${year}-`;
-  const last   = await AuditPlan.findOne({
-    where: { plan_no: { [Op.like]: `${prefix}%` } },
-    order: [['plan_no', 'DESC']],
-    attributes: ['plan_no'],
-  });
-  const seq = last ? parseInt(last.plan_no.split('-')[2], 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+const nextPlanNo = () => generateAutoNumber(AuditPlan, 'plan_no', 'AUP');
 
 // ── GET /audit-plans ──────────────────────────────────────────────────────────
 exports.getAll = async (req, res) => {

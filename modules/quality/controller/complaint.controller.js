@@ -5,19 +5,10 @@ const {
   validateCreateComplaint, validateUpdateComplaint, validateAcknowledge,
 } = require('../cred/complaint.cred');
 const { callClaude } = require('../../../services/ai.service');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
-// ── Auto-number ───────────────────────────────────────────────────────────────
-async function nextComplaintNo() {
-  const year   = new Date().getFullYear();
-  const prefix = `COMP-${year}-`;
-  const last   = await Complaint.findOne({
-    where:      { complaint_no: { [Op.like]: `${prefix}%` } },
-    order:      [['complaint_no', 'DESC']],
-    attributes: ['complaint_no'],
-  });
-  const seq = last ? parseInt(last.complaint_no.split('-')[2], 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number shorthand ─────────────────────────────────────────────────────
+const nextComplaintNo = () => generateAutoNumber(Complaint, 'complaint_no', 'COMP');
 
 const BASE_INCLUDE = [
   { model: Item, as: 'Item', attributes: ['id', 'name', 'code'] },

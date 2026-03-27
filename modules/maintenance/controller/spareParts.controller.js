@@ -1,12 +1,9 @@
 'use strict';
 const { Op } = require('sequelize');
 const { SparePart, SparePartBom, SparePartConsumption, Equipment, MaintenanceWorkOrder, PmWorkOrder, User, Vendor } = require('../../../models');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
-async function genPartCode() {
-  const last = await SparePart.findOne({ where: { part_code: { [Op.like]: 'SPN-%' } }, order: [['id','DESC']] });
-  const seq = last ? parseInt(last.part_code.split('-')[1], 10) + 1 : 1;
-  return `SPN-${String(seq).padStart(4, '0')}`;
-}
+const genPartCode = () => generateAutoNumber(SparePart, 'part_code', 'SPN', { prefixHasYear: false, orderBy: 'id' });
 
 exports.getSpareParts = async (req, res) => {
   try {

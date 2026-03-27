@@ -7,18 +7,10 @@ const {
   RoutingStep,
   User,
 } = require('../../../models');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
-// ── Auto-number ───────────────────────────────────────────────────────────────
-async function nextLogNo() {
-  const year   = new Date().getFullYear();
-  const prefix = `LL-${year}-`;
-  const last   = await LaborLog.findOne({
-    where: { log_no: { [Op.like]: `${prefix}%` } },
-    order: [['log_no', 'DESC']],
-  });
-  const seq = last ? parseInt(last.log_no.split('-').pop(), 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number shorthand ─────────────────────────────────────────────────────
+const nextLogNo = () => generateAutoNumber(LaborLog, 'log_no', 'LL');
 
 // ── Compute duration_min from start/end ───────────────────────────────────────
 function computeDuration(start, end) {

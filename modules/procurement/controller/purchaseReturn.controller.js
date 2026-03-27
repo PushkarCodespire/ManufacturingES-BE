@@ -8,24 +8,11 @@ const {
   Vendor, Item, User,
   sequelize,
 } = require('../../../models');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
 /* ---------- helpers ---------- */
 
-async function nextReturnNo() {
-  const year = new Date().getFullYear();
-  const prefix = `RTN-${year}-`;
-  const last = await PurchaseReturn.findOne({
-    where: { return_no: { [Op.like]: `${prefix}%` } },
-    order: [['return_no', 'DESC']],
-    attributes: ['return_no'],
-  });
-  let seq = 1;
-  if (last) {
-    const n = parseInt(last.return_no.split('-')[2], 10);
-    if (!isNaN(n)) seq = n + 1;
-  }
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+const nextReturnNo = () => generateAutoNumber(PurchaseReturn, 'return_no', 'RTN');
 
 const INCLUDES = [
   { model: Vendor, as: 'Vendor', attributes: ['id', 'name', 'partner_code'] },

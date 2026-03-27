@@ -8,22 +8,10 @@ const {
   User,
 } = require('../../../models');
 const { validateCreateSchedule, validateUpdateSchedule } = require('../cred/productionSchedule.cred');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
-// ── Auto-number generator ────────────────────────────────────────────────────
-async function nextScheduleNo() {
-  const year = new Date().getFullYear();
-  const prefix = `PS-${year}-`;
-  const last = await ProductionSchedule.findOne({
-    where: { schedule_no: { [Op.like]: `${prefix}%` } },
-    order: [['schedule_no', 'DESC']],
-  });
-  let seq = 1;
-  if (last) {
-    const parts = last.schedule_no.split('-');
-    seq = parseInt(parts[parts.length - 1], 10) + 1;
-  }
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number shorthand ────────────────────────────────────────────────────
+const nextScheduleNo = () => generateAutoNumber(ProductionSchedule, 'schedule_no', 'PS');
 
 // ── GET /production-schedules ─────────────────────────────────────────────────
 const getAll = async (req, res) => {

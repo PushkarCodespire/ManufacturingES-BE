@@ -5,18 +5,9 @@ const { MrmMeeting, MrmMinute, MrmAction, User,
         CalibrationRecord, Instrument,
         TrainingRecord, CopqEntry } = require('../../../models');
 const { callClaude } = require('../../../services/ai.service');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
-async function nextMeetingNo() {
-  const year   = new Date().getFullYear();
-  const prefix = `MRM-${year}-`;
-  const last   = await MrmMeeting.findOne({
-    where: { meeting_no: { [Op.like]: `${prefix}%` } },
-    order: [['meeting_no', 'DESC']],
-    attributes: ['meeting_no'],
-  });
-  const seq = last ? parseInt(last.meeting_no.split('-')[2], 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+const nextMeetingNo = () => generateAutoNumber(MrmMeeting, 'meeting_no', 'MRM');
 
 const INCLUDES = [
   { model: User, as: 'Creator', attributes: ['id', 'name'], required: false },

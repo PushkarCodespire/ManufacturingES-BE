@@ -3,6 +3,7 @@ const { Rfq, RfqItem, Vendor, Item, User, Notification, Role } = require('../../
 const { validateCreateRfq, validateUpdateRfq } = require('../cred/rfq.cred');
 const aiService = require('../../../services/ai.service');
 const aiPrompts = require('../../../config/ai-prompts');
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
 // ── Shared includes ──────────────────────────────────────────────────────────
 const HEADER_INCLUDE = [
@@ -14,18 +15,8 @@ const ITEM_INCLUDE = [
   { model: Item, as: 'Item', attributes: ['id', 'name', 'code', 'unit', 'item_type'] },
 ];
 
-// ── Auto-number generator ────────────────────────────────────────────────────
-async function nextRfqNo() {
-  const year   = new Date().getFullYear();
-  const prefix = `RFQ-${year}-`;
-  const last   = await Rfq.findOne({
-    where:  { rfq_no: { [Op.like]: `${prefix}%` } },
-    order:  [['rfq_no', 'DESC']],
-    attributes: ['rfq_no'],
-  });
-  const seq = last ? parseInt(last.rfq_no.split('-')[2], 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// ── Auto-number shorthand ────────────────────────────────────────────────────
+const nextRfqNo = () => generateAutoNumber(Rfq, 'rfq_no', 'RFQ');
 
 // ── GET /rfqs ────────────────────────────────────────────────────────────────
 exports.getAll = async (req, res) => {

@@ -7,18 +7,14 @@ const {
   MwoAssignment, Equipment, MachineStatus, DowntimeLog,
   MaintenancePriority, FailureCode,
 } = db;
+const { generateAutoNumber } = require('../../../utils/autoNumber');
 
-// Auto-generate WO number: MWO-YYYY-XXXX
-async function generateWoNumber(type = 'corrective') {
-  const year   = new Date().getFullYear();
-  const prefix = `MWO-${type === 'corrective' ? 'C' : 'P'}-${year}-`;
-  const last   = await MaintenanceWorkOrder.findOne({
-    where: { wo_number: { [Op.like]: `${prefix}%` } },
-    order: [['id', 'DESC']],
-  });
-  const seq = last ? parseInt(last.wo_number.split('-').pop(), 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
+// Auto-generate WO number: MWO-C-YYYY-XXXX or MWO-P-YYYY-XXXX
+const generateWoNumber = (type = 'corrective') => generateAutoNumber(
+  MaintenanceWorkOrder, 'wo_number',
+  `MWO-${type === 'corrective' ? 'C' : 'P'}`,
+  { orderBy: 'id' },
+);
 
 // ── MNT-006: Breakdown Requests ──────────────────────────────────────────────
 
