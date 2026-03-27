@@ -5,10 +5,12 @@ const poItemSchema = Joi.object({
   qty_ordered:  Joi.number().min(0.001).required().messages({ 'any.required': 'Quantity is required', 'number.min': 'Quantity must be greater than 0' }),
   unit_price:   Joi.number().min(0).optional().default(0),
   unit:         Joi.string().trim().max(20).optional().default('pcs'),
+  discount:     Joi.number().min(0).max(100).optional().default(0),
   notes:        Joi.string().trim().max(500).optional().allow('', null),
   sort_order:   Joi.number().integer().min(0).optional(),
-  gst_rate:     Joi.number().min(0).max(28).optional().default(0),
   hsn_code:     Joi.string().trim().max(20).optional().allow('', null),
+  gst_rate:     Joi.number().min(0).max(100).optional().default(0),
+  total_price:  Joi.number().min(0).optional().allow(null),
 });
 
 const receiveItemSchema = Joi.object({

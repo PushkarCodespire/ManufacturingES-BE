@@ -10,6 +10,7 @@ const grnItemSchema = Joi.object({
   unit:         Joi.string().trim().max(20).optional().default('pcs'),
   unit_price:   Joi.number().min(0).optional().default(0),
   discount:     Joi.number().min(0).optional().allow(null),
+  hsn_code:     Joi.string().trim().max(20).optional().allow('', null),
   gst_rate:     Joi.number().min(0).max(100).optional().allow(null),
   total_price:  Joi.number().min(0).optional().allow(null),
   batch_no:     Joi.string().trim().max(100).optional().allow('', null),

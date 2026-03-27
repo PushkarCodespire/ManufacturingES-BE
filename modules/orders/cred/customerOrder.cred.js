@@ -6,6 +6,10 @@ const orderItemSchema = Joi.object({
   qty_ordered: Joi.number().min(0.001).optional().default(1),
   unit:        Joi.string().trim().max(20).optional().allow('', null),
   unit_price:  Joi.number().min(0).optional().default(0),
+  discount:    Joi.number().min(0).max(100).optional().default(0),
+  hsn_code:    Joi.string().trim().max(20).optional().allow('', null),
+  gst_rate:    Joi.number().min(0).max(100).optional().default(0),
+  total_price: Joi.number().min(0).optional().allow(null),
   sort_order:  Joi.number().integer().min(0).optional(),
 });
 
