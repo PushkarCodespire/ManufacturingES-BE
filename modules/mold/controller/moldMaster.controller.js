@@ -6,7 +6,7 @@ const {
   Item, Machine, Vendor, User, sequelize,
 } = require('../../../models');
 const { validateCreate, validateUpdate, validatePartMapping, validateMachineCompat } = require('../cred/moldMaster.cred');
-const { isConfigured, uploadBuffer, saveToLocal } = require('../../../config/cloudinary');
+const { saveToDisk } = require('../../../config/fileStorage');
 
 // ── Audit attributes for Creator / Updater includes ────────────────────────
 const AUDIT_ATTRS = ['id', 'name', 'employee_id'];
@@ -310,19 +310,9 @@ const uploadDocument = async (req, res) => {
     let file_url, file_name;
 
     if (req.file) {
-      // ── Upload to Cloudinary or local fallback ──────────────────────────
+      // ── Save to PVC disk ────────────────────────────────────────────────
       file_name = req.file.originalname;
-      if (isConfigured) {
-        const isPdf = req.file.mimetype === 'application/pdf';
-        file_url = await uploadBuffer(req.file.buffer, {
-          folder:          'dynatech/mold-documents',
-          resource_type:   isPdf ? 'raw' : 'image',
-          use_filename:    true,
-          unique_filename: true,
-        });
-      } else {
-        file_url = saveToLocal(req.file.buffer, req.file.originalname, req.file.mimetype);
-      }
+      file_url = saveToDisk(req.file.buffer, req.file.originalname, 'mold-documents');
     } else if (req.body?.file_url) {
       // ── Legacy / URL-only mode ──────────────────────────────────────────
       file_url  = req.body.file_url;

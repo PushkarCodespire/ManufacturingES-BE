@@ -41,6 +41,10 @@ env:
   AI_MAX_TOKENS: "2048"
   AI_MONTHLY_BUDGET_CENTS: "5000"
   UPLOAD_DIR: "/app/uploads"
+  UPLOAD_PATH: "/app/uploads"
+  UPLOAD_PUBLIC_PATH: "/api/upload/image"
+  UPLOAD_PUBLIC_URL: "https://mes.dev.gcp.codespiresolutions.com/api/upload/image"
+  MAX_FILE_SIZE: "52428800"
 
 # Sensitive variables injected from Kubernetes Secret (managed by DevOps)
 envFrom:
@@ -76,11 +80,16 @@ readinessProbe:
   periodSeconds: 10
   failureThreshold: 5
   
-# Persistence
+# Persistence (PVC for file storage)
 persistence:
   enabled: true
-  size: 1Gi
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
   mountPath: /app/uploads
+  subPath: ""
+  existingClaim: ""
  
 # Autoscaling
 autoscaling:

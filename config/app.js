@@ -81,12 +81,11 @@ app.get('/dbcheck', async (req, res) => {
   }
 });
 
-// ── Local uploads fallback (only active when Cloudinary is not configured) ────
-// Serves files from UPLOAD_DIR at /uploads — used for local dev and non-Cloudinary deployments.
-// In production with Cloudinary configured, this middleware is still mounted but never writes
-// new files there (all uploads go to Cloudinary instead).
-if (!process.env.CLOUDINARY_CLOUD_NAME) {
-  const uploadDir = path.resolve(process.env.UPLOAD_DIR || 'uploads');
+// ── Static file serving (PVC disk storage) ──────────────────────────────────
+// Serves files from UPLOAD_DIR at /uploads — legacy fallback for old URLs.
+// Primary serving is via GET /api/upload/image?file= route with security checks.
+{
+  const uploadDir = path.resolve(process.env.UPLOAD_DIR || process.env.UPLOAD_PATH || 'uploads');
   if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
   app.use('/uploads', express.static(uploadDir));
 }
