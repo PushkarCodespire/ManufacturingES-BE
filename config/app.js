@@ -1,6 +1,7 @@
 const express      = require('express');
 const cors         = require('cors');
 const cookieParser = require('cookie-parser');
+const rateLimit    = require('express-rate-limit');
 const swaggerUi    = require('swagger-ui-express');
 const helmet       = require('helmet');
 const path         = require('path');
@@ -89,6 +90,15 @@ app.get('/dbcheck', async (req, res) => {
   if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
   app.use('/uploads', express.static(uploadDir));
 }
+
+// ── General API rate limiter — 200 requests per minute per IP ────────────────
+app.use('/api', rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 200,
+  message: { success: false, message: 'Too many requests. Please slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+}));
 
 // All API routes
 app.use('/api', routes);

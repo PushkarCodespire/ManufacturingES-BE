@@ -2,7 +2,7 @@ const { WorkOrder, JobCard, Grn, PurchaseOrder, Instrument, Mold, Item } = requi
 
 // Type → { model, field, path, labelFn }
 const TYPE_MAP = {
-  WO:   { model: WorkOrder,     field: 'wo_no',           path: '/production/work-orders',       include: [{ model: Item, attributes: ['name'] }] },
+  WO:   { model: WorkOrder,     field: 'wo_no',           path: '/production/work-orders',       include: [{ model: Item, as: 'Item', attributes: ['name'] }] },
   JC:   { model: JobCard,       field: 'job_no',          path: '/production/job-cards' },
   GRN:  { model: Grn,           field: 'grn_no',          path: '/store/transactions/grn' },
   PO:   { model: PurchaseOrder, field: 'po_no',           path: '/procurement/purchase-orders' },
