@@ -47,9 +47,9 @@ env:
   MAX_FILE_SIZE: "52428800"
 
   # SMTP Email (plain config — non-sensitive)
-  SMTP_HOST: "smtp.gmail.com"
+  SMTP_HOST: "smtp.office365.com"
   SMTP_PORT: "587"
-  SMTP_FROM: "Codespiresolutions ONE <noreply@codespiresolutions.com>"
+  SMTP_FROM: "Codespire MES <admin@codespiresolutions.com>"
   SMTP_USER: "admin@codespiresolutions.com"
 
 # Sensitive variables injected from Kubernetes Secret (managed by DevOps)
