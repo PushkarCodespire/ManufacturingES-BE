@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Quotation, QuotationItem, Rfq, Vendor, Item, User } = require('../../../models');
+const { sequelize, Quotation, QuotationItem, Rfq, RfqItem, CustomerOrder, OrderItem, Vendor, Item, User } = require('../../../models');
 const { validateCreateQuotation, validateUpdateQuotation } = require('../cred/quotation.cred');
 const aiService = require('../../../services/ai.service');
 const aiPrompts = require('../../../config/ai-prompts');
@@ -68,10 +68,11 @@ exports.create = async (req, res) => {
 
     const quotation_no = await nextQuotationNo();
 
-    // Compute total
+    // Compute total (incl. GST)
     const total_amount = items.reduce((sum, it) => {
       const base = (it.qty || 0) * (it.unit_price || 0) * (1 - (it.discount || 0) / 100);
-      return sum + base;
+      const gst = base * ((it.gst_rate || 0) / 100);
+      return sum + base + gst;
     }, 0);
 
     const q = await Quotation.create({
@@ -125,7 +126,9 @@ exports.update = async (req, res) => {
     let total_amount = q.total_amount;
     if (Array.isArray(items)) {
       total_amount = parseFloat(items.reduce((sum, it) => {
-        return sum + (it.qty || 0) * (it.unit_price || 0) * (1 - (it.discount || 0) / 100);
+        const base = (it.qty || 0) * (it.unit_price || 0) * (1 - (it.discount || 0) / 100);
+        const gst = base * ((it.gst_rate || 0) / 100);
+        return sum + base + gst;
       }, 0).toFixed(4));
     }
 
@@ -155,6 +158,67 @@ exports.update = async (req, res) => {
           sort_order: i,
         }));
         await QuotationItem.bulkCreate(itemRows);
+      }
+
+      // ── BUG-006: Bidirectional sync — Quotation → RFQ items ────────────
+      const linkedRfqId = rfq_id !== undefined ? rfq_id : q.rfq_id;
+      if (linkedRfqId && items.length > 0) {
+        try {
+          await sequelize.transaction(async (t) => {
+            for (const it of items) {
+              if (!it.item_id) continue;
+              await RfqItem.update(
+                {
+                  qty:          it.qty || 0,
+                  target_price: it.unit_price ?? null,
+                  description:  it.description || null,
+                  unit:         it.unit || null,
+                },
+                { where: { rfq_id: linkedRfqId, item_id: it.item_id }, transaction: t }
+              );
+            }
+          });
+        } catch (syncErr) {
+          console.warn('[quotation.update] RFQ sync (non-fatal):', syncErr.message);
+        }
+      }
+
+      // ── BUG-006: Bidirectional sync — Quotation → Customer Order items ─
+      try {
+        const linkedOrders = await CustomerOrder.findAll({
+          where: { quotation_id: q.id },
+          attributes: ['id'],
+        });
+        if (linkedOrders.length > 0 && items.length > 0) {
+          await sequelize.transaction(async (t) => {
+            for (const ord of linkedOrders) {
+              for (const it of items) {
+                if (!it.item_id) continue;
+                const newQty   = it.qty || 0;
+                const newPrice = it.unit_price ?? 0;
+                const newGst   = it.gst_rate ?? 0;
+                const base     = newQty * newPrice * (1 - (it.discount || 0) / 100);
+                await OrderItem.update(
+                  {
+                    qty_ordered: newQty,
+                    unit_price:  newPrice,
+                    gst_rate:    newGst,
+                    description: it.description || null,
+                    unit:        it.unit || null,
+                    total_price: parseFloat((base + base * newGst / 100).toFixed(4)),
+                  },
+                  { where: { order_id: ord.id, item_id: it.item_id }, transaction: t }
+                );
+              }
+              // Recalculate parent total_amount
+              const updatedItems = await OrderItem.findAll({ where: { order_id: ord.id }, transaction: t });
+              const newTotal = updatedItems.reduce((sum, oi) => sum + parseFloat(oi.total_price || 0), 0);
+              await CustomerOrder.update({ total_amount: parseFloat(newTotal.toFixed(4)) }, { where: { id: ord.id }, transaction: t });
+            }
+          });
+        }
+      } catch (syncErr) {
+        console.warn('[quotation.update] CustomerOrder sync (non-fatal):', syncErr.message);
       }
     }
 

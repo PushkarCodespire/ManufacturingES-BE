@@ -120,6 +120,8 @@ const shiftHandoverRoutes = require('./shiftHandover.routes');
 const ewiRoutes = require('./ewi.routes');
 // Lot / Batch Traceability
 const traceabilityRoutes     = require('./traceability.routes');
+// Stock Dashboard — BUG-020
+const stockDashboardRoutes   = require('./stockDashboard.routes');
 // Maintenance — Sprint 3 & 5
 const equipmentMasterRoutes  = require('./equipmentMaster.routes');
 const equipmentHealthRoutes  = require('./equipmentHealth.routes');
@@ -269,6 +271,8 @@ router.use('/qr-lookup', qrLookupRoutes);
 // Lot / Batch Traceability
 router.use('/ewi', ewiRoutes);
 router.use('/traceability', traceabilityRoutes);
+// Stock Dashboard — BUG-020
+router.use('/stock-dashboard', stockDashboardRoutes);
 // MRM Module
 router.use('/mrm', mrmRoutes);
 // Sprint 1: Visibility

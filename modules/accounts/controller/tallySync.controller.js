@@ -2,18 +2,22 @@ const { Op, fn, col } = require('sequelize');
 const {
   sequelize,
   PurchaseOrder,
+  PurchaseOrderItem,
   Grn,
+  GrnItem,
   SalesInvoice,
   DebitCreditNote,
   Payment,
   TallySyncLog,
   User,
+  Vendor,
+  Item,
+  Integration,
 } = require('../../../models');
 const { notifyByRoles } = require('../../../services/notification.service');
+const tallyConnector    = require('../../../services/tally-connector.service');
 
 // ── Sync type configuration ─────────────────────────────────────────────────
-// Each type defines which model, document-number field, eligible record statuses,
-// and sync direction (push = Dynatech→Tally, pull = Tally→Dynatech).
 const SYNC_TYPE_CONFIG = {
   supplier_po: {
     model: PurchaseOrder,
@@ -21,6 +25,10 @@ const SYNC_TYPE_CONFIG = {
     eligibleStatuses: ['sent', 'partial', 'received'],
     direction: 'push',
     label: 'Supplier PO',
+    include: [
+      { model: Vendor, as: 'Vendor', attributes: ['id', 'name', 'address', 'gstin'] },
+      { model: PurchaseOrderItem, as: 'Items', include: [{ model: Item, as: 'Item', attributes: ['id', 'name', 'code'] }] },
+    ],
   },
   grn: {
     model: Grn,
@@ -28,6 +36,10 @@ const SYNC_TYPE_CONFIG = {
     eligibleStatuses: ['approved'],
     direction: 'push',
     label: 'GRN',
+    include: [
+      { model: Vendor, as: 'Vendor', attributes: ['id', 'name', 'address', 'gstin'] },
+      { model: GrnItem, as: 'Items', include: [{ model: Item, as: 'Item', attributes: ['id', 'name', 'code'] }] },
+    ],
   },
   sales_invoice: {
     model: SalesInvoice,
@@ -35,6 +47,9 @@ const SYNC_TYPE_CONFIG = {
     eligibleStatuses: ['approved'],
     direction: 'push',
     label: 'Sales Invoice',
+    include: [
+      { model: Vendor, as: 'Customer', attributes: ['id', 'name', 'address', 'gstin'] },
+    ],
   },
   debit_credit: {
     model: DebitCreditNote,
@@ -42,6 +57,10 @@ const SYNC_TYPE_CONFIG = {
     eligibleStatuses: ['approved'],
     direction: 'push',
     label: 'Debit/Credit Note',
+    include: [
+      { model: Vendor, as: 'Vendor', attributes: ['id', 'name', 'address', 'gstin'] },
+      { model: Vendor, as: 'Customer', attributes: ['id', 'name', 'address', 'gstin'] },
+    ],
   },
   payment: {
     model: Payment,
@@ -49,6 +68,10 @@ const SYNC_TYPE_CONFIG = {
     eligibleStatuses: ['pending', 'completed'],
     direction: 'pull',
     label: 'Payment',
+    include: [
+      { model: Vendor, as: 'Vendor', attributes: ['id', 'name'] },
+      { model: Vendor, as: 'Customer', attributes: ['id', 'name'] },
+    ],
   },
 };
 
@@ -69,7 +92,7 @@ const countSyncStatuses = async (model) => {
     const count = parseInt(r.count, 10) || 0;
     if (status === 'synced')  result.synced = count;
     else if (status === 'error') result.errors = count;
-    else result.pending += count; // 'pending' or any other value
+    else result.pending += count;
   });
 
   const lastSync = await model.max('tally_sync_at');
@@ -95,6 +118,9 @@ const getSyncDashboard = async (req, res) => {
       totalErrors += stats.errors;
     }
 
+    // Include tally config status for frontend
+    const tallyConfig = await tallyConnector.getTallyConfig();
+
     return res.json({
       success: true,
       data: {
@@ -104,6 +130,12 @@ const getSyncDashboard = async (req, res) => {
           total_errors: totalErrors,
         },
         types,
+        tally: {
+          is_enabled: tallyConfig?.is_enabled || false,
+          mock_mode:  tallyConfig?.mock_mode || false,
+          host:       tallyConfig?.host || '',
+          port:       tallyConfig?.port || 9000,
+        },
       },
     });
   } catch (err) {
@@ -113,7 +145,6 @@ const getSyncDashboard = async (req, res) => {
 };
 
 // ── POST /tally-sync/trigger ────────────────────────────────────────────────
-// Body: { sync_type: 'supplier_po' | 'grn' | 'sales_invoice' | 'debit_credit' | 'payment' }
 const triggerSync = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -128,47 +159,110 @@ const triggerSync = async (req, res) => {
       });
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // FUTURE: Replace this block with actual Tally XML API call.
-    // The connector would:
-    //   1. Build Tally XML request for the given sync_type
-    //   2. POST to Tally's HTTP endpoint (typically http://localhost:9000)
-    //   3. Parse the response XML
-    //   4. Only mark records as 'synced' if Tally confirms success
-    //   5. Mark as 'error' with error_message if Tally rejects
-    // For now, we simulate success by directly marking records as synced.
-    // ──────────────────────────────────────────────────────────────
+    // Get Tally config
+    const tallyConfig = await tallyConnector.getTallyConfig();
+    if (!tallyConfig || !tallyConfig.is_enabled) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Tally integration is not enabled. Go to Masters → Integrations → Tally to configure and enable it.',
+      });
+    }
 
-    const [affectedCount] = await config.model.update(
-      {
-        tally_sync_status: 'synced',
-        tally_sync_at: new Date(),
+    // Fetch pending records with associations for XML building
+    const pendingRecords = await config.model.findAll({
+      where: {
+        tally_sync_status: 'pending',
+        status: { [Op.in]: config.eligibleStatuses },
       },
-      {
-        where: {
-          tally_sync_status: 'pending',
-          status: { [Op.in]: config.eligibleStatuses },
-        },
-        transaction: t,
-      },
-    );
+      include: config.include || [],
+      transaction: t,
+    });
+
+    if (pendingRecords.length === 0) {
+      await t.commit();
+      return res.json({
+        success: true,
+        data: { sync_type, records_synced: 0, records_failed: 0, error_count: 0 },
+        message: `No pending ${config.label} records to sync`,
+      });
+    }
+
+    // Push or pull via Tally connector
+    let syncedCount = 0;
+    let failedCount = 0;
+    const errorMessages = [];
+
+    if (config.direction === 'push') {
+      const results = await tallyConnector.pushRecords(sync_type, pendingRecords, tallyConfig);
+
+      for (const result of results) {
+        if (result.success) {
+          await config.model.update(
+            { tally_sync_status: 'synced', tally_sync_at: new Date() },
+            { where: { id: result.recordId }, transaction: t },
+          );
+          syncedCount++;
+        } else {
+          await config.model.update(
+            { tally_sync_status: 'error' },
+            { where: { id: result.recordId }, transaction: t },
+          );
+          failedCount++;
+          errorMessages.push(`${result.recordNumber}: ${result.error}`);
+        }
+      }
+    } else {
+      // Pull (payment) — query Tally for payment vouchers
+      const pullResult = await tallyConnector.pullPayments(tallyConfig);
+
+      if (!pullResult.success) {
+        failedCount = pendingRecords.length;
+        errorMessages.push(pullResult.error || 'Failed to pull from Tally');
+      } else {
+        // Match Tally vouchers to local Payment records
+        for (const record of pendingRecords) {
+          const match = pullResult.vouchers.find(v =>
+            v.VOUCHERNUMBER === record.payment_no ||
+            v.VOUCHERNUMBER === record.ref_no
+          );
+          if (match) {
+            await config.model.update(
+              { tally_sync_status: 'synced', tally_sync_at: new Date() },
+              { where: { id: record.id }, transaction: t },
+            );
+            syncedCount++;
+          } else {
+            // No match in Tally — mark as synced if mock mode, keep pending otherwise
+            if (tallyConfig.mock_mode) {
+              await config.model.update(
+                { tally_sync_status: 'synced', tally_sync_at: new Date() },
+                { where: { id: record.id }, transaction: t },
+              );
+              syncedCount++;
+            }
+            // In real mode, unmatched records stay pending (not an error)
+          }
+        }
+      }
+    }
 
     // Log the sync action
+    const logStatus = failedCount > 0 && syncedCount === 0 ? 'error' : (failedCount > 0 ? 'success' : 'success');
     await TallySyncLog.create({
       sync_type,
       record_id: null,
       record_number: null,
       direction: config.direction,
-      status: 'success',
-      records_affected: affectedCount,
-      error_message: null,
+      status: logStatus,
+      records_affected: syncedCount,
+      error_message: errorMessages.length > 0 ? errorMessages.join(' | ') : null,
       synced_by: req.user?.id || null,
     }, { transaction: t });
 
     await t.commit();
 
-    // L-05: After every sync attempt, alert accounts_manager if any records
-    // are still in error state (could be from previous failed batches).
+    // L-05: Notify accounts_manager if any records are in error state
     const errorCount = await config.model.count({ where: { tally_sync_status: 'error' } });
     if (errorCount > 0) {
       notifyByRoles(
@@ -176,20 +270,128 @@ const triggerSync = async (req, res) => {
         'TALLY_SYNC_ERRORS',
         `Tally Sync: ${errorCount} ${config.label} record(s) in error state`,
         `After syncing, ${errorCount} ${config.label} record(s) are still marked as sync error. ` +
-          'Use POST /api/tally-sync/retry to re-queue them or check GET /api/tally-sync/failed.',
+          'Use Retry Failed to re-queue them.',
       ).catch((e) => console.warn('[triggerSync] notification error:', e.message));
     }
 
+    const modeLabel = tallyConfig.mock_mode ? ' (mock mode)' : '';
     return res.json({
       success: true,
-      data: { sync_type, records_synced: affectedCount, error_count: errorCount },
-      message: affectedCount > 0
-        ? `Synced ${affectedCount} ${config.label} record(s) to Tally`
-        : `No pending ${config.label} records to sync`,
+      data: { sync_type, records_synced: syncedCount, records_failed: failedCount, error_count: errorCount },
+      message: syncedCount > 0
+        ? `Synced ${syncedCount} ${config.label} record(s) to Tally${modeLabel}${failedCount > 0 ? `, ${failedCount} failed` : ''}`
+        : `No ${config.label} records were synced${modeLabel}`,
     });
   } catch (err) {
     await t.rollback();
     console.error('[triggerSync]', err);
+    return res.status(500).json({ success: false, message: err.message || 'Server error' });
+  }
+};
+
+// ── POST /tally-sync/test-connection ────────────────────────────────────────
+const testTallyConnection = async (req, res) => {
+  try {
+    const tallyConfig = await tallyConnector.getTallyConfig();
+    if (!tallyConfig) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tally integration not configured. Go to Masters → Integrations → Tally.',
+      });
+    }
+
+    if (!tallyConfig.host || !tallyConfig.port) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tally host and port must be configured before testing.',
+      });
+    }
+
+    const result = await tallyConnector.testConnection(tallyConfig);
+
+    // Update Integration record
+    await Integration.update(
+      {
+        last_tested_at: new Date(),
+        last_test_status: result.success ? 'success' : 'error',
+      },
+      { where: { slug: 'tally' } },
+    );
+
+    return res.json({
+      success: result.success,
+      data: {
+        companies: result.companies || [],
+        mock_mode: tallyConfig.mock_mode,
+      },
+      message: result.message,
+    });
+  } catch (err) {
+    console.error('[testTallyConnection]', err);
+    return res.status(500).json({ success: false, message: err.message || 'Server error' });
+  }
+};
+
+// ── POST /tally-sync/preview ────────────────────────────────────────────────
+// Returns the XML that WOULD be sent to Tally without actually sending it.
+const previewSyncXml = async (req, res) => {
+  try {
+    const { sync_type } = req.body;
+    const config = SYNC_TYPE_CONFIG[sync_type];
+
+    if (!config) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid sync_type. Must be one of: ${Object.keys(SYNC_TYPE_CONFIG).join(', ')}`,
+      });
+    }
+
+    const tallyConfig = await tallyConnector.getTallyConfig();
+    if (!tallyConfig) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tally integration not configured.',
+      });
+    }
+
+    if (config.direction === 'pull') {
+      // Show the query XML for pull
+      const xml = tallyConnector.buildPaymentQueryXml(tallyConfig);
+      return res.json({
+        success: true,
+        data: { xml, record_count: 0, direction: 'pull', sync_type },
+        message: 'Payment pull query XML preview',
+      });
+    }
+
+    // Fetch a few pending records for preview (limit 3)
+    const records = await config.model.findAll({
+      where: {
+        tally_sync_status: 'pending',
+        status: { [Op.in]: config.eligibleStatuses },
+      },
+      include: config.include || [],
+      limit: 3,
+    });
+
+    if (records.length === 0) {
+      return res.json({
+        success: true,
+        data: { xml: '<!-- No pending records to preview -->', record_count: 0, direction: 'push', sync_type },
+        message: 'No pending records found for preview',
+      });
+    }
+
+    // Build XML for the first record as a sample
+    const xml = tallyConnector.buildVoucherXml(sync_type, records[0], tallyConfig);
+
+    return res.json({
+      success: true,
+      data: { xml, record_count: records.length, direction: 'push', sync_type },
+      message: `Preview of ${config.label} XML (showing 1 of ${records.length} pending)`,
+    });
+  } catch (err) {
+    console.error('[previewSyncXml]', err);
     return res.status(500).json({ success: false, message: err.message || 'Server error' });
   }
 };
@@ -223,9 +425,6 @@ const getSyncLogs = async (req, res) => {
 };
 
 // ── POST /tally-sync/retry ──────────────────────────────────────────────────
-// L-05: Retry queue — resets tally_sync_status:'error' records back to 'pending'
-// so they are picked up by the next triggerSync call.
-// Body: { sync_type? } — if omitted, retries ALL error records across all types.
 const retryFailed = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -286,10 +485,6 @@ const retryFailed = async (req, res) => {
 };
 
 // ── GET /tally-sync/failed ──────────────────────────────────────────────────
-// L-05: Dead-letter view — surfaces all records currently stuck in
-// tally_sync_status:'error' across every sync type.
-// These are records that failed at least one sync attempt and were not retried.
-// The accounts_manager can inspect them here before calling /retry.
 const getFailedRecords = async (req, res) => {
   try {
     const summary = {};
@@ -303,8 +498,6 @@ const getFailedRecords = async (req, res) => {
       totalFailed += errorCount;
     }
 
-    // L-05: Fire a notification to accounts_manager if any errors exist
-    // (this endpoint is designed to be polled by the frontend dashboard)
     if (totalFailed > 0) {
       const typeList = Object.entries(summary)
         .filter(([, v]) => v.error_count > 0)
@@ -315,8 +508,7 @@ const getFailedRecords = async (req, res) => {
         ['accounts_manager'],
         'TALLY_SYNC_ERRORS',
         `Tally Sync: ${totalFailed} record(s) failed`,
-        `${totalFailed} record(s) are stuck in sync error state and require retry. Breakdown: ${typeList}. ` +
-          'Use POST /api/tally-sync/retry to re-queue them.',
+        `${totalFailed} record(s) are stuck in sync error state and require retry. Breakdown: ${typeList}.`,
       ).catch((e) => console.warn('[getFailedRecords] notification error:', e.message));
     }
 
@@ -324,7 +516,7 @@ const getFailedRecords = async (req, res) => {
       success: true,
       data:    { total_failed: totalFailed, by_type: summary },
       message: totalFailed > 0
-        ? `${totalFailed} record(s) stuck in error state — use POST /api/tally-sync/retry to re-queue`
+        ? `${totalFailed} record(s) stuck in error state — use Retry Failed to re-queue`
         : 'No failed records',
     });
   } catch (err) {
@@ -333,4 +525,12 @@ const getFailedRecords = async (req, res) => {
   }
 };
 
-module.exports = { getSyncDashboard, triggerSync, getSyncLogs, retryFailed, getFailedRecords };
+module.exports = {
+  getSyncDashboard,
+  triggerSync,
+  testTallyConnection,
+  previewSyncXml,
+  getSyncLogs,
+  retryFailed,
+  getFailedRecords,
+};

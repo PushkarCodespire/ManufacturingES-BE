@@ -10,6 +10,7 @@ const {
 } = require('../cred/vendorRfq.cred');
 
 const { generateAutoNumber } = require('../../../utils/autoNumber');
+const { sendRfqEmail } = require('../../../services/rfqEmail.service');
 
 const ADMIN_ROLES = ['plant_head', 'it_admin'];
 
@@ -163,7 +164,7 @@ const send = async (req, res) => {
   try {
     const record = await VendorRfq.findByPk(req.params.id, {
       include: [
-        { model: VendorRfqItem,   as: 'Items' },
+        { model: VendorRfqItem, as: 'Items', include: [{ model: Item, as: 'Item', attributes: ['id', 'name', 'code', 'unit'] }] },
         { model: VendorRfqVendor, as: 'Vendors' },
       ],
     });
@@ -177,8 +178,39 @@ const send = async (req, res) => {
     if (!record.Vendors || record.Vendors.length === 0) {
       return res.status(400).json({ success: false, message: 'Select at least one vendor before sending' });
     }
+
+    // Fetch vendor details (name, email)
+    const vendorIds = record.Vendors.map(v => v.vendor_id);
+    const vendors = await Vendor.findAll({
+      where: { id: { [Op.in]: vendorIds } },
+      attributes: ['id', 'name', 'email'],
+      raw: true,
+    });
+
+    // Send emails to each vendor (non-blocking — don't fail RFQ if email fails)
+    const emailResults = [];
+    for (const vendor of vendors) {
+      try {
+        if (vendor.email) {
+          await sendRfqEmail(record.toJSON(), record.Items, vendor);
+          emailResults.push({ vendor: vendor.name, status: 'sent' });
+        } else {
+          emailResults.push({ vendor: vendor.name, status: 'skipped', reason: 'no email' });
+        }
+      } catch (emailErr) {
+        console.error(`[VendorRfq.send] Email failed for ${vendor.name}:`, emailErr.message);
+        emailResults.push({ vendor: vendor.name, status: 'failed', reason: emailErr.message });
+      }
+    }
+
     await record.update({ status: 'sent', updated_by: req.user.id });
-    return res.json({ success: true, data: record });
+
+    const sentCount = emailResults.filter(r => r.status === 'sent').length;
+    const message = sentCount > 0
+      ? `RFQ sent. Email delivered to ${sentCount}/${vendors.length} vendor(s).`
+      : 'RFQ marked as sent. No emails sent (SMTP not configured or no vendor emails).';
+
+    return res.json({ success: true, message, data: { ...record.toJSON(), emailResults } });
   } catch (err) {
     console.error('[VendorRfq.send]', err);
     return res.status(500).json({ success: false, message: 'Server error' });

@@ -8,7 +8,7 @@ exports.search = async (req, res) => {
     const q = (req.query.q || '').trim();
     if (!q || q.length < 2) return res.json({ results: [] });
 
-    const like = { [Op.like]: `%${q}%` };
+    const like = { [Op.iLike]: `%${q}%` };
     const results = [];
 
     // Search GRN items by lot_no
@@ -149,13 +149,29 @@ exports.forwardTrace = async (req, res) => {
       if (si.Slip?.material_request_id) mrIds.add(si.Slip.material_request_id);
     });
 
-    // Stage 3: Work Orders via MaterialRequest
-    if (mrIds.size > 0) {
-      const mrs = await db.MaterialRequest.findAll({
-        where: { id: { [Op.in]: [...mrIds] } },
-        attributes: ['id', 'work_order_id'],
-      });
-      const woIds = [...new Set(mrs.map(m => m.work_order_id).filter(Boolean))];
+    // Stage 3: Work Orders — find WOs that use items from the issued lots
+    {
+      // Collect item_ids from the issued lots
+      const issuedItemIds = [...new Set(slipItems.map(si => si.Item?.id || si.item_id).filter(Boolean))];
+      // Find BOMs that use these items as components
+      let woIds = [];
+      if (issuedItemIds.length > 0) {
+        const bomLines = await db.BomLine.findAll({
+          where: { component_item_id: { [Op.in]: issuedItemIds } },
+          attributes: ['bom_id'],
+        });
+        const bomIds = [...new Set(bomLines.map(bl => bl.bom_id))];
+        if (bomIds.length > 0) {
+          const boms = await db.Bom.findAll({ where: { id: { [Op.in]: bomIds } }, attributes: ['item_id'] });
+          const parentItemIds = boms.map(b => b.item_id);
+          const wos = await db.WorkOrder.findAll({
+            where: { item_id: { [Op.in]: parentItemIds }, status: { [Op.ne]: 'cancelled' } },
+            attributes: ['id'],
+            limit: 20,
+          });
+          woIds = wos.map(w => w.id);
+        }
+      }
 
       if (woIds.length > 0) {
         const workOrders = await db.WorkOrder.findAll({
@@ -286,45 +302,56 @@ exports.woGenealogy = async (req, res) => {
     // Fetch PQC/OQC separately
     const pqc = await db.PqcInspection.findAll({
       where: { work_order_id: wo.id },
-      attributes: ['batch_no', 'result', 'status', 'createdAt'],
+      attributes: ['batch_no', 'result', 'createdAt'],
       order: [['createdAt', 'DESC']],
       limit: 5,
     });
     const oqc = await db.OqcInspection.findAll({
       where: { work_order_id: wo.id },
-      attributes: ['batch_no', 'result', 'status', 'createdAt'],
+      attributes: ['batch_no', 'result', 'createdAt'],
       order: [['createdAt', 'DESC']],
       limit: 5,
     });
 
-    // Material inputs via MaterialRequest → IssueSlip → IssueSlipItem
-    const mrs = await db.MaterialRequest.findAll({
-      where: { work_order_id: wo.id },
-      attributes: ['id', 'mr_no'],
-    });
-    const mrIds = mrs.map(m => m.id);
-
+    // Material inputs — trace via BOM component items issued around the WO period
     let materialInputs = [];
-    if (mrIds.length > 0) {
-      const slips = await db.IssueSlip.findAll({
-        where: { material_request_id: { [Op.in]: mrIds } },
-        include: [{
-          model: db.IssueSlipItem, as: 'Items',   // ← correct alias
-          include: [{ model: db.Item, as: 'Item', attributes: ['code', 'name'] }],
-        }],
-      });
-      slips.forEach(slip => {
-        (slip.Items || []).forEach(si => {
-          materialInputs.push({
-            slip_no: slip.slip_no,
-            issued_date: slip.issued_date,
-            item_code: si.Item?.code,
-            item_name: si.Item?.name,
-            lot_no: si.lot_no,
-            qty_issued: si.qty_issued,
-          });
+    try {
+      // Get BOM component item IDs for this WO's item
+      const bom = await db.Bom.findOne({ where: { item_id: wo.item_id }, attributes: ['id'] });
+      if (bom) {
+        const bomLines = await db.BomLine.findAll({
+          where: { bom_id: bom.id },
+          attributes: ['component_item_id'],
         });
-      });
+        const componentIds = bomLines.map(bl => bl.component_item_id).filter(Boolean);
+
+        if (componentIds.length > 0) {
+          // Find issue slip items for these components
+          const slipItems = await db.IssueSlipItem.findAll({
+            where: { item_id: { [Op.in]: componentIds } },
+            include: [
+              { model: db.IssueSlip, as: 'Slip', attributes: ['slip_no', 'issued_date'] },
+              { model: db.Item, as: 'Item', attributes: ['code', 'name'] },
+            ],
+            limit: 50,
+            order: [['createdAt', 'DESC']],
+          });
+
+          slipItems.forEach(si => {
+            materialInputs.push({
+              slip_no: si.Slip?.slip_no,
+              issued_date: si.Slip?.issued_date,
+              item_code: si.Item?.code,
+              item_name: si.Item?.name,
+              lot_no: si.lot_no,
+              qty_issued: si.qty_issued,
+            });
+          });
+        }
+      }
+    } catch (matErr) {
+      // Non-fatal — material trace is best-effort
+      console.warn('[traceability.woGenealogy] Material input trace:', matErr.message);
     }
 
     // Dispatches using the manufactured batch no
@@ -411,23 +438,28 @@ exports.dispatchTrace = async (req, res) => {
         });
 
         if (wo) {
-          const mrs = await db.MaterialRequest.findAll({ where: { work_order_id: wo.id }, attributes: ['id'] });
-          const mrIds = mrs.map(m => m.id);
+          // Trace input lots via BOM components
           let inputLots = [];
-          if (mrIds.length > 0) {
-            const slips = await db.IssueSlip.findAll({
-              where: { material_request_id: { [Op.in]: mrIds } },
-              include: [{
-                model: db.IssueSlipItem, as: 'Items',
-                include: [{ model: db.Item, as: 'Item', attributes: ['code', 'name'] }],
-              }],
-            });
-            slips.forEach(slip => {
-              (slip.Items || []).forEach(si => {
-                if (si.lot_no) inputLots.push({ slip_no: slip.slip_no, lot_no: si.lot_no, item: si.Item?.name, qty: si.qty_issued });
-              });
-            });
-          }
+          try {
+            const bom = await db.Bom.findOne({ where: { item_id: wo.item_id || di.item_id }, attributes: ['id'] });
+            if (bom) {
+              const bomLines = await db.BomLine.findAll({ where: { bom_id: bom.id }, attributes: ['component_item_id'] });
+              const compIds = bomLines.map(bl => bl.component_item_id).filter(Boolean);
+              if (compIds.length > 0) {
+                const slipItems = await db.IssueSlipItem.findAll({
+                  where: { item_id: { [Op.in]: compIds } },
+                  include: [
+                    { model: db.IssueSlip, as: 'Slip', attributes: ['slip_no'] },
+                    { model: db.Item, as: 'Item', attributes: ['name'] },
+                  ],
+                  limit: 20,
+                });
+                slipItems.forEach(si => {
+                  if (si.lot_no) inputLots.push({ slip_no: si.Slip?.slip_no, lot_no: si.lot_no, item: si.Item?.name, qty: si.qty_issued });
+                });
+              }
+            }
+          } catch { /* best effort */ }
           itemResult.source = { type: 'manufactured', wo_no: wo.wo_no, machine: wo.Machine?.name, input_lots: inputLots };
         } else {
           // Supplier lot → trace to GRN

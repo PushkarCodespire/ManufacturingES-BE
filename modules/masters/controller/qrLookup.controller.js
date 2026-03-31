@@ -4,10 +4,10 @@ const { WorkOrder, JobCard, Grn, PurchaseOrder, Instrument, Mold, Item } = requi
 const TYPE_MAP = {
   WO:   { model: WorkOrder,     field: 'wo_no',           path: '/production/work-orders',       include: [{ model: Item, as: 'Item', attributes: ['name'] }] },
   JC:   { model: JobCard,       field: 'job_no',          path: '/production/job-cards' },
-  GRN:  { model: Grn,           field: 'grn_no',          path: '/store/transactions/grn' },
+  GRN:  { model: Grn,           field: 'grn_no',          path: '/store/grn' },
   PO:   { model: PurchaseOrder, field: 'po_no',           path: '/procurement/purchase-orders' },
   INST: { model: Instrument,    field: 'instrument_code', path: '/quality/instruments' },
-  MOLD: { model: Mold,          field: 'mold_code',       path: '/mold/masters' },
+  MOLD: { model: Mold,          field: 'mold_code',       path: '/mold/master' },
 };
 
 const qrLookup = async (req, res) => {

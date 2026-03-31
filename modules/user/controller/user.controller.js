@@ -6,7 +6,7 @@ const { validateUserId, validateAdminReset, validateCreateUser, validateUpdateUs
 // ─── GET /users — List all users (plant_head, it_admin only) ─────────────────
 const getAllUsers = async (req, res) => {
   try {
-    const { department_id, is_active, search } = req.query;
+    const { department_id, is_active, search, roles } = req.query;
 
     const where = {};
     if (department_id)               where.department_id = department_id;
@@ -19,11 +19,21 @@ const getAllUsers = async (req, res) => {
       ];
     }
 
+    // BUG-012: Optional role filter — comma-separated role names
+    // e.g. ?roles=quality_manager,quality_incharge
+    const roleInclude = { model: Role, attributes: ['id', 'name', 'label'] };
+    if (roles) {
+      const roleNames = roles.split(',').map((r) => r.trim()).filter(Boolean);
+      if (roleNames.length) {
+        roleInclude.where = { name: { [Op.in]: roleNames } };
+      }
+    }
+
     const users = await User.findAll({
       where,
       attributes: { exclude: ['password_hash'] },
       include: [
-        { model: Role,       attributes: ['id', 'name', 'label'] },
+        roleInclude,
         { model: Department, attributes: ['id', 'code', 'name'] },
         { model: Site,       attributes: ['id', 'name', 'code'], through: { attributes: [] } },
         { model: Warehouse,  attributes: ['id', 'name', 'code'], through: { attributes: [] } },

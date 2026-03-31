@@ -79,6 +79,7 @@ const EwiDocument       = require('../modules/production/model/EwiDocument');
 const EwiStep           = require('../modules/production/model/EwiStep');
 const EwiAcknowledgment = require('../modules/production/model/EwiAcknowledgment');
 const WipMovement       = require('../modules/production/model/WipMovement');
+const JobCardQaResult   = require('../modules/production/model/JobCardQaResult');
 const PurchaseOrder            = require('../modules/procurement/model/PurchaseOrder');
 const PurchaseOrderItem        = require('../modules/procurement/model/PurchaseOrderItem');
 const PurchaseRequisition      = require('../modules/procurement/model/PurchaseRequisition');
@@ -484,6 +485,9 @@ WorkOrder.belongsTo(CustomerOrder, { foreignKey: 'customer_order_id', as: 'Custo
 WorkOrder.belongsTo(User,          { foreignKey: 'created_by',        as: 'Creator'       });
 WorkOrder.belongsTo(User,          { foreignKey: 'updated_by',        as: 'Updater'       });
 WorkOrder.hasMany(JobCard,         { foreignKey: 'work_order_id',     as: 'JobCards'      });
+WorkOrder.hasOne(OqcInspection,    { foreignKey: 'work_order_id',     as: 'OqcInspection' });
+WorkOrder.belongsTo(Routing,       { foreignKey: 'routing_id',        as: 'Routing'       });
+Routing.hasMany(WorkOrder,         { foreignKey: 'routing_id' });
 // Sub-assembly hierarchy (self-referencing)
 WorkOrder.belongsTo(WorkOrder, { foreignKey: 'parent_wo_id', as: 'ParentWO'      });
 WorkOrder.hasMany(WorkOrder,   { foreignKey: 'parent_wo_id', as: 'SubAssemblies' });
@@ -492,6 +496,11 @@ JobCard.belongsTo(WorkOrder, { foreignKey: 'work_order_id', as: 'WorkOrder' });
 JobCard.belongsTo(Machine,   { foreignKey: 'machine_id',   as: 'Machine'   });
 JobCard.belongsTo(User,      { foreignKey: 'operator_id',  as: 'Operator'  });
 JobCard.belongsTo(User,      { foreignKey: 'created_by',   as: 'Creator'   });
+
+// JobCard → QA Results (BUG-013)
+JobCard.hasMany(JobCardQaResult,       { foreignKey: 'job_card_id', as: 'QaResults', onDelete: 'CASCADE' });
+JobCardQaResult.belongsTo(JobCard,     { foreignKey: 'job_card_id', as: 'JobCard' });
+JobCardQaResult.belongsTo(User,        { foreignKey: 'inspector_id', as: 'Inspector' });
 
 // ── Routing & Work Center ────────────────────────────────────────────────────
 // Work Center
@@ -1479,4 +1488,5 @@ module.exports = {
   HandoverTemplate,
   ShiftHandover,
   ShiftHandoverItem,
+  JobCardQaResult,
 };

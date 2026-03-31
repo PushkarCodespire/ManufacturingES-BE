@@ -1,10 +1,11 @@
 const Joi = require('joi');
 
 const createJobCardSchema = Joi.object({
-  work_order_id: Joi.string().uuid().optional().allow(null),
-  machine_id:    Joi.number().integer().positive().optional().allow(null),
-  operator_id:   Joi.number().integer().positive().optional().allow(null),
-  shift_id:      Joi.number().integer().positive().optional().allow(null),
+  work_order_id:   Joi.string().uuid().optional().allow(null),
+  routing_step_id: Joi.number().integer().positive().optional().allow(null),
+  machine_id:      Joi.number().integer().positive().optional().allow(null),
+  operator_id:     Joi.number().integer().positive().optional().allow(null),
+  shift_id:        Joi.number().integer().positive().optional().allow(null),
   start_time:    Joi.string().isoDate().optional().allow(null),
   end_time:      Joi.string().isoDate().optional().allow(null),
   qty_produced:  Joi.number().min(0).optional().default(0),
@@ -13,9 +14,10 @@ const createJobCardSchema = Joi.object({
 });
 
 const updateJobCardSchema = Joi.object({
-  work_order_id: Joi.string().uuid().optional().allow(null),
-  machine_id:    Joi.number().integer().positive().optional().allow(null),
-  operator_id:   Joi.number().integer().positive().optional().allow(null),
+  work_order_id:   Joi.string().uuid().optional().allow(null),
+  routing_step_id: Joi.number().integer().positive().optional().allow(null),
+  machine_id:      Joi.number().integer().positive().optional().allow(null),
+  operator_id:     Joi.number().integer().positive().optional().allow(null),
   shift_id:     Joi.number().integer().positive().optional().allow(null),
   start_time:   Joi.string().isoDate().optional().allow(null),
   end_time:     Joi.string().isoDate().optional().allow(null),

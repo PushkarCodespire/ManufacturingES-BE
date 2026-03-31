@@ -11,6 +11,10 @@ const {
   RoutingStep,
   Bom,
   BomLine,
+  Inventory,
+  InventoryTxn,
+  Warehouse,
+  OqcInspection,
 } = require('../../../models');
 const { validateCreateWorkOrder, validateUpdateWorkOrder, validateUpdateStatus } = require('../cred/workOrder.cred');
 const { callClaude } = require('../../../services/ai.service');
@@ -37,8 +41,10 @@ const getAll = async (req, res) => {
         { model: Item,          as: 'Item',          attributes: ['id', 'name', 'code'] },
         { model: Machine,       as: 'Machine',        attributes: ['id', 'name'] },
         { model: CustomerOrder, as: 'CustomerOrder',  attributes: ['id', 'order_no'] },
+        { model: Routing,       as: 'Routing',        attributes: ['id', 'code', 'name', 'status'] },
         { model: User,          as: 'Creator',        attributes: ['id', 'name'] },
         { model: JobCard,       as: 'JobCards',       attributes: ['id', 'status', 'routing_step_id'], separate: true },
+        { model: OqcInspection, as: 'OqcInspection',  attributes: ['id', 'inspection_no', 'result'], required: false },
       ],
       order: [['created_at', 'DESC']],
     });
@@ -58,6 +64,7 @@ const getById = async (req, res) => {
         { model: Machine,       as: 'Machine',        attributes: ['id', 'name'] },
         { model: Shift,         as: 'Shift',          attributes: ['id', 'name'] },
         { model: CustomerOrder, as: 'CustomerOrder',  attributes: ['id', 'order_no'] },
+        { model: Routing,       as: 'Routing',        attributes: ['id', 'code', 'name', 'status'] },
         { model: User,          as: 'Creator',        attributes: ['id', 'name'] },
         { model: JobCard,       as: 'JobCards' },
       ],
@@ -78,6 +85,17 @@ const create = async (req, res) => {
 
     const wo_no = await nextWoNo();
     const userId = req.user.id;
+
+    // Auto-assign routing if not explicitly provided
+    if (!value.routing_id && value.item_id) {
+      const defaultRouting = await Routing.findOne({
+        where: { item_id: value.item_id, status: 'active' },
+        attributes: ['id'],
+        order: [['id', 'ASC']],
+      });
+      if (defaultRouting) value.routing_id = defaultRouting.id;
+    }
+
     const record = await WorkOrder.create({
       ...value,
       wo_no,
@@ -197,7 +215,110 @@ const updateStatus = async (req, res) => {
     }
 
     await record.update(updates);
-    return res.json({ success: true, data: record });
+
+    // ── BUG-015: Auto-create inventory stock entry on WO completion ──────────
+    let stock_receipt = null;
+    if (status === 'completed') {
+      try {
+        // Prevent duplicates: skip if txn already exists for this WO
+        const existingTxn = await InventoryTxn.findOne({
+          where: { ref_type: 'work_order', ref_no: record.wo_no },
+        });
+        if (!existingTxn && record.item_id) {
+          // Calculate good qty = produced - rejected
+          const totalProduced = parseFloat(record.produced_qty || 0);
+          const totalRejected = await JobCard.sum('qty_rejected', {
+            where: { work_order_id: record.id, status: 'closed' },
+          }) || 0;
+          const goodQty = totalProduced - parseFloat(totalRejected);
+
+          if (goodQty > 0) {
+            // Find first active warehouse
+            const warehouse = await Warehouse.findOne({
+              where: { is_active: true },
+              order: [['id', 'ASC']],
+            });
+
+            if (warehouse) {
+              // Find or create inventory record
+              const [inv] = await Inventory.findOrCreate({
+                where: { item_id: record.item_id, warehouse_id: warehouse.id },
+                defaults: { qty_on_hand: 0 },
+              });
+
+              const qtyBefore = parseFloat(inv.qty_on_hand || 0);
+              const qtyAfter = qtyBefore + goodQty;
+
+              // Update inventory quantity
+              await inv.update({ qty_on_hand: qtyAfter, last_txn_at: new Date() });
+
+              // Create inventory transaction log
+              await InventoryTxn.create({
+                item_id: record.item_id,
+                warehouse_id: warehouse.id,
+                txn_type: 'production_receipt',
+                ref_type: 'work_order',
+                ref_id: record.id,
+                ref_no: record.wo_no,
+                qty_before: qtyBefore,
+                qty_change: goodQty,
+                qty_after: qtyAfter,
+                notes: `Auto-generated from WO ${record.wo_no} completion`,
+                created_by: req.user.id,
+              });
+
+              // Fetch item name for response
+              const item = await Item.findByPk(record.item_id, { attributes: ['name'] });
+              stock_receipt = {
+                qty: goodQty,
+                warehouse: warehouse.name,
+                item: item?.name || 'Unknown',
+              };
+            } else {
+              console.warn('[WorkOrder.updateStatus] No active warehouse found — skipping stock receipt');
+            }
+          }
+        }
+      } catch (stockErr) {
+        console.warn('[WorkOrder.updateStatus] Stock receipt creation failed (non-fatal):', stockErr.message);
+      }
+    }
+
+    // ── BUG-017: Auto-create OQC inspection on WO completion ────────────────
+    let oqc_created = null;
+    if (status === 'completed') {
+      try {
+        const db = require('../../../models');
+        const existingOqc = await db.OqcInspection.findOne({ where: { work_order_id: record.id } });
+        if (!existingOqc) {
+          const oqcNo = await generateAutoNumber(db.OqcInspection, 'inspection_no', 'OQC');
+
+          // Find customer from linked CustomerOrder if any
+          let customerId = null;
+          if (record.customer_order_id) {
+            const co = await CustomerOrder.findByPk(record.customer_order_id, { attributes: ['customer_id'] });
+            if (co) customerId = co.customer_id;
+          }
+
+          const oqc = await db.OqcInspection.create({
+            inspection_no: oqcNo,
+            work_order_id: record.id,
+            item_id: record.item_id,
+            customer_id: customerId,
+            inspection_date: new Date(),
+            qty_inspected: 0,
+            result: 'pending',
+            notes: 'Auto-created from WO completion',
+            created_by: req.user.id,
+          });
+          oqc_created = { id: oqc.id, inspection_no: oqc.inspection_no };
+        }
+      } catch (oqcErr) {
+        console.warn('[WorkOrder.complete] OQC auto-create failed:', oqcErr.message);
+      }
+    }
+
+    return res.json({ success: true, data: record, stock_receipt, oqc_created });
   } catch (err) {
     console.error('[WorkOrder.updateStatus]', err);
     return res.status(500).json({ success: false, message: 'Server error' });
@@ -332,11 +453,19 @@ const generateJobCards = async (req, res) => {
       return res.status(400).json({ success: false, message: `Cannot generate job cards for a ${wo.status} work order` });
     }
 
-    // Find active routing for this item
-    const routing = await Routing.findOne({
-      where: { item_id: wo.item_id, status: 'active' },
-      include: [{ model: RoutingStep, separate: true, order: [['step_no', 'ASC']] }],
-    });
+    // Find routing: prefer WO-level routing_id, fall back to first active routing for the item
+    let routing;
+    if (wo.routing_id) {
+      routing = await Routing.findByPk(wo.routing_id, {
+        include: [{ model: RoutingStep, separate: true, order: [['step_no', 'ASC']] }],
+      });
+    }
+    if (!routing) {
+      routing = await Routing.findOne({
+        where: { item_id: wo.item_id, status: 'active' },
+        include: [{ model: RoutingStep, separate: true, order: [['step_no', 'ASC']] }],
+      });
+    }
     if (!routing || !routing.RoutingSteps || routing.RoutingSteps.length === 0) {
       return res.status(400).json({ success: false, message: 'No active routing found for this item. Please create and activate a routing first.' });
     }

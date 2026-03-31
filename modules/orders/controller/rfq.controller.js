@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Rfq, RfqItem, Vendor, Item, User, Notification, Role } = require('../../../models');
+const { sequelize, Rfq, RfqItem, Quotation, QuotationItem, CustomerOrder, OrderItem, Vendor, Item, User, Notification, Role } = require('../../../models');
 const { validateCreateRfq, validateUpdateRfq } = require('../cred/rfq.cred');
 const aiService = require('../../../services/ai.service');
 const aiPrompts = require('../../../config/ai-prompts');
@@ -144,6 +144,77 @@ exports.update = async (req, res) => {
           sort_order: i,
         }));
         await RfqItem.bulkCreate(itemRows);
+      }
+
+      // ── BUG-006: Bidirectional sync — RFQ → Quotation → Customer Order ─
+      try {
+        const linkedQuotations = await Quotation.findAll({
+          where: { rfq_id: rfq.id },
+          attributes: ['id'],
+        });
+        if (linkedQuotations.length > 0 && items.length > 0) {
+          await sequelize.transaction(async (t) => {
+            for (const quot of linkedQuotations) {
+              // Sync RFQ fields → QuotationItems
+              for (const it of items) {
+                if (!it.item_id) continue;
+                const newQty   = it.qty || 0;
+                const newPrice = it.target_price ?? null;
+                await QuotationItem.update(
+                  {
+                    qty:         newQty,
+                    unit_price:  newPrice,
+                    description: it.description || null,
+                    unit:        it.unit || null,
+                    total_price: newPrice != null
+                      ? parseFloat((newQty * newPrice).toFixed(4))
+                      : undefined,
+                  },
+                  { where: { quotation_id: quot.id, item_id: it.item_id }, transaction: t }
+                );
+              }
+
+              // Recalculate Quotation total_amount
+              const updatedQItems = await QuotationItem.findAll({ where: { quotation_id: quot.id }, transaction: t });
+              const qTotal = updatedQItems.reduce((sum, qi) => sum + parseFloat(qi.total_price || 0), 0);
+              await Quotation.update({ total_amount: parseFloat(qTotal.toFixed(4)) }, { where: { id: quot.id }, transaction: t });
+
+              // Cascade: QuotationItems → linked CustomerOrder items
+              const linkedOrders = await CustomerOrder.findAll({
+                where: { quotation_id: quot.id },
+                attributes: ['id'],
+                transaction: t,
+              });
+              for (const ord of linkedOrders) {
+                for (const it of items) {
+                  if (!it.item_id) continue;
+                  const newQty   = it.qty || 0;
+                  const newPrice = it.target_price ?? null;
+                  const updateFields = {
+                    qty_ordered: newQty,
+                    description: it.description || null,
+                    unit:        it.unit || null,
+                  };
+                  if (newPrice != null) {
+                    updateFields.unit_price   = newPrice;
+                    const base = newQty * newPrice;
+                    updateFields.total_price  = parseFloat(base.toFixed(4));
+                  }
+                  await OrderItem.update(
+                    updateFields,
+                    { where: { order_id: ord.id, item_id: it.item_id }, transaction: t }
+                  );
+                }
+                // Recalculate CustomerOrder total_amount
+                const updatedOItems = await OrderItem.findAll({ where: { order_id: ord.id }, transaction: t });
+                const oTotal = updatedOItems.reduce((sum, oi) => sum + parseFloat(oi.total_price || 0), 0);
+                await CustomerOrder.update({ total_amount: parseFloat(oTotal.toFixed(4)) }, { where: { id: ord.id }, transaction: t });
+              }
+            }
+          });
+        }
+      } catch (syncErr) {
+        console.warn('[rfq.update] Quotation/CustomerOrder sync (non-fatal):', syncErr.message);
       }
     }
 

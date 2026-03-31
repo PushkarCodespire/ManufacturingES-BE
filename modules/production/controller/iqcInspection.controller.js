@@ -14,6 +14,10 @@ const {
   Instrument,
   CalibrationRecord,
   CheckSheetTemplate,    // L-02: needed for template status guard
+  PurchaseReturn,
+  PurchaseReturnItem,
+  PurchaseOrder,
+  PurchaseOrderItem,
 } = require('../../../models');
 const {
   validateCreateIqc,
@@ -78,6 +82,7 @@ async function checkInstrumentCalibration() {
 // Only the IQC sequence is needed in the controller; CAPA/NCR/SCAR sequences
 // are generated inside iqcCascade.service.js (L-01).
 const nextInspectionNo = () => generateAutoNumber(IqcInspection, 'inspection_no', 'IQC');
+const nextReturnNo     = () => generateAutoNumber(PurchaseReturn, 'return_no', 'RTN');
 
 const INCLUDES = [
   { model: Item,   as: 'Item',      attributes: ['id', 'name', 'code'] },
@@ -264,7 +269,66 @@ const updateResult = async (req, res) => {
       );
     }
 
-    return res.json({ success: true, data: record });
+    // ── BUG-010: Auto-create Purchase Return on IQC fail/reject ──
+    let purchaseReturn = null;
+    if (['fail', 'reject'].includes(value.result) && record.grn_id) {
+      try {
+        // 1. Find the linked GRN to get po_id
+        const grn = await Grn.findByPk(record.grn_id, { attributes: ['id', 'grn_no', 'po_id'] });
+        if (grn && grn.po_id) {
+          // 2. Find the PO to get vendor_id
+          const po = await PurchaseOrder.findByPk(grn.po_id, { attributes: ['id', 'po_no', 'vendor_id'] });
+          const vendorId = po?.vendor_id || record.vendor_id;
+
+          // 3. Find PO line item price for this item
+          let unitPrice = 0;
+          if (po) {
+            const poItem = await PurchaseOrderItem.findOne({
+              where: { po_id: po.id, item_id: record.item_id },
+              attributes: ['unit_price'],
+            });
+            unitPrice = poItem?.unit_price ? parseFloat(poItem.unit_price) : 0;
+          }
+
+          // 4. Determine return qty
+          const qtyReturned = parseFloat(record.qty_rejected) > 0
+            ? parseFloat(record.qty_rejected)
+            : parseFloat(record.qty_inspected) || 0;
+
+          // 5. Auto-create PurchaseReturn (draft)
+          const return_no = await nextReturnNo();
+          const pr = await PurchaseReturn.create({
+            return_no,
+            po_id:       grn.po_id,
+            grn_id:      record.grn_id,
+            vendor_id:   vendorId,
+            return_date: new Date().toISOString().split('T')[0],
+            reason:      `IQC Rejection — ${record.inspection_no}`,
+            status:      'draft',
+            created_by:  req.user.id,
+          });
+
+          // 6. Create PurchaseReturnItem
+          const amount = qtyReturned * unitPrice;
+          await PurchaseReturnItem.create({
+            return_id:    pr.id,
+            item_id:      record.item_id,
+            qty_returned: qtyReturned,
+            unit_price:   unitPrice,
+            amount:       amount,
+            reason:       'IQC inspection failed',
+          });
+
+          purchaseReturn = { id: pr.id, return_no: pr.return_no, status: pr.status };
+          console.log(`[IqcInspection.updateResult] Auto-created Purchase Return ${return_no} for IQC ${record.inspection_no}`);
+        }
+      } catch (prErr) {
+        // Non-fatal: IQC verdict still succeeds even if PR creation fails
+        console.warn('[IqcInspection.updateResult] Failed to auto-create Purchase Return:', prErr.message);
+      }
+    }
+
+    return res.json({ success: true, data: record, purchase_return: purchaseReturn });
   } catch (err) {
     console.error('[IqcInspection.updateResult]', err);
     return res.status(500).json({ success: false, message: 'Server error' });

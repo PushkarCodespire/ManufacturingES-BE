@@ -2,8 +2,9 @@ const { Op, fn, col, literal } = require('sequelize');
 const fs   = require('fs');
 const path = require('path');
 const {
-  CustomerOrder, OrderItem, Quotation, QuotationItem, Vendor, Item, User,
-  WorkOrder, OqcInspection, PqcInspection, DispatchOrder, DispatchOrderItem,
+  sequelize, CustomerOrder, OrderItem, Quotation, QuotationItem, Rfq, RfqItem,
+  Vendor, Item, User, WorkOrder, OqcInspection, PqcInspection, DispatchOrder,
+  DispatchOrderItem,
 } = require('../../../models');
 const { validateCreateOrder, validateUpdateOrder } = require('../cred/customerOrder.cred');
 const aiService = require('../../../services/ai.service');
@@ -294,7 +295,9 @@ exports.create = async (req, res) => {
     const order_no = await nextOrderNo();
 
     const total_amount = parseFloat(items.reduce((sum, it) => {
-      return sum + (it.qty_ordered || 0) * (it.unit_price || 0);
+      const base = (it.qty_ordered || 0) * (it.unit_price || 0) * (1 - (it.discount || 0) / 100);
+      const gst = base * ((it.gst_rate || 0) / 100);
+      return sum + base + gst;
     }, 0).toFixed(4));
 
     const order = await CustomerOrder.create({
@@ -365,7 +368,9 @@ exports.update = async (req, res) => {
     let total_amount = order.total_amount;
     if (Array.isArray(items)) {
       total_amount = parseFloat(items.reduce((sum, it) => {
-        return sum + (it.qty_ordered || 0) * (it.unit_price || 0);
+        const base = (it.qty_ordered || 0) * (it.unit_price || 0) * (1 - (it.discount || 0) / 100);
+        const gst = base * ((it.gst_rate || 0) / 100);
+        return sum + base + gst;
       }, 0).toFixed(4));
     }
 
@@ -393,10 +398,73 @@ exports.update = async (req, res) => {
           unit:          it.unit          || null,
           unit_price:    it.unit_price    ?? 0,
           gst_rate:      it.gst_rate      ?? 0,
-          total_price:   parseFloat(((it.qty_ordered || 0) * (it.unit_price || 0)).toFixed(4)),
+          total_price:   (() => {
+            const base = (it.qty_ordered || 0) * (it.unit_price || 0) * (1 - (it.discount || 0) / 100);
+            return parseFloat((base + base * ((it.gst_rate || 0) / 100)).toFixed(4));
+          })(),
           sort_order: i,
         }));
         await OrderItem.bulkCreate(itemRows);
+      }
+
+      // ── BUG-006: Bidirectional sync — CustomerOrder → Quotation → RFQ ──
+      const linkedQuotationId = quotation_id !== undefined ? quotation_id : order.quotation_id;
+      if (linkedQuotationId && items.length > 0) {
+        try {
+          await sequelize.transaction(async (t) => {
+            // Sync all key fields to QuotationItems
+            for (const it of items) {
+              if (!it.item_id) continue;
+              const newQty   = it.qty_ordered || 0;
+              const newPrice = it.unit_price ?? 0;
+              const newGst   = it.gst_rate ?? 0;
+              const newDisc  = it.discount ?? 0;
+              const base     = newQty * newPrice * (1 - newDisc / 100);
+              await QuotationItem.update(
+                {
+                  qty:         newQty,
+                  unit_price:  newPrice,
+                  gst_rate:    newGst,
+                  discount:    newDisc,
+                  description: it.description || null,
+                  unit:        it.unit || null,
+                  total_price: parseFloat((base + base * newGst / 100).toFixed(4)),
+                },
+                { where: { quotation_id: linkedQuotationId, item_id: it.item_id }, transaction: t }
+              );
+            }
+            // Recalculate Quotation total_amount
+            const updatedQItems = await QuotationItem.findAll({ where: { quotation_id: linkedQuotationId }, transaction: t });
+            const qTotal = updatedQItems.reduce((sum, qi) => sum + parseFloat(qi.total_price || 0), 0);
+            await Quotation.update({ total_amount: parseFloat(qTotal.toFixed(4)) }, { where: { id: linkedQuotationId }, transaction: t });
+
+            // Cascade to RFQ if the quotation is linked to one
+            const linkedQuotation = await Quotation.findByPk(linkedQuotationId, {
+              attributes: ['id', 'rfq_id'],
+              transaction: t,
+            });
+            if (linkedQuotation?.rfq_id) {
+              for (const it of items) {
+                if (!it.item_id) continue;
+                await RfqItem.update(
+                  {
+                    qty:          it.qty_ordered || 0,
+                    target_price: it.unit_price ?? null,
+                    description:  it.description || null,
+                    unit:         it.unit || null,
+                  },
+                  { where: { rfq_id: linkedQuotation.rfq_id, item_id: it.item_id }, transaction: t }
+                );
+              }
+              // Recalculate RFQ total_amount if it has one
+              const updatedRfqItems = await RfqItem.findAll({ where: { rfq_id: linkedQuotation.rfq_id }, transaction: t });
+              const rfqTotal = updatedRfqItems.reduce((sum, ri) => sum + parseFloat(ri.qty || 0) * parseFloat(ri.target_price || 0), 0);
+              await Rfq.update({ total_amount: parseFloat(rfqTotal.toFixed(4)) }, { where: { id: linkedQuotation.rfq_id }, transaction: t });
+            }
+          });
+        } catch (syncErr) {
+          console.warn('[customerOrder.update] Quotation/RFQ sync (non-fatal):', syncErr.message);
+        }
       }
     }
 

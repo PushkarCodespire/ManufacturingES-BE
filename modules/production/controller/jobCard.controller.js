@@ -8,6 +8,9 @@ const {
   Equipment,
   RoutingStep,
   WorkCenter,
+  Item,
+  ItemQualityParam,
+  JobCardQaResult,
 } = require('../../../models');
 const { validateCreateJobCard, validateUpdateJobCard, validateCloseJobCard } = require('../cred/jobCard.cred');
 const { callClaude } = require('../../../services/ai.service');
@@ -19,7 +22,7 @@ const TERMINAL_STATES = ['closed', 'cancelled'];
 // Shared eager-load for routing step + work center
 const ROUTING_INCLUDE = {
   model: RoutingStep,
-  attributes: ['id', 'step_no', 'operation_name', 'work_center_id', 'cycle_time_min', 'setup_time_min'],
+  attributes: ['id', 'step_no', 'operation_name', 'work_center_id', 'cycle_time_min', 'setup_time_min', 'quality_check'],
   include: [{ model: WorkCenter, attributes: ['id', 'name', 'type'] }],
   required: false,
 };
@@ -45,6 +48,7 @@ const getAll = async (req, res) => {
         { model: User,      as: 'Operator',  attributes: ['id', 'name'] },
         { model: User,      as: 'Creator',   attributes: ['id', 'name'] },
         ROUTING_INCLUDE,
+        { model: JobCardQaResult, as: 'QaResults', attributes: ['id', 'result'] },
       ],
       order: [['created_at', 'DESC']],
     });
@@ -138,8 +142,23 @@ const create = async (req, res) => {
     const job_no = await nextJobNo();
     const userId = req.user.id;
 
+    // If routing step selected, populate step fields
+    let stepFields = {};
+    if (value.routing_step_id) {
+      const step = await RoutingStep.findByPk(value.routing_step_id);
+      if (step) {
+        stepFields = {
+          step_no:        step.step_no,
+          operation_name: step.operation_name,
+          cycle_time_min: step.cycle_time_min,
+          setup_time_min: step.setup_time_min,
+        };
+      }
+    }
+
     const record = await JobCard.create({
       ...value,
+      ...stepFields,
       job_no,
       status: 'open',
       start_time: new Date(),
@@ -196,7 +215,9 @@ const close = async (req, res) => {
     const { error, value } = validateCloseJobCard(req.body);
     if (error) return res.status(400).json({ success: false, message: error.details[0].message });
 
-    const record = await JobCard.findByPk(req.params.id);
+    const record = await JobCard.findByPk(req.params.id, {
+      include: [{ model: RoutingStep, attributes: ['id', 'quality_check'] }],
+    });
     if (!record) return res.status(404).json({ success: false, message: 'Job card not found' });
 
     if (record.status === 'closed') {
@@ -204,6 +225,17 @@ const close = async (req, res) => {
     }
     if (record.status === 'cancelled') {
       return res.status(400).json({ success: false, message: 'Cannot close a cancelled job card' });
+    }
+
+    // BUG-013 / BUG-014: QA gate — block close if routing step requires QC but no results exist
+    if (record.RoutingStep?.quality_check) {
+      const qaCount = await JobCardQaResult.count({ where: { job_card_id: record.id } });
+      if (qaCount === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Complete QA inspection before closing this job card',
+        });
+      }
     }
 
     const { qty_produced: qtyProduced, qty_rejected: qtyRejected, break_minutes: breakMin, notes } = value;
@@ -528,6 +560,128 @@ Production Rates:
   }
 };
 
+// ── GET /job-cards/:id/qa-template ───────────────────────────────────────────
+// Returns item quality parameters as a QA template for inline inspection.
+const getQaTemplate = async (req, res) => {
+  try {
+    const record = await JobCard.findByPk(req.params.id, {
+      include: [
+        {
+          model: RoutingStep,
+          attributes: ['id', 'quality_check'],
+        },
+        {
+          model: WorkOrder,
+          as: 'WorkOrder',
+          attributes: ['id', 'item_id'],
+          include: [
+            {
+              model: Item,
+              as: 'Item',
+              attributes: ['id', 'name'],
+              include: [
+                { model: ItemQualityParam, as: 'QualityParams', attributes: ['id', 'param_name', 'specification', 'min_value', 'max_value', 'unit', 'measurement_method', 'is_critical', 'sort_order'] },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    if (!record) return res.status(404).json({ success: false, message: 'Job card not found' });
+
+    if (!record.RoutingStep?.quality_check) {
+      return res.json({ success: true, data: [], message: 'Routing step does not require QC' });
+    }
+
+    const params = record.WorkOrder?.Item?.QualityParams || [];
+    if (params.length === 0) {
+      return res.json({ success: true, data: [], message: 'No quality parameters defined for this item' });
+    }
+
+    // Map to template format matching JobCardQaResult fields
+    const template = params
+      .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+      .map((p) => ({
+        parameter_name: p.param_name,
+        specification:  p.specification || null,
+        min_value:      p.min_value != null ? parseFloat(p.min_value) : null,
+        max_value:      p.max_value != null ? parseFloat(p.max_value) : null,
+        unit:           p.unit || null,
+        is_critical:    p.is_critical,
+      }));
+
+    return res.json({ success: true, data: template });
+  } catch (err) {
+    console.error('[JobCard.getQaTemplate]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// ── GET /job-cards/:id/qa-results ───────────────────────────────────────────
+const getQaResults = async (req, res) => {
+  try {
+    const results = await JobCardQaResult.findAll({
+      where: { job_card_id: req.params.id },
+      include: [{ model: User, as: 'Inspector', attributes: ['id', 'name'] }],
+      order: [['id', 'ASC']],
+    });
+    return res.json({ success: true, data: results });
+  } catch (err) {
+    console.error('[JobCard.getQaResults]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// ── POST /job-cards/:id/qa-results ──────────────────────────────────────────
+const saveQaResults = async (req, res) => {
+  try {
+    const { results, inspector_id } = req.body;
+    if (!Array.isArray(results) || results.length === 0) {
+      return res.status(400).json({ success: false, message: 'results array is required' });
+    }
+
+    const jobCard = await JobCard.findByPk(req.params.id);
+    if (!jobCard) return res.status(404).json({ success: false, message: 'Job card not found' });
+
+    // Delete existing results and bulk create new ones
+    await JobCardQaResult.destroy({ where: { job_card_id: jobCard.id } });
+
+    const rows = results.map((r) => {
+      // Auto-calculate result: if actual_value is between min and max → pass, else fail
+      let result = 'pending';
+      if (r.actual_value != null) {
+        if (r.min_value != null && r.max_value != null) {
+          const actual = parseFloat(r.actual_value);
+          const min    = parseFloat(r.min_value);
+          const max    = parseFloat(r.max_value);
+          result = (actual >= min && actual <= max) ? 'pass' : 'fail';
+        } else {
+          // No min/max defined — mark pass by default when measured
+          result = r.result || 'pass';
+        }
+      }
+      return {
+        job_card_id:    jobCard.id,
+        parameter_name: r.parameter_name,
+        specification:  r.specification || null,
+        min_value:      r.min_value ?? null,
+        max_value:      r.max_value ?? null,
+        actual_value:   r.actual_value ?? null,
+        unit:           r.unit || null,
+        result,
+        inspector_id:   inspector_id || r.inspector_id || null,
+        notes:          r.notes || null,
+      };
+    });
+
+    const created = await JobCardQaResult.bulkCreate(rows);
+    return res.status(201).json({ success: true, data: created });
+  } catch (err) {
+    console.error('[JobCard.saveQaResults]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
 module.exports = {
   getAll,
   getById,
@@ -538,5 +692,8 @@ module.exports = {
   getActiveIdle,
   getCapacityPlan,
   getAiEta,
+  getQaTemplate,
+  getQaResults,
+  saveQaResults,
   delete: deleteJobCard,
 };

@@ -13,10 +13,13 @@ router.use(authenticate);
 router.get('/active-idle',   ctrl.getActiveIdle);
 router.get('/capacity-plan', ctrl.getCapacityPlan);
 router.get('/',              ctrl.getAll);
-router.get('/:id/ai-eta',    ctrl.getAiEta);         // AI: job completion ETA
-router.get('/:id',           ctrl.getById);
+router.get('/:id/ai-eta',      ctrl.getAiEta);         // AI: job completion ETA
+router.get('/:id/qa-template', ctrl.getQaTemplate);    // BUG-013: QA inspection template
+router.get('/:id/qa-results',  ctrl.getQaResults);     // BUG-013: QA inspection results
+router.get('/:id',             ctrl.getById);
 router.post('/',            authorize(...JC_WRITE),  requirePermission(JC_PERM), ctrl.create);
 router.patch('/:id',        authorize(...JC_WRITE),  requirePermission(JC_PERM), ctrl.update);
+router.post('/:id/qa-results', authorize(...JC_WRITE), requirePermission(JC_PERM), ctrl.saveQaResults);  // BUG-013
 router.patch('/:id/close',  authorize(...JC_WRITE),  requirePermission(JC_PERM), ctrl.close);
 router.patch('/:id/cancel', authorize(...JC_MANAGE), requirePermission(JC_PERM), ctrl.cancel);
 router.delete('/:id',       authorize(...JC_MANAGE), requirePermission(JC_PERM), ctrl.delete);
