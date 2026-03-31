@@ -23,9 +23,50 @@ exports.search = async (req, res) => {
     grnItems.forEach(gi => results.push({
       type: 'lot',
       label: `Lot: ${gi.lot_no}`,
-      sub: `${gi.Grn?.grn_no || ''} — ${gi.Item?.name || ''}`,
+      sub: `GRN: ${gi.Grn?.grn_no || ''} — ${gi.Item?.name || ''}`,
       ref: gi.lot_no,
     }));
+
+    // Search Issue Slip items by lot_no
+    const issueSlipItems = await db.IssueSlipItem.findAll({
+      where: { lot_no: like },
+      limit: 10,
+      include: [
+        { model: db.IssueSlip, as: 'Slip', attributes: ['slip_no', 'issued_date'] },
+        { model: db.Item, as: 'Item', attributes: ['code', 'name'] },
+      ],
+    });
+    const seenLots = new Set(grnItems.map(gi => gi.lot_no));
+    issueSlipItems.forEach(si => {
+      if (!seenLots.has(si.lot_no)) {
+        seenLots.add(si.lot_no);
+        results.push({
+          type: 'lot',
+          label: `Lot: ${si.lot_no}`,
+          sub: `Issue Slip: ${si.Slip?.slip_no || ''} — ${si.Item?.name || ''}`,
+          ref: si.lot_no,
+        });
+      }
+    });
+
+    // Search Work Orders by manufactured_batch_no (as lot)
+    const woBatches = await db.WorkOrder.findAll({
+      where: { manufactured_batch_no: like },
+      limit: 5,
+      attributes: ['wo_no', 'manufactured_batch_no'],
+      include: [{ model: db.Item, as: 'Item', attributes: ['code', 'name'] }],
+    });
+    woBatches.forEach(w => {
+      if (!seenLots.has(w.manufactured_batch_no)) {
+        seenLots.add(w.manufactured_batch_no);
+        results.push({
+          type: 'lot',
+          label: `Batch: ${w.manufactured_batch_no}`,
+          sub: `WO: ${w.wo_no} — ${w.Item?.name || ''}`,
+          ref: w.manufactured_batch_no,
+        });
+      }
+    });
 
     // Search GRNs by grn_no
     const grns = await db.Grn.findAll({
@@ -95,10 +136,6 @@ exports.forwardTrace = async (req, res) => {
       ],
     });
 
-    if (grnItems.length === 0) {
-      return res.status(404).json({ message: `No GRN items found for lot "${lot_no}"` });
-    }
-
     // Get IQC for each GRN separately (no hasMany on Grn → IqcInspection)
     for (const gi of grnItems) {
       let iqc = null;
@@ -128,8 +165,7 @@ exports.forwardTrace = async (req, res) => {
       where: { lot_no },
       include: [
         {
-          model: db.IssueSlip, as: 'Slip',   // ← correct alias
-          include: [{ model: db.Department, as: 'Department', attributes: ['name'], required: false }],
+          model: db.IssueSlip, as: 'Slip',
         },
         { model: db.Item, as: 'Item', attributes: ['code', 'name'] },
       ],
@@ -142,7 +178,6 @@ exports.forwardTrace = async (req, res) => {
         label: 'Issued to Production',
         slip_no: si.Slip?.slip_no,
         issued_date: si.Slip?.issued_date,
-        department: si.Slip?.Department?.name,
         item_name: si.Item?.name,
         qty_issued: si.qty_issued,
       });
@@ -231,6 +266,10 @@ exports.forwardTrace = async (req, res) => {
         status: di.DispatchOrder?.status,
       });
     });
+
+    if (chain.stages.length === 0) {
+      return res.status(404).json({ message: `No traceability data found for lot "${lot_no}"` });
+    }
 
     res.json(chain);
   } catch (err) {
@@ -334,7 +373,7 @@ exports.woGenealogy = async (req, res) => {
               { model: db.Item, as: 'Item', attributes: ['code', 'name'] },
             ],
             limit: 50,
-            order: [['createdAt', 'DESC']],
+            order: [[{ model: db.IssueSlip, as: 'Slip' }, 'issued_date', 'DESC']],
           });
 
           slipItems.forEach(si => {
@@ -429,13 +468,25 @@ exports.dispatchTrace = async (req, res) => {
         source: null,
       };
 
-      if (di.lot_no) {
-        // Is this a manufactured batch?
-        const wo = await db.WorkOrder.findOne({
-          where: { manufactured_batch_no: di.lot_no },
-          attributes: ['wo_no', 'produced_qty', 'status'],
-          include: [{ model: db.Machine, as: 'Machine', attributes: ['name'], required: false }],
-        });
+      {
+        // Try to find source WO — via lot_no (manufactured batch) or fallback to latest WO for this item
+        let wo = null;
+        if (di.lot_no) {
+          wo = await db.WorkOrder.findOne({
+            where: { manufactured_batch_no: di.lot_no },
+            attributes: ['wo_no', 'item_id', 'produced_qty', 'status'],
+            include: [{ model: db.Machine, as: 'Machine', attributes: ['name'], required: false }],
+          });
+        }
+        if (!wo) {
+          // Fallback: find the latest WO for this item
+          wo = await db.WorkOrder.findOne({
+            where: { item_id: di.item_id },
+            attributes: ['wo_no', 'item_id', 'produced_qty', 'status'],
+            include: [{ model: db.Machine, as: 'Machine', attributes: ['name'], required: false }],
+            order: [['createdAt', 'DESC']],
+          });
+        }
 
         if (wo) {
           // Trace input lots via BOM components
@@ -449,10 +500,11 @@ exports.dispatchTrace = async (req, res) => {
                 const slipItems = await db.IssueSlipItem.findAll({
                   where: { item_id: { [Op.in]: compIds } },
                   include: [
-                    { model: db.IssueSlip, as: 'Slip', attributes: ['slip_no'] },
+                    { model: db.IssueSlip, as: 'Slip', attributes: ['slip_no', 'issued_date'] },
                     { model: db.Item, as: 'Item', attributes: ['name'] },
                   ],
                   limit: 20,
+                  order: [[{ model: db.IssueSlip, as: 'Slip' }, 'issued_date', 'DESC']],
                 });
                 slipItems.forEach(si => {
                   if (si.lot_no) inputLots.push({ slip_no: si.Slip?.slip_no, lot_no: si.lot_no, item: si.Item?.name, qty: si.qty_issued });
@@ -461,7 +513,7 @@ exports.dispatchTrace = async (req, res) => {
             }
           } catch { /* best effort */ }
           itemResult.source = { type: 'manufactured', wo_no: wo.wo_no, machine: wo.Machine?.name, input_lots: inputLots };
-        } else {
+        } else if (di.lot_no) {
           // Supplier lot → trace to GRN
           const grnItem = await db.GrnItem.findOne({
             where: { lot_no: di.lot_no },

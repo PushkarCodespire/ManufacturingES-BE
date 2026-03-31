@@ -84,6 +84,7 @@ const createItem = async (req, res) => {
       image_url:       req.body.image_url        || null,
       alt_units:       Array.isArray(req.body.alt_units) ? req.body.alt_units : [],
       hsn_code:        req.body.hsn_code         || null,
+      reorder_point:   req.body.reorder_point    ?? 0,
       category:        req.body.item_group       || req.body.category || null,
       is_active:       true,
       created_by:      req.user?.id || null,

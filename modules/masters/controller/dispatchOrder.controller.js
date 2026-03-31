@@ -1,8 +1,42 @@
 const Joi = require('joi');
-const { DispatchOrder, DispatchOrderItem, DeliveryChallan, Transporter, Vendor, Warehouse, Item, User, Site, SalesInvoice, OqcInspection, CustomerOrder, sequelize } = require('../../../models');
+const { DispatchOrder, DispatchOrderItem, DeliveryChallan, Transporter, Vendor, Warehouse, Item, User, Site, SalesInvoice, OqcInspection, CustomerOrder, Inventory, InventoryTxn, sequelize } = require('../../../models');
 const { Op } = require('sequelize');
 
 const AUDIT_ATTRS = ['id', 'name', 'employee_id'];
+
+// ── Inventory deduction on dispatch ─────────────────────────────────────────
+async function deductInventoryOnDispatch(dispatchItems, warehouseId, refId, refNo, userId, transaction) {
+  for (const di of dispatchItems) {
+    const itemId = di.item_id;
+    const qty = parseFloat(di.quantity || 0);
+    if (!itemId || !qty) continue;
+
+    const [inv] = await Inventory.findOrCreate({
+      where:    { item_id: itemId, warehouse_id: warehouseId },
+      defaults: { qty_on_hand: 0 },
+      transaction,
+    });
+
+    const qtyBefore = parseFloat(inv.qty_on_hand);
+    const qtyAfter  = qtyBefore - qty;
+
+    await inv.update({ qty_on_hand: qtyAfter, last_txn_at: new Date() }, { transaction });
+
+    await InventoryTxn.create({
+      item_id:      itemId,
+      warehouse_id: warehouseId,
+      txn_type:     'dispatch_out',
+      ref_type:     'dispatch_order',
+      ref_id:       refId,
+      ref_no:       refNo,
+      lot_no:       di.lot_no || null,
+      qty_before:   qtyBefore,
+      qty_change:   -qty,
+      qty_after:    qtyAfter,
+      created_by:   userId,
+    }, { transaction });
+  }
+}
 
 const orderSchema = Joi.object({
   customer_id:            Joi.number().integer().allow(null).optional(),
@@ -209,6 +243,25 @@ const updateOrder = async (req, res) => {
           }),
           { transaction: t }
         );
+      }
+    }
+
+    // ── Deduct inventory when status transitions to "dispatched" ────────────
+    if (orderData.status === 'dispatched' && order.status !== 'dispatched') {
+      const warehouseId = orderData.from_warehouse_id || order.from_warehouse_id;
+      if (warehouseId) {
+        const finalItems = await DispatchOrderItem.findAll({
+          where: { dispatch_order_id: order.id },
+          raw: true,
+          transaction: t,
+        });
+        await deductInventoryOnDispatch(
+          finalItems, warehouseId, order.id, order.order_number,
+          req.user?.id || null, t
+        );
+        console.log(`[DispatchOrder] Inventory deducted for ${order.order_number} — ${finalItems.length} item(s) from warehouse ${warehouseId}`);
+      } else {
+        console.warn(`[DispatchOrder] No from_warehouse_id set on ${order.order_number} — inventory NOT deducted`);
       }
     }
 
