@@ -27,7 +27,7 @@ async function deductInventoryOnDispatch(dispatchItems, warehouseId, refId, refN
       warehouse_id: warehouseId,
       txn_type:     'dispatch_out',
       ref_type:     'dispatch_order',
-      ref_id:       refId,
+      ref_id:       null,
       ref_no:       refNo,
       lot_no:       di.lot_no || null,
       qty_before:   qtyBefore,
@@ -187,9 +187,10 @@ const updateOrder = async (req, res) => {
     }
 
     const { items, ...orderData } = value;
+    const previousStatus = order.status; // Save before update mutates it
 
     // ── OQC gate: block dispatch if any item lacks OQC pass ─────────────────
-    if (orderData.status === 'dispatched' && order.status !== 'dispatched') {
+    if (orderData.status === 'dispatched' && previousStatus !== 'dispatched') {
       const dispatchItems = items !== undefined
         ? items
         : (await DispatchOrderItem.findAll({ where: { dispatch_order_id: order.id }, raw: true }));
@@ -211,18 +212,6 @@ const updateOrder = async (req, res) => {
         }
       }
 
-      // Also check CustomerOrder status if linked
-      const coId = orderData.customer_order_id || order.customer_order_id;
-      if (coId) {
-        const co = await CustomerOrder.findByPk(coId);
-        if (co && co.status === 'active') {
-          await t.rollback();
-          return res.status(400).json({
-            success: false,
-            message: `DISPATCH BLOCKED: Customer order ${co.order_no} is still in "active" status. Production and OQC must complete first.`,
-          });
-        }
-      }
     }
 
     await order.update({ ...orderData, updated_by: req.user?.id || null }, { transaction: t });
@@ -247,7 +236,7 @@ const updateOrder = async (req, res) => {
     }
 
     // ── Deduct inventory when status transitions to "dispatched" ────────────
-    if (orderData.status === 'dispatched' && order.status !== 'dispatched') {
+    if (orderData.status === 'dispatched' && previousStatus !== 'dispatched') {
       const warehouseId = orderData.from_warehouse_id || order.from_warehouse_id;
       if (warehouseId) {
         const finalItems = await DispatchOrderItem.findAll({

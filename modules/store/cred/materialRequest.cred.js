@@ -15,6 +15,7 @@ const createMrSchema = Joi.object({
   work_order_id: Joi.string().uuid().optional().allow(null),
   requested_by:  Joi.number().integer().positive().optional().allow(null),
   request_date:  Joi.string().isoDate().optional(),
+  required_date: Joi.string().isoDate().optional().allow(null),
   priority:      Joi.string().valid('low', 'normal', 'high', 'urgent').optional().default('normal'),
   purpose:       Joi.string().trim().max(500).optional().allow('', null),
   notes:         Joi.string().trim().max(2000).optional().allow('', null),
