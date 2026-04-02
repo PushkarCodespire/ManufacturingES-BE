@@ -71,12 +71,63 @@ function resetIfNewMonth() {
   }
 }
 
-function trackUsage(model, inputTokens, outputTokens) {
+// Infer agent from caller stack trace
+function inferAgentKey() {
+  const stack = new Error().stack || '';
+  if (stack.includes('maintenanceAi'))   return 'maintenance';
+  if (stack.includes('madad'))           return 'general_madad';
+  if (stack.includes('capa'))            return 'quality_analyst';
+  if (stack.includes('ncr'))             return 'quality_analyst';
+  if (stack.includes('complaint'))       return 'quality_analyst';
+  if (stack.includes('instrument'))      return 'quality_analyst';
+  if (stack.includes('oqc'))             return 'quality_analyst';
+  if (stack.includes('pqc'))             return 'quality_analyst';
+  if (stack.includes('iqc'))             return 'iqc_advisor';
+  if (stack.includes('purchaseOrder'))   return 'procurement_agent';
+  if (stack.includes('rfq'))             return 'procurement_agent';
+  if (stack.includes('scar'))            return 'procurement_agent';
+  if (stack.includes('quotation'))       return 'procurement_agent';
+  if (stack.includes('customerOrder'))   return 'procurement_agent';
+  if (stack.includes('inventory'))       return 'store_optimizer';
+  if (stack.includes('grn'))             return 'store_optimizer';
+  if (stack.includes('production'))      return 'production_planner';
+  if (stack.includes('workOrder'))       return 'production_planner';
+  if (stack.includes('pfmea'))           return 'npd_assistant';
+  if (stack.includes('drawing'))         return 'npd_assistant';
+  if (stack.includes('checkSheet'))      return 'npd_assistant';
+  if (stack.includes('copq'))            return 'quality_analyst';
+  if (stack.includes('mrm'))             return 'quality_analyst';
+  if (stack.includes('training'))        return 'general_madad';
+  return 'unknown';
+}
+
+function trackUsage(model, inputTokens, outputTokens, context = {}) {
   resetIfNewMonth();
   const price = PRICING[model] || PRICING['claude-haiku-4-5'];
   const costCents = (inputTokens * price.input + outputTokens * price.output) / 1_000_000;
   _usage.totalCents += costCents;
   _usage.calls += 1;
+
+  const agentKey = context.agentKey || inferAgentKey();
+
+  // Persist to database (fire-and-forget)
+  try {
+    const db = require('../models');
+    if (db.AiUsageLog) {
+      db.AiUsageLog.create({
+        user_id:       context.userId || null,
+        agent_key:     agentKey,
+        model,
+        input_tokens:  inputTokens,
+        output_tokens: outputTokens,
+        cost_cents:    Math.round(costCents * 10000) / 10000,
+        endpoint:      context.endpoint || null,
+        cached:        false,
+      }).catch(err => console.error('[ai.service] Failed to log usage:', err.message));
+    }
+  } catch (e) {
+    // models not ready yet — ignore
+  }
 }
 
 function isBudgetExceeded() {
@@ -98,6 +149,9 @@ function isAvailable() {
  * @param {number} [options.maxTokens]  - override max_tokens
  * @param {string} [options.cacheKey]   - enable caching
  * @param {number} [options.cacheTtlMs] - cache TTL in ms (default 15 min)
+ * @param {string} [options.agentKey]   - AI agent identifier for cost tracking
+ * @param {string} [options.endpoint]   - API endpoint for cost tracking
+ * @param {number} [options.userId]     - user ID for cost tracking
  * @returns {Promise<{ai_available: boolean, data: object|null, ai_error: string|null, cached: boolean}>}
  */
 async function callClaude(systemPrompt, userPrompt, options = {}) {
@@ -128,7 +182,11 @@ async function callClaude(systemPrompt, userPrompt, options = {}) {
       messages: [{ role: 'user', content: userPrompt }],
     });
 
-    trackUsage(model, response.usage.input_tokens, response.usage.output_tokens);
+    trackUsage(model, response.usage.input_tokens, response.usage.output_tokens, {
+      userId:   options.userId,
+      agentKey: options.agentKey,
+      endpoint: options.endpoint,
+    });
 
     // Extract text
     const textBlock = response.content.find((b) => b.type === 'text');
@@ -204,7 +262,11 @@ async function callClaudeVision(systemPrompt, base64Data, mediaType, textPrompt,
       messages: [{ role: 'user', content: contentBlocks }],
     });
 
-    trackUsage(model, response.usage.input_tokens, response.usage.output_tokens);
+    trackUsage(model, response.usage.input_tokens, response.usage.output_tokens, {
+      userId:   options.userId,
+      agentKey: options.agentKey,
+      endpoint: options.endpoint,
+    });
 
     const textBlock = response.content.find((b) => b.type === 'text');
     const raw = textBlock?.text || '';

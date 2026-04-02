@@ -93,6 +93,7 @@ const tallySyncRoutes             = require('./tallySync.routes');
 const dashboardRoutes             = require('./dashboard.routes');
 // Sprint 5: Admin Control Room & Madad AI
 const adminControlRoomRoutes      = require('./admin.routes');
+const aiDashboardRoutes           = require('./aiDashboard.routes');
 const madadRoutes                 = require('./madad.routes');
 const whatsappRoutes              = require('./whatsapp.routes');
 // Mold Management — Sprint 3
@@ -226,6 +227,7 @@ router.use('/tally-sync',               tallySyncRoutes);
 router.use('/dashboard',                dashboardRoutes);
 // Sprint 5: Admin Control Room & Madad AI
 router.use('/admin/control-room',        adminControlRoomRoutes);
+router.use('/admin/ai-dashboard',        aiDashboardRoutes);
 router.use('/admin/whatsapp',            whatsappRoutes);
 router.use('/madad',                     madadRoutes);
 // Mold Management — Sprint 3

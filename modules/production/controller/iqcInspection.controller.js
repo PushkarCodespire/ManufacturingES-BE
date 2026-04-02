@@ -248,6 +248,13 @@ const updateResult = async (req, res) => {
     const record = await IqcInspection.findByPk(req.params.id);
     if (!record) return res.status(404).json({ success: false, message: 'IQC inspection not found' });
 
+    if (value.result === 'pass') {
+      const qtyInspected = parseFloat(record.qty_inspected) || 0;
+      if (qtyInspected <= 0) {
+        return res.status(400).json({ success: false, message: 'Cannot mark as pass with qty_inspected = 0.' });
+      }
+    }
+
     await record.update({ result: value.result });
 
     // ── Notifications on verdict ──

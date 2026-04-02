@@ -136,6 +136,11 @@ const create = async (req, res) => {
 
       // Auto-verdict: if all pass → pass, if any fail → fail
       const hasFail = rows.some((r) => r.result === 'fail');
+      // Block auto-pass if qty_inspected is 0
+      const qtyInspected = parseFloat(record.qty_inspected) || 0;
+      if (!hasFail && qtyInspected <= 0) {
+        return res.status(400).json({ success: false, message: 'Cannot pass inspection with qty_inspected = 0. Update qty_inspected first.' });
+      }
       await record.update({ result: hasFail ? 'fail' : 'pass' });
 
       // Auto-promote CustomerOrder if all WOs passed OQC
@@ -160,6 +165,14 @@ const updateResult = async (req, res) => {
 
     const record = await OqcInspection.findByPk(req.params.id);
     if (!record) return res.status(404).json({ success: false, message: 'OQC inspection not found' });
+
+    // Block pass if qty_inspected is 0
+    if (value.result === 'pass') {
+      const qtyInspected = parseFloat(record.qty_inspected) || 0;
+      if (qtyInspected <= 0) {
+        return res.status(400).json({ success: false, message: 'Cannot mark as pass with qty_inspected = 0. Inspection must have actual quantity inspected.' });
+      }
+    }
 
     await record.update({ result: value.result });
 
@@ -201,6 +214,15 @@ const generateDoc = async (req, res) => {
     const { type } = req.body; // 'cert' | 'coc'
     if (!['cert', 'coc'].includes(type)) {
       return res.status(400).json({ success: false, message: 'type must be cert or coc' });
+    }
+
+    // Block certificate generation if inspection not passed or qty_inspected is 0
+    if (record.result !== 'pass') {
+      return res.status(400).json({ success: false, message: `Cannot generate ${type === 'cert' ? 'test certificate' : 'COC'}: inspection result is "${record.result}", must be "pass".` });
+    }
+    const qtyInspected = parseFloat(record.qty_inspected) || 0;
+    if (qtyInspected <= 0) {
+      return res.status(400).json({ success: false, message: `Cannot generate ${type === 'cert' ? 'test certificate' : 'COC'}: qty_inspected is 0.` });
     }
 
     const year = new Date().getFullYear();

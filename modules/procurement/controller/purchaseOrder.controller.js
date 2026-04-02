@@ -217,17 +217,63 @@ const update = async (req, res) => {
     if (Array.isArray(items)) {
       await PurchaseOrderItem.destroy({ where: { po_id: record.id } });
       if (items.length > 0) {
-        const itemRows = items.map((it, idx) => ({
-          po_id:        record.id,
-          item_id:      it.item_id,
-          qty_ordered:  it.qty_ordered,
-          qty_received: it.qty_received || 0,
-          unit_price:   it.unit_price   || 0,
-          unit:         it.unit         || 'pcs',
-          notes:        it.notes        || null,
-          sort_order:   it.sort_order   !== undefined ? it.sort_order : idx,
-        }));
+        // Recalculate GST (same logic as create)
+        const vendor = await Vendor.findByPk(record.vendor_id, { attributes: ['id', 'gstin'] });
+        const site   = await Site.findOne({ attributes: ['id', 'gstin'] });
+        const supplyType = determineSupplyType(site?.gstin, vendor?.gstin);
+
+        const itemIds = items.map((it) => it.item_id);
+        const itemMasters = await Item.findAll({ where: { id: itemIds }, attributes: ['id', 'hsn_code', 'gst_rate'], raw: true });
+        const itemMap = {};
+        for (const im of itemMasters) itemMap[im.id] = im;
+
+        let totalCgst = 0, totalSgst = 0, totalIgst = 0, subtotal = 0;
+
+        const itemRows = items.map((it, idx) => {
+          const master   = itemMap[it.item_id] || {};
+          const lineAmt  = (parseFloat(it.qty_ordered) || 0) * (parseFloat(it.unit_price) || 0);
+          const gstRate  = it.gst_rate ?? master.gst_rate ?? 0;
+          const gst      = calculateGST(lineAmt, gstRate, supplyType);
+          subtotal  += lineAmt;
+          totalCgst += gst.cgst_amount;
+          totalSgst += gst.sgst_amount;
+          totalIgst += gst.igst_amount;
+          return {
+            po_id:        record.id,
+            item_id:      it.item_id,
+            qty_ordered:  it.qty_ordered,
+            qty_received: it.qty_received || 0,
+            unit_price:   it.unit_price   || 0,
+            unit:         it.unit         || 'pcs',
+            notes:        it.notes        || null,
+            sort_order:   it.sort_order   !== undefined ? it.sort_order : idx,
+            hsn_code:     it.hsn_code || master.hsn_code || null,
+            gst_rate:     gstRate,
+            cgst_amount:  gst.cgst_amount,
+            sgst_amount:  gst.sgst_amount,
+            igst_amount:  gst.igst_amount,
+            tax_amount:   gst.tax_amount,
+            total_price:  gst.total_amount,
+          };
+        });
         await PurchaseOrderItem.bulkCreate(itemRows);
+
+        // Update PO-level GST totals
+        const taxAmount = Math.round((totalCgst + totalSgst + totalIgst) * 100) / 100;
+        await record.update({
+          supply_type:  supplyType,
+          cgst_amount:  Math.round(totalCgst * 100) / 100,
+          sgst_amount:  Math.round(totalSgst * 100) / 100,
+          igst_amount:  Math.round(totalIgst * 100) / 100,
+          tax_amount:   taxAmount,
+          total_amount: Math.round((subtotal + taxAmount) * 100) / 100,
+        });
+      } else {
+        // No items — reset totals to zero
+        await record.update({
+          cgst_amount: 0, sgst_amount: 0, igst_amount: 0,
+          tax_amount: 0, total_amount: 0,
+        });
       }
     }
 

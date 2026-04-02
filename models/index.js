@@ -142,6 +142,7 @@ const ModuleSetting    = require('../modules/admin/model/ModuleSetting')(sequeli
 const FeatureSetting   = require('../modules/admin/model/FeatureSetting')(sequelize);
 const FieldVisibility  = require('../modules/admin/model/FieldVisibility')(sequelize);
 const AiAgentSetting   = require('../modules/admin/model/AiAgentSetting')(sequelize);
+const AiUsageLog       = require('../modules/admin/model/AiUsageLog')(sequelize);
 const AdminAuditLog    = require('../modules/admin/model/AdminAuditLog')(sequelize);
 const WhatsappLog      = require('../modules/admin/model/WhatsappLog')(sequelize);
 // ── Sprint 4b: Madad Chat ────────────────────────────────────────────────────
@@ -852,6 +853,8 @@ WhatsappLog.belongsTo(User, { foreignKey: 'user_id', as: 'User' });
 
 // MadadChat — user
 MadadChat.belongsTo(User, { foreignKey: 'user_id', as: 'User' });
+// AiUsageLog — user
+AiUsageLog.belongsTo(User, { foreignKey: 'user_id', as: 'User' });
 
 // ── Sprint 4: NPD associations ────────────────────────────────────────────────
 
@@ -1442,6 +1445,7 @@ module.exports = {
   FeatureSetting,
   FieldVisibility,
   AiAgentSetting,
+  AiUsageLog,
   AdminAuditLog,
   WhatsappLog,
   MadadChat,

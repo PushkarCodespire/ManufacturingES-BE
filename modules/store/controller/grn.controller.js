@@ -36,6 +36,7 @@ async function updateInventory(items, warehouseId, refType, refId, refNo, userId
       ref_type:     refType,
       ref_id:       refId,
       ref_no:       refNo,
+      lot_no:       it.lot_no || null,
       qty_before:   qtyBefore,
       qty_change:   qtyChange,
       qty_after:    qtyAfter,
@@ -152,7 +153,17 @@ exports.create = async (req, res) => {
     });
 
     if (items.length) {
-      await GrnItem.bulkCreate(items.map((it, i) => ({ ...it, grn_id: grn.id, sort_order: i })));
+      // Auto-generate lot_no for items that don't have one
+      const year = new Date().getFullYear();
+      const month = String(new Date().getMonth() + 1).padStart(2, '0');
+      const grnSeq = grn_no.replace(/\D/g, ''); // extract numeric part
+      const enrichedItems = items.map((it, i) => ({
+        ...it,
+        grn_id: grn.id,
+        sort_order: i,
+        lot_no: it.lot_no || `LOT-${year}${month}-${grnSeq}-${String(i + 1).padStart(2, '0')}`,
+      }));
+      await GrnItem.bulkCreate(enrichedItems);
     }
 
     const full = await Grn.findByPk(grn.id, {
@@ -257,7 +268,7 @@ exports.approve = async (req, res) => {
         grn_id:          grn.id,
         item_id:         it.item_id,
         vendor_id:       grn.vendor_id,
-        batch_no:        it.batch_no || null,
+        batch_no:        it.lot_no || it.batch_no || null,
         qty_received:    parseFloat(it.qty_received || 0),
         inspection_date: new Date().toISOString().split('T')[0],
         result:          'pending',

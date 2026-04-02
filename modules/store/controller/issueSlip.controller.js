@@ -1,7 +1,7 @@
 const { Op } = require('sequelize');
 const {
   IssueSlip, IssueSlipItem, MaterialRequest, Inventory, InventoryTxn, Warehouse, Item, User,
-  Grn, GrnItem,
+  Grn, GrnItem, IqcInspection,
 } = require('../../../models');
 const { validateCreateIssueSlip } = require('../cred/issueSlip.cred');
 const { generateAutoNumber } = require('../../../utils/autoNumber');
@@ -154,6 +154,30 @@ exports.create = async (req, res) => {
         return res.status(400).json({
           success: false,
           message: `Cannot issue against material request ${mr.request_no} — status is '${mr.status}', request must be approved first`,
+        });
+      }
+    }
+
+    // ── IQC clearance check: block items with pending/open IQC inspections ──
+    const itemIds = items.map(it => it.item_id).filter(Boolean);
+    if (itemIds.length > 0) {
+      const pendingIqc = await IqcInspection.findAll({
+        where: {
+          item_id: { [Op.in]: itemIds },
+          result: { [Op.in]: ['pending', 'open'] },
+        },
+        attributes: ['item_id', 'inspection_no', 'result'],
+        raw: true,
+      });
+      if (pendingIqc.length > 0) {
+        const blocked = await Promise.all(pendingIqc.map(async (iqc) => {
+          const item = await Item.findByPk(iqc.item_id, { attributes: ['code', 'name'] });
+          return `${item?.code || iqc.item_id} (${iqc.inspection_no} — ${iqc.result})`;
+        }));
+        return res.status(400).json({
+          success: false,
+          message: `IQC clearance pending for: ${blocked.join(', ')}. Materials cannot be issued until IQC inspection is passed.`,
+          iqc_blocked: pendingIqc,
         });
       }
     }
