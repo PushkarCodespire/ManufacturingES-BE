@@ -285,33 +285,4 @@ router.use('/production/shift-handovers', shiftHandoverRoutes);
 const operatorRoutes = require('./operator.routes');
 router.use('/operator', operatorRoutes);
 
-// ── TEMPORARY: DB cleanup endpoint (remove after use) ─────────────────────
-const { authenticate, authorize } = require('../config/middleware');
-router.post('/admin/clear-transactional-data', authenticate, authorize('plant_head', 'it_admin'), async (req, res) => {
-  try {
-    const { sequelize } = require('../models');
-    // Get ALL tables in the database
-    const [allTables] = await sequelize.query(
-      `SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename`
-    );
-    // Tables to KEEP (auth/identity only)
-    const keepTables = new Set([
-      'users', 'departments', 'roles', 'user_sites', 'user_warehouses',
-      'SequelizeMeta',  // migration tracking
-    ]);
-    const tablesToClear = allTables
-      .map(r => r.tablename)
-      .filter(t => !keepTables.has(t));
-
-    let cleared = 0, skipped = 0;
-    for (const t of tablesToClear) {
-      try { await sequelize.query(`TRUNCATE TABLE "${t}" CASCADE`, { raw: true }); cleared++; }
-      catch (e) { skipped++; }
-    }
-    return res.json({ success: true, message: `Cleared ${cleared} tables, skipped ${skipped}. Only users/departments/roles kept.` });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
-  }
-});
-
 module.exports = router;
