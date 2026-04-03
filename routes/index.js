@@ -285,4 +285,40 @@ router.use('/production/shift-handovers', shiftHandoverRoutes);
 const operatorRoutes = require('./operator.routes');
 router.use('/operator', operatorRoutes);
 
+// ── TEMPORARY: DB cleanup endpoint (remove after use) ─────────────────────
+const { authenticate, authorize } = require('../config/middleware');
+router.post('/admin/clear-transactional-data', authenticate, authorize('plant_head', 'it_admin'), async (req, res) => {
+  try {
+    const { sequelize } = require('../models');
+    const tables = [
+      'iqc_inspection_results','lqc_inspection_results','pqc_inspection_results','oqc_inspection_results','job_card_qa_results',
+      'iqc_inspections','lqc_inspections','pqc_inspections','oqc_inspections',
+      'job_cards','production_schedules','wip_movements','labor_logs','rework_vouchers','scrap_vouchers','work_orders',
+      'capa_actions','capas','ncrs','customer_complaints','audit_findings','audit_items','audit_plans','spc_data_points','spc_configs',
+      'issue_slip_items','issue_slips','grn_items','grns','material_request_items','material_requests',
+      'stock_adjustment_items','stock_adjustments','inventory_txns','inventories',
+      'purchase_return_items','purchase_returns','purchase_order_items','purchase_orders',
+      'purchase_requisition_items','purchase_requisitions','vendor_rfq_quotes','vendor_rfq_vendors','vendor_rfq_items','vendor_rfqs',
+      'vendor_invoices','vendor_invoice_items','scars',
+      'order_items','customer_orders','quotation_items','quotations','rfq_items','rfqs',
+      'delivery_challans','dispatch_order_items','dispatch_orders',
+      'sales_invoice_items','sales_invoices','debit_credit_notes','payments','copq_entries',
+      'pfmea_actions','pfmea_items','pfmeas','ppap_elements','ppap_submissions','check_sheet_results','check_sheet_templates',
+      'mold_documents','mold_part_mappings','mold_pm_checklist_results','mold_pm_work_orders','mold_issue_returns','mold_shot_logs','mold_life_alerts','mold_cavity_details',
+      'pm_wo_checklists','pm_work_orders','maintenance_work_orders','breakdown_requests','loto_permits','downtime_logs',
+      'subcontract_challan_items','subcontract_challans',
+      'shift_handover_items','shift_handovers','notifications','audit_logs','mrm_action_items','mrm_reviews',
+      'training_records','role_training_requirements','process_recipe_parameters','process_recipes','ewi_steps','ewi_documents',
+    ];
+    let cleared = 0, skipped = 0;
+    for (const t of tables) {
+      try { await sequelize.query(`TRUNCATE TABLE "${t}" CASCADE`, { raw: true }); cleared++; }
+      catch (e) { skipped++; }
+    }
+    return res.json({ success: true, message: `Cleared ${cleared} tables, skipped ${skipped}. Users, items, masters kept.` });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 module.exports = router;
