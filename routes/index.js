@@ -285,4 +285,36 @@ router.use('/production/shift-handovers', shiftHandoverRoutes);
 const operatorRoutes = require('./operator.routes');
 router.use('/operator', operatorRoutes);
 
+// ── Admin: DB Maintenance (clear transactional data) ──────────────────────
+const { authenticate, authorize } = require('../config/middleware');
+router.post('/admin/clear-transactional-data', authenticate, authorize('plant_head', 'it_admin'), async (req, res) => {
+  // Set a longer timeout for this heavy operation
+  req.setTimeout(120000);
+  res.setTimeout(120000);
+  try {
+    const { sequelize } = require('../models');
+    const [allTables] = await sequelize.query(
+      `SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename`
+    );
+    const keepTables = new Set([
+      'users', 'departments', 'roles', 'user_sites', 'user_warehouses',
+      'SequelizeMeta',
+    ]);
+    const tablesToClear = allTables.map(r => r.tablename).filter(t => !keepTables.has(t));
+
+    if (tablesToClear.length === 0) {
+      return res.json({ success: true, message: 'No tables to clear.' });
+    }
+
+    // Single TRUNCATE statement for all tables at once — much faster
+    const tableList = tablesToClear.map(t => `"${t}"`).join(', ');
+    await sequelize.query(`TRUNCATE TABLE ${tableList} CASCADE`, { raw: true });
+
+    return res.json({ success: true, message: `Cleared ${tablesToClear.length} tables. Only users/departments/roles kept.` });
+  } catch (err) {
+    console.error('[admin/clear-transactional-data]', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 module.exports = router;
