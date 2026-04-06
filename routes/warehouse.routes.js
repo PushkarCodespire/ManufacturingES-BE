@@ -7,10 +7,10 @@ const {
   updateWarehouse,
   deleteWarehouse,
 } = require('../modules/masters/controller/warehouse.controller');
-const { authenticate, authorize } = require('../config/middleware');
+const { authenticate, authorize, tenantScope } = require('../config/middleware');
 
 // All warehouse routes require authentication
-router.use(authenticate);
+router.use(authenticate, tenantScope);
 
 router.get( '/',              getAllWarehouses);
 router.post('/',    authorize('plant_head', 'it_admin'), createWarehouse);

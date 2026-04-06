@@ -5,6 +5,7 @@ const Department = sequelize.define(
   'Department',
   {
     id:   { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    organization_id: { type: DataTypes.INTEGER, allowNull: true, comment: 'FK to organizations.id — tenant scope' },
     code: { type: DataTypes.INTEGER, allowNull: false, comment: 'Dept code: 10-17' },
     name: { type: DataTypes.STRING(100), allowNull: false },
   },

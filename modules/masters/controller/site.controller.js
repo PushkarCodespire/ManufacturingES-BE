@@ -21,6 +21,7 @@ const auditIncludes = [
 const getAllSites = async (req, res) => {
   try {
     const where = {};
+    if (req.organizationId) where.organization_id = req.organizationId;
     if (req.query.is_active !== undefined) where.is_active = req.query.is_active === 'true';
     if (req.query.search) {
       where[Op.or] = [
@@ -45,7 +46,9 @@ const getAllSites = async (req, res) => {
 // ─── GET /sites/:id ───────────────────────────────────────────────────────────
 const getSiteById = async (req, res) => {
   try {
-    const site = await Site.findByPk(req.params.id, { include: auditIncludes });
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const site = await Site.findOne({ where: findWhere, include: auditIncludes });
     if (!site) return res.status(404).json({ success: false, message: 'Site not found' });
     return res.json({ success: true, data: site });
   } catch (err) {
@@ -65,6 +68,7 @@ const createSite = async (req, res) => {
     const code = await generateCode(name.trim());
 
     const site = await Site.create({
+      organization_id: req.organizationId || null,
       name:    name.trim(),
       code,
       email:   req.body.email   || null,
@@ -119,7 +123,9 @@ const createSite = async (req, res) => {
 // ─── PATCH /sites/:id — Update site ──────────────────────────────────────────
 const updateSite = async (req, res) => {
   try {
-    const site = await Site.findByPk(req.params.id);
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const site = await Site.findOne({ where: findWhere });
     if (!site) return res.status(404).json({ success: false, message: 'Site not found' });
 
     // Exclude read-only / auto fields from update
@@ -143,7 +149,9 @@ const updateSite = async (req, res) => {
 // ─── PATCH /sites/:id/toggle — Toggle active status ──────────────────────────
 const toggleSiteStatus = async (req, res) => {
   try {
-    const site = await Site.findByPk(req.params.id);
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const site = await Site.findOne({ where: findWhere });
     if (!site) return res.status(404).json({ success: false, message: 'Site not found' });
 
     await site.update({

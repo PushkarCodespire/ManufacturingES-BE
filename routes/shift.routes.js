@@ -7,9 +7,9 @@ const {
   updateShift,
   deleteShift,
 } = require('../modules/masters/controller/shift.controller');
-const { authenticate, authorize } = require('../config/middleware');
+const { authenticate, authorize, tenantScope } = require('../config/middleware');
 
-router.use(authenticate);
+router.use(authenticate, tenantScope);
 
 // Read — any authenticated user (frontend gates with sites-shifts___leaves-read permission)
 router.get( '/',     getAllShifts);

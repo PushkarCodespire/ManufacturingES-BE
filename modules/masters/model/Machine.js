@@ -34,7 +34,8 @@ const Machine = sequelize.define(
     start_stop_flow:     { type: DataTypes.BOOLEAN, defaultValue: false },
     serialization:       { type: DataTypes.BOOLEAN, defaultValue: false },
 
-    // Audit
+    // Tenant & audit
+    organization_id: { type: DataTypes.INTEGER, allowNull: true },
     site_id:     { type: DataTypes.INTEGER, allowNull: true, comment: 'FK to sites.id — plant affinity' },
     created_by:  { type: DataTypes.INTEGER, allowNull: true, comment: 'FK to users.id' },
     updated_by:  { type: DataTypes.INTEGER, allowNull: true, comment: 'FK to users.id' },

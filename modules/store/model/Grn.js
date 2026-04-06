@@ -17,6 +17,7 @@ const Grn = sequelize.define('Grn', {
   tally_sync_status: { type: DataTypes.STRING(20), defaultValue: 'pending' },
   tally_sync_at:     { type: DataTypes.DATE, allowNull: true },
   e_way_bill_no:     { type: DataTypes.STRING(20), allowNull: true },
+  site_id:           { type: DataTypes.INTEGER, allowNull: true },
 }, {
   tableName: 'grns',
   timestamps: true,

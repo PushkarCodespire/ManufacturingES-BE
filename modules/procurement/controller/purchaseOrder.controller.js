@@ -40,12 +40,13 @@ const DETAIL_INCLUDE = [
 // ── GET /purchase-orders ──────────────────────────────────────────────────────
 const getAll = async (req, res) => {
   try {
-    const { search, status, vendor_id, approval_status, overdue } = req.query;
+    const { search, status, vendor_id, approval_status, overdue, site_id } = req.query;
     const where = {};
     if (search)          where.po_no          = { [Op.iLike]: `%${search}%` };
     if (status)          where.status         = status;
     if (vendor_id)       where.vendor_id      = vendor_id;
     if (approval_status) where.approval_status = approval_status;
+    if (site_id)         where.site_id        = site_id;
     if (overdue === 'true') {
       where.expected_date = { [Op.lt]: new Date() };
       where.status        = { [Op.notIn]: ['received', 'cancelled'] };
@@ -113,6 +114,11 @@ const create = async (req, res) => {
     const approved_at     = ADMIN_ROLES.includes(roleName) ? new Date() : null;
 
     const { items, ...poData } = value;
+
+    // Auto-set site_id from the organization's first site if not provided
+    if (!poData.site_id && req.user?.Sites?.length) {
+      poData.site_id = req.user.Sites[0].id;
+    }
 
     const record = await PurchaseOrder.create({
       ...poData,

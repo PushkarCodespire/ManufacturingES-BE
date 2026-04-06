@@ -33,6 +33,9 @@ const Warehouse = sequelize.define(
     item_level_params:         { type: DataTypes.JSONB, defaultValue: { approved_tags: [], unapproved_tags: [] },
                                  comment: '{ approved_tags: [...], unapproved_tags: [...] }' },
 
+    // ── Tenant ────────────────────────────────────────────────────────────
+    organization_id: { type: DataTypes.INTEGER, allowNull: true },
+
     // ── Status & audit ─────────────────────────────────────────────────────
     is_active:   { type: DataTypes.BOOLEAN, defaultValue: true },
     created_by:  { type: DataTypes.INTEGER, allowNull: true, comment: 'FK to users.id' },

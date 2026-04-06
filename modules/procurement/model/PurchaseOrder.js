@@ -27,6 +27,7 @@ const PurchaseOrder = sequelize.define('PurchaseOrder', {
   total_amount:      { type: DataTypes.DECIMAL(14, 2), allowNull: true, defaultValue: 0 },
   supply_type:       { type: DataTypes.STRING(10), allowNull: true }, // intra | inter
   e_way_bill_no:     { type: DataTypes.STRING(20), allowNull: true },
+  site_id:           { type: DataTypes.INTEGER, allowNull: true },
 }, {
   tableName: 'purchase_orders',
   underscored: true,

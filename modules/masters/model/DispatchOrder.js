@@ -25,6 +25,7 @@ const DispatchOrder = sequelize.define(
     notes:            { type: DataTypes.TEXT,           allowNull: true },
     total_weight:     { type: DataTypes.DECIMAL(10, 2), allowNull: true },
     total_packages:   { type: DataTypes.INTEGER,        allowNull: true },
+    site_id:          { type: DataTypes.INTEGER,        allowNull: true },
     created_by:       { type: DataTypes.INTEGER,        allowNull: true },
     updated_by:       { type: DataTypes.INTEGER,        allowNull: true },
   },

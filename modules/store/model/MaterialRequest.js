@@ -11,6 +11,7 @@ const MaterialRequest = sequelize.define('MaterialRequest', {
   priority:       { type: DataTypes.STRING(20), defaultValue: 'normal', comment: 'low|normal|urgent' },
   status:         { type: DataTypes.STRING(20), defaultValue: 'pending', comment: 'pending|approved|issued|cancelled' },
   notes:          { type: DataTypes.TEXT, allowNull: true },
+  site_id:        { type: DataTypes.INTEGER, allowNull: true },
   created_by:     { type: DataTypes.INTEGER, allowNull: true },  // FK → users.id (INTEGER)
   updated_by:     { type: DataTypes.INTEGER, allowNull: true },  // FK → users.id (INTEGER)
 }, {

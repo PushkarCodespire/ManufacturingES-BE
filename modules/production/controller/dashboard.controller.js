@@ -558,7 +558,9 @@ const getRoleStats = async (req, res) => {
 // ── GET /dashboard/multi-plant — Corporate KPIs per site ─────────────────────
 const getMultiPlant = async (req, res) => {
   try {
-    const sites = await Site.findAll({ where: { is_active: true }, attributes: ['id', 'name', 'code'], order: [['name', 'ASC']] });
+    const siteWhere = { is_active: true };
+    if (req.organizationId) siteWhere.organization_id = req.organizationId;
+    const sites = await Site.findAll({ where: siteWhere, attributes: ['id', 'name', 'code'], order: [['name', 'ASC']] });
     const month = startOfMonth();
 
     const plants = [];

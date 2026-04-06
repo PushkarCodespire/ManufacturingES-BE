@@ -40,6 +40,7 @@ const generatePartnerCode = async (type) => {
 const getAllVendors = async (req, res) => {
   try {
     const where = {};
+    if (req.organizationId) where.organization_id = req.organizationId;
 
     if (req.query.type) where.type = req.query.type;
     // L-04: default to active-only; inactive vendors/customers must not appear in PO/IQC dropdowns.
@@ -71,7 +72,9 @@ const getAllVendors = async (req, res) => {
 // ─── GET /vendors/:id — Single vendor ────────────────────────────────────────
 const getVendorById = async (req, res) => {
   try {
-    const vendor = await Vendor.findByPk(req.params.id, { include: defaultIncludes });
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const vendor = await Vendor.findOne({ where: findWhere, include: defaultIncludes });
     if (!vendor) return res.status(404).json({ success: false, message: 'Vendor not found' });
     return res.json({ success: true, data: vendor });
   } catch (err) {
@@ -95,6 +98,7 @@ const createVendor = async (req, res) => {
     const partner_code = await generatePartnerCode(type);
 
     const vendor = await Vendor.create({
+      organization_id:      req.organizationId || null,
       partner_code,
       name:                 name.trim(),
       type,
@@ -138,7 +142,9 @@ const createVendor = async (req, res) => {
 // ─── PATCH /vendors/:id — Update vendor ──────────────────────────────────────
 const updateVendor = async (req, res) => {
   try {
-    const vendor = await Vendor.findByPk(req.params.id);
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const vendor = await Vendor.findOne({ where: findWhere });
     if (!vendor) return res.status(404).json({ success: false, message: 'Vendor not found' });
 
     // Exclude read-only / auto fields
@@ -162,7 +168,9 @@ const updateVendor = async (req, res) => {
 // Deactivated vendors are hidden from PO/GRN dropdowns but preserved for audit trails.
 const deleteVendor = async (req, res) => {
   try {
-    const vendor = await Vendor.findByPk(req.params.id);
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const vendor = await Vendor.findOne({ where: findWhere });
     if (!vendor) return res.status(404).json({ success: false, message: 'Vendor not found' });
     if (!vendor.is_active) {
       return res.status(400).json({ success: false, message: `"${vendor.name}" is already deactivated` });
@@ -280,7 +288,9 @@ const computeScorecard = async (vendor, since) => {
 // ─── GET /vendors/:id/scorecard — Supplier Scorecard (PRC-003) ───────────────
 const getVendorScorecard = async (req, res) => {
   try {
-    const vendor = await Vendor.findByPk(req.params.id);
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const vendor = await Vendor.findOne({ where: findWhere });
     if (!vendor) return res.status(404).json({ success: false, message: 'Vendor not found' });
 
     const since = new Date(new Date().getFullYear(), new Date().getMonth() - 12, 1);
@@ -303,8 +313,10 @@ const getVendorScorecard = async (req, res) => {
 // ─── GET /vendors/scorecard/avl — Approved Vendor List with scores ───────────
 const getVendorAvl = async (req, res) => {
   try {
+    const avlWhere = { type: 'vendor', is_active: true };
+    if (req.organizationId) avlWhere.organization_id = req.organizationId;
     const vendors = await Vendor.findAll({
-      where: { type: 'vendor', is_active: true },
+      where: avlWhere,
       order: [['name', 'ASC']],
     });
 
@@ -340,7 +352,9 @@ const getVendorAvl = async (req, res) => {
 // ─── GET /vendors/:id/scorecard/trend — Monthly trend (Quality + Delivery) ───
 const getVendorScorecardTrend = async (req, res) => {
   try {
-    const vendor = await Vendor.findByPk(req.params.id);
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const vendor = await Vendor.findOne({ where: findWhere });
     if (!vendor) return res.status(404).json({ success: false, message: 'Vendor not found' });
 
     const now = new Date();

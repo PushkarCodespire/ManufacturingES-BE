@@ -6,6 +6,7 @@ const LoginAttempt = require('../modules/auth/model/LoginAttempt');
 const Session      = require('../modules/auth/model/Session');
 const AuditLog     = require('../modules/audit/model/AuditLog');
 const Notification = require('../modules/notification/model/Notification');
+const Organization = require('../modules/masters/model/Organization');
 const Site         = require('../modules/masters/model/Site');
 const Warehouse    = require('../modules/masters/model/Warehouse');
 const Shift        = require('../modules/masters/model/Shift');
@@ -145,6 +146,7 @@ const AiAgentSetting   = require('../modules/admin/model/AiAgentSetting')(sequel
 const AiUsageLog       = require('../modules/admin/model/AiUsageLog')(sequelize);
 const AdminAuditLog    = require('../modules/admin/model/AdminAuditLog')(sequelize);
 const WhatsappLog      = require('../modules/admin/model/WhatsappLog')(sequelize);
+const ExportJob        = require('../modules/admin/model/ExportJob')(sequelize);
 // ── Sprint 4b: Madad Chat ────────────────────────────────────────────────────
 const MadadChat        = require('../modules/ai/model/MadadChat')(sequelize);
 // ── Mold Management Module ───────────────────────────────────────────────────
@@ -237,6 +239,35 @@ const ShiftHandoverItem= require('../modules/production/model/ShiftHandoverItem'
 
 // ─── Associations ────────────────────────────────────────────────────────────
 
+// Organization → User / Department / Role / Site
+Organization.hasMany(User,       { foreignKey: 'organization_id' });
+User.belongsTo(Organization,     { foreignKey: 'organization_id' });
+Organization.hasMany(Department, { foreignKey: 'organization_id' });
+Department.belongsTo(Organization, { foreignKey: 'organization_id' });
+Organization.hasMany(Role,       { foreignKey: 'organization_id' });
+Role.belongsTo(Organization,     { foreignKey: 'organization_id' });
+Organization.hasMany(Site,       { foreignKey: 'organization_id' });
+Site.belongsTo(Organization,     { foreignKey: 'organization_id' });
+Organization.hasMany(Item,       { foreignKey: 'organization_id' });
+Item.belongsTo(Organization,     { foreignKey: 'organization_id' });
+Organization.hasMany(Machine,    { foreignKey: 'organization_id' });
+Machine.belongsTo(Organization,  { foreignKey: 'organization_id' });
+Organization.hasMany(Vendor,     { foreignKey: 'organization_id' });
+Vendor.belongsTo(Organization,   { foreignKey: 'organization_id' });
+Organization.hasMany(Warehouse,  { foreignKey: 'organization_id' });
+Warehouse.belongsTo(Organization,{ foreignKey: 'organization_id' });
+Organization.hasMany(Shift,      { foreignKey: 'organization_id' });
+Shift.belongsTo(Organization,    { foreignKey: 'organization_id' });
+Organization.hasMany(WorkCenter, { foreignKey: 'organization_id' });
+WorkCenter.belongsTo(Organization,{ foreignKey: 'organization_id' });
+Organization.hasMany(Routing,    { foreignKey: 'organization_id' });
+Routing.belongsTo(Organization,  { foreignKey: 'organization_id' });
+
+// ExportJob associations
+ExportJob.belongsTo(User,         { foreignKey: 'created_by', as: 'Creator' });
+ExportJob.belongsTo(Organization, { foreignKey: 'organization_id' });
+Organization.hasMany(ExportJob,   { foreignKey: 'organization_id' });
+
 // Department → Role
 Department.hasMany(Role, { foreignKey: 'department_id', onDelete: 'RESTRICT' });
 Role.belongsTo(Department, { foreignKey: 'department_id' });
@@ -268,6 +299,18 @@ Warehouse.belongsTo(Site, { foreignKey: 'site_id' });
 // Site audit — created_by / updated_by
 Site.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
 Site.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
+
+// Site → transactional tables (multi-plant consolidation)
+Site.hasMany(WorkOrder,        { foreignKey: 'site_id' });
+WorkOrder.belongsTo(Site,      { foreignKey: 'site_id', as: 'Site' });
+Site.hasMany(Grn,              { foreignKey: 'site_id' });
+Grn.belongsTo(Site,            { foreignKey: 'site_id', as: 'Site' });
+Site.hasMany(PurchaseOrder,    { foreignKey: 'site_id' });
+PurchaseOrder.belongsTo(Site,  { foreignKey: 'site_id', as: 'Site' });
+Site.hasMany(MaterialRequest,  { foreignKey: 'site_id' });
+MaterialRequest.belongsTo(Site,{ foreignKey: 'site_id', as: 'Site' });
+Site.hasMany(DispatchOrder,    { foreignKey: 'site_id' });
+DispatchOrder.belongsTo(Site,  { foreignKey: 'site_id', as: 'Site' });
 
 // Shift audit — created_by / updated_by
 Shift.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
@@ -1262,6 +1305,7 @@ Machine.hasMany(MachineRate,      { foreignKey: 'machine_id',    as: 'MachineRat
 
 module.exports = {
   sequelize,
+  Organization,
   Department,
   Role,
   User,
@@ -1448,6 +1492,7 @@ module.exports = {
   AiUsageLog,
   AdminAuditLog,
   WhatsappLog,
+  ExportJob,
   MadadChat,
   // Maintenance Sprint 3
   EquipmentCategory,

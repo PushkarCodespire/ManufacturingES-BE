@@ -12,7 +12,7 @@ const {
   adminResetPassword,
   toggleUserStatus,
 } = require('../modules/user/controller/user.controller');
-const { authenticate, authorize } = require('../config/middleware');
+const { authenticate, authorize, tenantScope } = require('../config/middleware');
 
 // H-07 / M-06: Roles allowed to read the employee directory and the roles list.
 // Operators and viewers have no legitimate need to enumerate employees or system roles.
@@ -26,8 +26,8 @@ const USER_READ_ROLES = [
   'accounts_manager', 'hr_manager',
 ];
 
-// All user routes require authentication
-router.use(authenticate);
+// All user routes require authentication + tenant scope
+router.use(authenticate, tenantScope);
 
 // ── Lookup routes ────────────────────────────────────────────────────────────
 // IMPORTANT: these must come before /:id to avoid being matched as a param

@@ -7,9 +7,9 @@ const {
   updateItem,
   deleteItem,
 } = require('../modules/masters/controller/item.controller');
-const { authenticate, authorize } = require('../config/middleware');
+const { authenticate, authorize, tenantScope } = require('../config/middleware');
 
-router.use(authenticate);
+router.use(authenticate, tenantScope);
 
 router.get( '/',              getAllItems);
 router.post('/',    authorize('plant_head', 'it_admin'), createItem);

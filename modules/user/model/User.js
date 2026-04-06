@@ -5,6 +5,7 @@ const User = sequelize.define(
   'User',
   {
     id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    organization_id: { type: DataTypes.INTEGER, allowNull: true, comment: 'FK to organizations.id — tenant scope' },
     employee_id: {
       type:      DataTypes.STRING(20),
       allowNull: false,

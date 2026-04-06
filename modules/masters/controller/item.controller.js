@@ -12,6 +12,7 @@ const auditIncludes = [
 const getAllItems = async (req, res) => {
   try {
     const where = {};
+    if (req.organizationId) where.organization_id = req.organizationId;
     // L-04: default to active-only so deactivated items don't pollute dropdowns/BOM lookups.
     // Pass ?is_active=false to list deactivated items (admin/audit view).
     where.is_active = req.query.is_active !== undefined ? req.query.is_active === 'true' : true;
@@ -53,7 +54,9 @@ const getAllItems = async (req, res) => {
 // ─── GET /items/:id ─────────────────────────────────────────────────────────
 const getItemById = async (req, res) => {
   try {
-    const item = await Item.findByPk(req.params.id, { include: auditIncludes });
+    const where = { id: req.params.id };
+    if (req.organizationId) where.organization_id = req.organizationId;
+    const item = await Item.findOne({ where, include: auditIncludes });
     if (!item) return res.status(404).json({ success: false, message: 'Item not found' });
     return res.json({ success: true, data: item });
   } catch (err) {
@@ -71,6 +74,7 @@ const createItem = async (req, res) => {
     }
 
     const item = await Item.create({
+      organization_id: req.organizationId || null,
       code:            code.trim(),
       name:            (name || '').trim() || null,
       item_short_name: req.body.item_short_name || null,
@@ -110,7 +114,9 @@ const createItem = async (req, res) => {
 // ─── PATCH /items/:id ───────────────────────────────────────────────────────
 const updateItem = async (req, res) => {
   try {
-    const item = await Item.findByPk(req.params.id);
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const item = await Item.findOne({ where: findWhere });
     if (!item) return res.status(404).json({ success: false, message: 'Item not found' });
 
     const { id, createdAt, updatedAt, created_by, ...updateData } = req.body;
@@ -138,7 +144,9 @@ const updateItem = async (req, res) => {
 // Deactivated items are hidden from dropdowns but preserved for audit trails.
 const deleteItem = async (req, res) => {
   try {
-    const item = await Item.findByPk(req.params.id);
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const item = await Item.findOne({ where: findWhere });
     if (!item) return res.status(404).json({ success: false, message: 'Item not found' });
     if (!item.is_active) {
       return res.status(400).json({ success: false, message: `Item "${item.name || item.code}" is already deactivated` });

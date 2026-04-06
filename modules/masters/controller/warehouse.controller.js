@@ -21,6 +21,7 @@ const auditIncludes = [
 const getAllWarehouses = async (req, res) => {
   try {
     const where = {};
+    if (req.organizationId) where.organization_id = req.organizationId;
     if (req.query.is_active !== undefined) where.is_active = req.query.is_active === 'true';
     if (req.query.search) {
       where[Op.or] = [
@@ -44,7 +45,9 @@ const getAllWarehouses = async (req, res) => {
 // ─── GET /warehouses/:id ────────────────────────────────────────────────────
 const getWarehouseById = async (req, res) => {
   try {
-    const warehouse = await Warehouse.findByPk(req.params.id, { include: auditIncludes });
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const warehouse = await Warehouse.findOne({ where: findWhere, include: auditIncludes });
     if (!warehouse) return res.status(404).json({ success: false, message: 'Warehouse not found' });
     return res.json({ success: true, data: warehouse });
   } catch (err) {
@@ -64,6 +67,7 @@ const createWarehouse = async (req, res) => {
     const code = await generateCode(name.trim());
 
     const warehouse = await Warehouse.create({
+      organization_id: req.organizationId || null,
       name:    name.trim(),
       code,
       site_id: req.body.site_id || null,
@@ -107,7 +111,9 @@ const createWarehouse = async (req, res) => {
 // ─── PATCH /warehouses/:id — Update warehouse ───────────────────────────────
 const updateWarehouse = async (req, res) => {
   try {
-    const warehouse = await Warehouse.findByPk(req.params.id);
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const warehouse = await Warehouse.findOne({ where: findWhere });
     if (!warehouse) return res.status(404).json({ success: false, message: 'Warehouse not found' });
 
     // Exclude read-only / auto fields from update
@@ -131,7 +137,9 @@ const updateWarehouse = async (req, res) => {
 // ─── DELETE /warehouses/:id — Delete warehouse ──────────────────────────────
 const deleteWarehouse = async (req, res) => {
   try {
-    const warehouse = await Warehouse.findByPk(req.params.id);
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const warehouse = await Warehouse.findOne({ where: findWhere });
     if (!warehouse) return res.status(404).json({ success: false, message: 'Warehouse not found' });
 
     await warehouse.destroy();

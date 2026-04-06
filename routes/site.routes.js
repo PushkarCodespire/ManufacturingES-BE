@@ -7,10 +7,10 @@ const {
   updateSite,
   toggleSiteStatus,
 } = require('../modules/masters/controller/site.controller');
-const { authenticate, authorize } = require('../config/middleware');
+const { authenticate, authorize, tenantScope } = require('../config/middleware');
 
 // All site routes require authentication
-router.use(authenticate);
+router.use(authenticate, tenantScope);
 
 router.get( '/',              getAllSites);
 router.post('/',    authorize('plant_head', 'it_admin'), createSite);

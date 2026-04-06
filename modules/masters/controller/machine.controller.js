@@ -22,6 +22,7 @@ const auditIncludes = [
 const getAllMachines = async (req, res) => {
   try {
     const where = {};
+    if (req.organizationId) where.organization_id = req.organizationId;
     // L-04: default to active-only; deactivated machines must not appear in job card machine dropdowns.
     // Pass ?is_active=false to view deactivated machines (admin/audit view).
     where.is_active = req.query.is_active !== undefined ? req.query.is_active === 'true' : true;
@@ -47,7 +48,9 @@ const getAllMachines = async (req, res) => {
 // ─── GET /machines/:id ──────────────────────────────────────────────────────
 const getMachineById = async (req, res) => {
   try {
-    const machine = await Machine.findByPk(req.params.id, { include: auditIncludes });
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const machine = await Machine.findOne({ where: findWhere, include: auditIncludes });
     if (!machine) return res.status(404).json({ success: false, message: 'Machine not found' });
     return res.json({ success: true, data: machine });
   } catch (err) {
@@ -67,6 +70,7 @@ const createMachine = async (req, res) => {
     const code = await generateCode(name.trim());
 
     const machine = await Machine.create({
+      organization_id:    req.organizationId || null,
       name:               name.trim(),
       code,
       parent_id:          req.body.parent_id   || null,
@@ -122,6 +126,7 @@ const bulkCreateMachines = async (req, res) => {
 
       const code = await generateCode(item.name.trim());
       const machine = await Machine.create({
+        organization_id:    req.organizationId || null,
         name:               item.name.trim(),
         code,
         parent_id:          parentId,
@@ -199,7 +204,9 @@ const bulkCreateMachines = async (req, res) => {
 // ─── PATCH /machines/:id ────────────────────────────────────────────────────
 const updateMachine = async (req, res) => {
   try {
-    const machine = await Machine.findByPk(req.params.id);
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const machine = await Machine.findOne({ where: findWhere });
     if (!machine) return res.status(404).json({ success: false, message: 'Machine not found' });
 
     const { id, code, createdAt, updatedAt, created_by, parameter_ids, ...updateData } = req.body;
@@ -238,7 +245,9 @@ const updateMachine = async (req, res) => {
 // ─── PATCH /machines/:id/parameters ─────────────────────────────────────────
 const updateMachineParameters = async (req, res) => {
   try {
-    const machine = await Machine.findByPk(req.params.id);
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const machine = await Machine.findOne({ where: findWhere });
     if (!machine) return res.status(404).json({ success: false, message: 'Machine not found' });
 
     const { parameters } = req.body; // [{ parameter_id, is_production, is_barcode }]
@@ -277,7 +286,9 @@ const updateMachineParameters = async (req, res) => {
 // Deactivated machines are hidden from job card / work order machine selectors.
 const deleteMachine = async (req, res) => {
   try {
-    const machine = await Machine.findByPk(req.params.id);
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const machine = await Machine.findOne({ where: findWhere });
     if (!machine) return res.status(404).json({ success: false, message: 'Machine not found' });
     if (!machine.is_active) {
       return res.status(400).json({ success: false, message: `Machine "${machine.name}" is already deactivated` });

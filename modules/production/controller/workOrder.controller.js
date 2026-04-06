@@ -27,13 +27,14 @@ const nextWoNo    = () => generateAutoNumber(WorkOrder, 'wo_no', 'WO');
 // ── GET /work-orders ─────────────────────────────────────────────────────────
 const getAll = async (req, res) => {
   try {
-    const { search, status, machine_id, item_id, wo_type } = req.query;
+    const { search, status, machine_id, item_id, wo_type, site_id } = req.query;
     const where = {};
     if (search)     where.wo_no      = { [Op.iLike]: `%${search}%` };
     if (status)     where.status     = status;
     if (machine_id) where.machine_id = machine_id;
     if (item_id)    where.item_id    = item_id;
     if (wo_type)    where.wo_type    = wo_type;
+    if (site_id)    where.site_id    = site_id;
 
     const records = await WorkOrder.findAll({
       where,
@@ -94,6 +95,14 @@ const create = async (req, res) => {
         order: [['id', 'ASC']],
       });
       if (defaultRouting) value.routing_id = defaultRouting.id;
+    }
+
+    // Auto-set site_id from the machine's site
+    if (!value.site_id && value.machine_id) {
+      try {
+        const machine = await Machine.findByPk(value.machine_id, { attributes: ['id', 'site_id'] });
+        if (machine?.site_id) value.site_id = machine.site_id;
+      } catch (e) { console.warn('[WorkOrder.create] site_id lookup (non-fatal):', e.message); }
     }
 
     const record = await WorkOrder.create({

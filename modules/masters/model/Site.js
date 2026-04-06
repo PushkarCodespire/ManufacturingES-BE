@@ -10,6 +10,7 @@ const Site = sequelize.define(
   'Site',
   {
     id:   { type: DataTypes.INTEGER,     primaryKey: true, autoIncrement: true },
+    organization_id: { type: DataTypes.INTEGER, allowNull: true, comment: 'FK to organizations.id — tenant scope' },
     name: { type: DataTypes.STRING(100), allowNull: false },
     code: {
       type:      DataTypes.STRING(20),

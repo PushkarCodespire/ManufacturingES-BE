@@ -21,6 +21,7 @@ const getAll = async (req, res) => {
   try {
     const { search, item_id, status } = req.query;
     const where = {};
+    if (req.organizationId) where.organization_id = req.organizationId;
 
     if (search) {
       where[Op.or] = [
@@ -57,7 +58,10 @@ const getAll = async (req, res) => {
 // ── GET /routings/:id ─────────────────────────────────────────────────────────
 const getById = async (req, res) => {
   try {
-    const record = await Routing.findByPk(req.params.id, {
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const record = await Routing.findOne({
+      where: findWhere,
       include: [
         { model: Item,        attributes: ['id', 'name', 'code'] },
         {
@@ -91,6 +95,7 @@ const create = async (req, res) => {
     const routing = await Routing.create({
       ...routingData,
       code,
+      organization_id: req.organizationId || null,
       created_by: userId,
       updated_by: userId,
     });
@@ -125,7 +130,9 @@ const update = async (req, res) => {
     const { error, value } = validateUpdate(req.body);
     if (error) return res.status(400).json({ success: false, message: error.details[0].message });
 
-    const record = await Routing.findByPk(req.params.id);
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const record = await Routing.findOne({ where: findWhere });
     if (!record) return res.status(404).json({ success: false, message: 'Routing not found' });
 
     const { steps, ...routingData } = value;
@@ -168,7 +175,9 @@ const updateStatus = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid status value' });
     }
 
-    const record = await Routing.findByPk(req.params.id);
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const record = await Routing.findOne({ where: findWhere });
     if (!record) return res.status(404).json({ success: false, message: 'Routing not found' });
 
     // If activating, obsolete all other active routings for the same item
@@ -196,7 +205,9 @@ const updateStatus = async (req, res) => {
 // ── DELETE /routings/:id ──────────────────────────────────────────────────────
 const remove = async (req, res) => {
   try {
-    const record = await Routing.findByPk(req.params.id);
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const record = await Routing.findOne({ where: findWhere });
     if (!record) return res.status(404).json({ success: false, message: 'Routing not found' });
 
     await record.destroy();

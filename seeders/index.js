@@ -12,7 +12,7 @@
 
 const bcrypt = require('bcryptjs');
 const {
-  sequelize, Department, Role, User,
+  sequelize, Organization, Department, Role, User,
   MaintenancePriority, EquipmentCategory, DowntimeReason,
 } = require('../models');
 const { DEPARTMENTS, ROLES } = require('../config/constants');
@@ -55,12 +55,28 @@ async function seed() {
 
     console.log('🌱 No users found — seeding Dynatech ONE defaults...\n');
 
+    // ── Step 0: Default Organization ─────────────────────────────────────────
+    const [defaultOrg] = await Organization.findOrCreate({
+      where: { slug: 'dynatech-demo' },
+      defaults: {
+        id:                   1,
+        name:                 'Dynatech Demo',
+        email:                'admin@dynatech.com',
+        onboarding_completed: true,
+        onboarding_step:      5,
+        plan:                 'enterprise',
+        is_active:            true,
+      },
+    });
+    const orgId = defaultOrg.id;
+    console.log(`✅ Default Organization ready (id: ${orgId})`);
+
     // ── Step 1: Departments ──────────────────────────────────────────────────
     const deptMap = {}; // code → id
     for (const d of DEPARTMENTS) {
       const [dept] = await Department.findOrCreate({
-        where: { code: d.code },
-        defaults: { name: d.name },
+        where: { code: d.code, organization_id: orgId },
+        defaults: { name: d.name, organization_id: orgId },
       });
       deptMap[d.code] = dept.id;
     }
@@ -70,8 +86,8 @@ async function seed() {
     const roleMap = {}; // name → { id, dept_id }
     for (const r of ROLES) {
       const [role] = await Role.findOrCreate({
-        where: { name: r.name },
-        defaults: { label: r.label, department_id: deptMap[r.dept_code] },
+        where: { name: r.name, organization_id: orgId },
+        defaults: { label: r.label, department_id: deptMap[r.dept_code], organization_id: orgId },
       });
       roleMap[r.name] = { id: role.id, dept_id: deptMap[r.dept_code] };
     }
@@ -82,7 +98,7 @@ async function seed() {
     let created = 0;
     for (const u of SEED_USERS) {
       const [, wasCreated] = await User.findOrCreate({
-        where: { employee_id: u.employee_id },
+        where: { employee_id: u.employee_id, organization_id: orgId },
         defaults: {
           name: u.name,
           email: u.email,
@@ -90,6 +106,7 @@ async function seed() {
           password_hash: passwordHash,
           role_id: roleMap[u.role].id,
           department_id: roleMap[u.role].dept_id,
+          organization_id: orgId,
           is_first_login: false,
           is_active: true,
         },

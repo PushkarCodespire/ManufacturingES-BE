@@ -101,6 +101,7 @@ const getAllOrders = async (req, res) => {
     const where = {};
     if (req.query.status)      where.status       = req.query.status;
     if (req.query.customer_id) where.customer_id  = req.query.customer_id;
+    if (req.query.site_id)     where.site_id      = req.query.site_id;
     if (req.query.search)      where.order_number = { [Op.iLike]: '%' + req.query.search + '%' };
     if (req.query.from_date && req.query.to_date) {
       where.dispatch_date = { [Op.between]: [req.query.from_date, req.query.to_date] };
@@ -140,6 +141,14 @@ const createOrder = async (req, res) => {
 
     const { items, ...orderData } = value;
     const order_number = await generateOrderNumber();
+
+    // Auto-set site_id from warehouse
+    if (!orderData.site_id && orderData.from_warehouse_id) {
+      try {
+        const wh = await Warehouse.findByPk(orderData.from_warehouse_id, { attributes: ['id', 'site_id'] });
+        if (wh?.site_id) orderData.site_id = wh.site_id;
+      } catch (e) { console.warn('[createOrder] site_id lookup (non-fatal):', e.message); }
+    }
 
     const order = await DispatchOrder.create({
       ...orderData,

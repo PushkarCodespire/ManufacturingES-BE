@@ -1,5 +1,5 @@
 const { verifyToken } = require('../modules/auth/cred/auth.cred');
-const { User, Role, Department } = require('../models');
+const { User, Role, Department, Organization } = require('../models');
 
 // M-05: CSRF — allowed origins for cookie-consuming endpoints
 const ALLOWED_ORIGINS = process.env.FRONTEND_URL
@@ -24,6 +24,7 @@ const authenticate = async (req, res, next) => {
       include: [
         { model: Role, attributes: ['id', 'name', 'label'] },
         { model: Department, attributes: ['id', 'code', 'name'] },
+        { model: Organization, attributes: ['id', 'name', 'slug', 'plan', 'is_active'] },
       ],
     });
 
@@ -37,6 +38,7 @@ const authenticate = async (req, res, next) => {
     }
 
     req.user = user;
+    req.organizationId = user.organization_id;
     next();
   } catch (err) {
     return res.status(401).json({ success: false, message: 'Invalid or expired token' });
@@ -109,4 +111,20 @@ const validateOrigin = (req, res, next) => {
   next();
 };
 
-module.exports = { authenticate, authorize, requirePermission, validateOrigin };
+/**
+ * Tenant scope middleware — restricts queries to the authenticated user's organization.
+ * Apply per-route (not globally) after authenticate:
+ *   router.get('/resource', authenticate, tenantScope, controller)
+ *
+ * Sets req.tenantWhere for controllers to use in Sequelize queries:
+ *   const items = await Item.findAll({ where: { ...req.tenantWhere, ... } });
+ */
+const tenantScope = (req, res, next) => {
+  if (!req.organizationId) {
+    return res.status(403).json({ success: false, message: 'Organization context required' });
+  }
+  req.tenantWhere = { organization_id: req.organizationId };
+  next();
+};
+
+module.exports = { authenticate, authorize, requirePermission, validateOrigin, tenantScope };

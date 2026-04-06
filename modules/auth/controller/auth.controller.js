@@ -1,15 +1,16 @@
 const crypto = require('crypto');
 const {
-  User, Role, Department, Site, LoginAttempt, AuditLog, Session, Notification,
+  User, Role, Department, Site, Organization, LoginAttempt, AuditLog, Session, Notification,
 } = require('../../../models');
 const {
   validateLogin,
+  validateRegister,
   validateChangePassword,
   hashPassword,
   comparePassword,
   generateToken,
 } = require('../cred/auth.cred');
-const { MAX_LOGIN_ATTEMPTS, LOCKOUT_DURATION_MINUTES } = require('../../../config/constants');
+const { MAX_LOGIN_ATTEMPTS, LOCKOUT_DURATION_MINUTES, DEPARTMENTS, ROLES } = require('../../../config/constants');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -84,6 +85,30 @@ const notifyAdmins = async (type, title, message, metadata = {}) => {
   }
 };
 
+/**
+ * Generate a URL-safe slug from a company name.
+ * e.g. "Acme Manufacturing Pvt Ltd" → "acme-manufacturing-pvt-ltd"
+ */
+const slugify = (text) =>
+  text.toLowerCase().trim()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/[\s_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+
+/**
+ * Generate a unique slug by appending a random suffix if the base slug already exists.
+ */
+const uniqueSlug = async (baseName) => {
+  let slug = slugify(baseName);
+  const existing = await Organization.findOne({ where: { slug } });
+  if (existing) {
+    const suffix = crypto.randomBytes(3).toString('hex');
+    slug = `${slug}-${suffix}`;
+  }
+  return slug;
+};
+
 // ─── SYS-001: Login ───────────────────────────────────────────────────────────
 const login = async (req, res) => {
   const ip         = getIP(req);
@@ -107,46 +132,56 @@ const login = async (req, res) => {
       });
     }
 
-    const { employee_id, password } = value;
+    const { employee_id, email, password } = value;
+
+    // Build lookup condition — employee_id OR email
+    const whereClause = employee_id ? { employee_id } : { email };
+    const lookupKey   = employee_id || email;
 
     // ── Check lockout ────────────────────────────────────────────────────────
-    const attemptRecord = await LoginAttempt.findOne({ where: { employee_id } });
+    const attemptRecord = employee_id
+      ? await LoginAttempt.findOne({ where: { employee_id } })
+      : null;
 
     // ── Find user ────────────────────────────────────────────────────────────
     const user = await User.findOne({
-      where: { employee_id },
+      where: whereClause,
       include: [
-        { model: Role,       attributes: ['id', 'name', 'label'] },
-        { model: Department, attributes: ['id', 'code', 'name']  },
-        { model: Site,       attributes: ['id', 'name', 'code'], through: { attributes: [] } },
+        { model: Role,         attributes: ['id', 'name', 'label'] },
+        { model: Department,   attributes: ['id', 'code', 'name']  },
+        { model: Site,         attributes: ['id', 'name', 'code'], through: { attributes: [] } },
+        { model: Organization, attributes: ['id', 'name', 'slug', 'plan', 'is_active'] },
       ],
     });
 
     if (!user) {
-      await audit({ employee_id, action: 'FAILED_LOGIN', status: 'FAILED', ip_address: ip, user_agent, metadata: { reason: 'Employee ID not found' } });
-      return res.status(401).json({ success: false, message: 'Invalid Employee ID or password' });
+      await audit({ employee_id: employee_id || null, action: 'FAILED_LOGIN', status: 'FAILED', ip_address: ip, user_agent, metadata: { reason: 'User not found', lookup: lookupKey } });
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
     if (!user.is_active) {
-      await audit({ user_id: user.id, employee_id, action: 'FAILED_LOGIN', status: 'FAILED', ip_address: ip, user_agent, metadata: { reason: 'Account inactive' } });
+      await audit({ user_id: user.id, employee_id: user.employee_id, action: 'FAILED_LOGIN', status: 'FAILED', ip_address: ip, user_agent, metadata: { reason: 'Account inactive' } });
       return res.status(401).json({ success: false, message: 'Your account is inactive. Contact IT Admin.' });
     }
+
+    // ── Lockout check (employee_id based) ────────────────────────────────────
+    const lockoutRecord = attemptRecord || await LoginAttempt.findOne({ where: { employee_id: user.employee_id } });
 
     // ── Verify password ──────────────────────────────────────────────────────
     const isValid = await comparePassword(password, user.password_hash);
 
     if (!isValid) {
-      const currentAttempts = (attemptRecord?.attempts || 0) + 1;
+      const currentAttempts = (lockoutRecord?.attempts || 0) + 1;
       const shouldLock      = currentAttempts >= MAX_LOGIN_ATTEMPTS;
       const locked_until    = shouldLock
         ? new Date(Date.now() + LOCKOUT_DURATION_MINUTES * 60 * 1000)
         : null;
 
-      await LoginAttempt.upsert({ employee_id, attempts: currentAttempts, locked_until });
+      await LoginAttempt.upsert({ employee_id: user.employee_id, attempts: currentAttempts, locked_until });
 
       if (shouldLock) {
         await audit({
-          user_id: user.id, employee_id, action: 'ACCOUNT_LOCKED', status: 'FAILED',
+          user_id: user.id, employee_id: user.employee_id, action: 'ACCOUNT_LOCKED', status: 'FAILED',
           ip_address: ip, user_agent,
           metadata: { attempts: currentAttempts, locked_minutes: LOCKOUT_DURATION_MINUTES },
         });
@@ -155,8 +190,8 @@ const login = async (req, res) => {
         await notifyAdmins(
           'FAILED_LOGIN_ALERT',
           'Account Locked',
-          `Employee ${employee_id} (${user.name}) has been locked after ${currentAttempts} failed login attempts from IP ${ip}.`,
-          { employee_id, name: user.name, attempts: currentAttempts, ip_address: ip }
+          `Employee ${user.employee_id} (${user.name}) has been locked after ${currentAttempts} failed login attempts from IP ${ip}.`,
+          { employee_id: user.employee_id, name: user.name, attempts: currentAttempts, ip_address: ip }
         );
 
         return res.status(429).json({
@@ -166,7 +201,7 @@ const login = async (req, res) => {
       }
 
       await audit({
-        user_id: user.id, employee_id, action: 'FAILED_LOGIN', status: 'FAILED',
+        user_id: user.id, employee_id: user.employee_id, action: 'FAILED_LOGIN', status: 'FAILED',
         ip_address: ip, user_agent,
         metadata: { attempts: currentAttempts, remaining: MAX_LOGIN_ATTEMPTS - currentAttempts },
       });
@@ -178,10 +213,15 @@ const login = async (req, res) => {
     }
 
     // ── Success — clear lockout ──────────────────────────────────────────────
-    if (attemptRecord) await attemptRecord.destroy();
+    if (lockoutRecord) await lockoutRecord.destroy();
 
     // ── Generate access + refresh tokens ────────────────────────────────────
-    const accessToken  = generateToken({ id: user.id, employee_id: user.employee_id, role: user.Role.name });
+    const accessToken  = generateToken({
+      id:              user.id,
+      employee_id:     user.employee_id,
+      role:            user.Role.name,
+      organization_id: user.organization_id,
+    });
     const refreshToken = makeRefreshToken();
     const refreshHash  = hashRefreshToken(refreshToken);
 
@@ -194,7 +234,7 @@ const login = async (req, res) => {
       user_agent,
     });
 
-    await audit({ user_id: user.id, employee_id, action: 'LOGIN', status: 'SUCCESS', ip_address: ip, user_agent });
+    await audit({ user_id: user.id, employee_id: user.employee_id, action: 'LOGIN', status: 'SUCCESS', ip_address: ip, user_agent });
 
     // H-06: Set refresh token in httpOnly cookie — not accessible to JavaScript
     res.cookie(REFRESH_COOKIE, refreshToken, COOKIE_OPTS);
@@ -218,11 +258,170 @@ const login = async (req, res) => {
           is_first_login: user.is_first_login,
           permissions:    user.permissions ?? [],
         },
+        organization: user.Organization || null,
       },
     });
   } catch (err) {
     console.error('[login]', err);
     return res.status(500).json({ success: false, message: 'Server error during login' });
+  }
+};
+
+// ─── Registration — Self-Service Company Signup ──────────────────────────────
+const register = async (req, res) => {
+  const ip         = getIP(req);
+  const user_agent = req.headers['user-agent'] || null;
+
+  try {
+    const { error, value } = validateRegister(req.body);
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.details.map((d) => d.message).join(', '),
+      });
+    }
+
+    const { company_name, name, email, phone, password, industry } = value;
+
+    // ── Check email uniqueness ───────────────────────────────────────────────
+    const existingUser = await User.findOne({ where: { email } });
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: 'An account with this email already exists. Please log in instead.',
+      });
+    }
+
+    // ── Generate slug ────────────────────────────────────────────────────────
+    const slug = await uniqueSlug(company_name);
+
+    // ── Transaction: Create org → departments → roles → admin user ──────────
+    const result = await Organization.sequelize.transaction(async (t) => {
+      // 1. Create Organization
+      const org = await Organization.create({
+        name:                 company_name,
+        slug,
+        email,
+        phone:                phone || null,
+        industry:             industry || null,
+        onboarding_completed: false,
+        onboarding_step:      0,
+        plan:                 'trial',
+        is_active:            true,
+      }, { transaction: t });
+
+      // 2. Create default departments
+      const deptMap = {}; // code → id
+      for (const d of DEPARTMENTS) {
+        const dept = await Department.create({
+          code:            d.code,
+          name:            d.name,
+          organization_id: org.id,
+        }, { transaction: t });
+        deptMap[d.code] = dept.id;
+      }
+
+      // 3. Create default roles
+      const roleMap = {}; // name → { id, dept_id }
+      for (const r of ROLES) {
+        const role = await Role.create({
+          name:            r.name,
+          label:           r.label,
+          department_id:   deptMap[r.dept_code],
+          organization_id: org.id,
+        }, { transaction: t });
+        roleMap[r.name] = { id: role.id, dept_id: deptMap[r.dept_code] };
+      }
+
+      // 4. Generate employee_id for the admin user
+      // Pattern: first 2 chars of company name (uppercase) + management dept code (10) + 001
+      const prefix = company_name
+        .replace(/[^a-zA-Z]/g, '')
+        .substring(0, 2)
+        .toUpperCase()
+        .padEnd(2, 'X'); // Ensure at least 2 chars
+      const adminEmployeeId = `${prefix}10001`;
+
+      // 5. Create admin user (plant_head role — full access)
+      const password_hash = await hashPassword(password);
+      const adminUser = await User.create({
+        employee_id:     adminEmployeeId,
+        name,
+        email,
+        phone:           phone || null,
+        password_hash,
+        role_id:         roleMap['plant_head'].id,
+        department_id:   roleMap['plant_head'].dept_id,
+        organization_id: org.id,
+        is_first_login:  false,
+        is_active:       true,
+        permissions:     [],
+      }, { transaction: t });
+
+      // 6. Create session
+      const refreshToken = makeRefreshToken();
+      const refreshHash  = hashRefreshToken(refreshToken);
+      await Session.create({
+        user_id:       adminUser.id,
+        refresh_token: refreshHash,
+        expires_at:    new Date(Date.now() + 8 * 60 * 60 * 1000),
+        ip_address:    ip,
+        user_agent,
+      }, { transaction: t });
+
+      // 7. Set created_by on org now that we have the user id
+      await org.update({ created_by: adminUser.id }, { transaction: t });
+
+      return { org, adminUser, refreshToken, adminEmployeeId };
+    });
+
+    const { org, adminUser, refreshToken, adminEmployeeId } = result;
+
+    // Generate access token
+    const accessToken = generateToken({
+      id:              adminUser.id,
+      employee_id:     adminUser.employee_id,
+      role:            'plant_head',
+      organization_id: org.id,
+    });
+
+    await audit({
+      user_id: adminUser.id, employee_id: adminEmployeeId,
+      action: 'REGISTER', status: 'SUCCESS',
+      ip_address: ip, user_agent,
+      metadata: { organization_id: org.id, company_name },
+    });
+
+    // Set refresh token cookie
+    res.cookie(REFRESH_COOKIE, refreshToken, COOKIE_OPTS);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Registration successful',
+      data: {
+        token: accessToken,
+        user: {
+          id:          adminUser.id,
+          employee_id: adminUser.employee_id,
+          name:        adminUser.name,
+          email:       adminUser.email,
+          phone:       adminUser.phone,
+          role:        { id: adminUser.role_id, name: 'plant_head', label: 'Plant Head' },
+          permissions: [],
+        },
+        organization: {
+          id:                   org.id,
+          name:                 org.name,
+          slug:                 org.slug,
+          plan:                 org.plan,
+          onboarding_completed: org.onboarding_completed,
+          onboarding_step:      org.onboarding_step,
+        },
+      },
+    });
+  } catch (err) {
+    console.error('[register]', err);
+    return res.status(500).json({ success: false, message: 'Server error during registration' });
   }
 };
 
@@ -271,7 +470,12 @@ const refresh = async (req, res) => {
     // Revoke old session (token rotation for security)
     await session.update({ is_revoked: true });
 
-    const newAccessToken  = generateToken({ id: user.id, employee_id: user.employee_id, role: user.Role.name });
+    const newAccessToken  = generateToken({
+      id:              user.id,
+      employee_id:     user.employee_id,
+      role:            user.Role.name,
+      organization_id: user.organization_id,
+    });
     const newRefreshToken = makeRefreshToken();
     const newRefreshHash  = hashRefreshToken(newRefreshToken);
 
@@ -456,4 +660,4 @@ const logout = async (req, res) => {
   return res.json({ success: true, message: 'Logged out successfully' });
 };
 
-module.exports = { login, refresh, changePassword, resetPassword, getMe, logout };
+module.exports = { login, register, refresh, changePassword, resetPassword, getMe, logout };

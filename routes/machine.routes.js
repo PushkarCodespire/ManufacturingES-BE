@@ -9,9 +9,9 @@ const {
   updateMachineParameters,
   deleteMachine,
 } = require('../modules/masters/controller/machine.controller');
-const { authenticate, authorize } = require('../config/middleware');
+const { authenticate, authorize, tenantScope } = require('../config/middleware');
 
-router.use(authenticate);
+router.use(authenticate, tenantScope);
 
 router.get( '/',              getAllMachines);
 router.post('/',    authorize('plant_head', 'it_admin'), createMachine);

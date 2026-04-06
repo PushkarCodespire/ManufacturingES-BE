@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
+const organizationRoutes = require('./organization.routes');
 const authRoutes         = require('./auth.routes');
 const userRoutes         = require('./user.routes');
 const auditRoutes        = require('./audit.routes');
@@ -96,6 +97,7 @@ const adminControlRoomRoutes      = require('./admin.routes');
 const aiDashboardRoutes           = require('./aiDashboard.routes');
 const madadRoutes                 = require('./madad.routes');
 const whatsappRoutes              = require('./whatsapp.routes');
+const exportRoutes                = require('./export.routes');
 // Mold Management — Sprint 3
 const moldMasterRoutes      = require('./moldMaster.routes');
 const moldCavityRoutes      = require('./moldCavity.routes');
@@ -135,6 +137,7 @@ const maintenanceKpiRoutes   = require('./maintenanceKpi.routes');
 const maintenanceAiRoutes    = require('./maintenanceAi.routes');
 
 // Mount routes
+router.use('/organizations', organizationRoutes);
 router.use('/auth',          authRoutes);
 router.use('/users',         userRoutes);
 router.use('/audit',         auditRoutes);
@@ -229,6 +232,7 @@ router.use('/dashboard',                dashboardRoutes);
 router.use('/admin/control-room',        adminControlRoomRoutes);
 router.use('/admin/ai-dashboard',        aiDashboardRoutes);
 router.use('/admin/whatsapp',            whatsappRoutes);
+router.use('/exports',                   exportRoutes);
 router.use('/madad',                     madadRoutes);
 // Mold Management — Sprint 3
 router.use('/mold/masters',      moldMasterRoutes);

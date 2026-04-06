@@ -11,8 +11,9 @@ const WorkCenter = sequelize.define('WorkCenter', {
   capacity_per_shift: { type: DataTypes.DECIMAL(10, 2), allowNull: true, defaultValue: 0 },
   capacity_uom:       { type: DataTypes.STRING(20),     allowNull: true, defaultValue: 'pcs',
                         comment: 'pcs | hrs' },
-  description: { type: DataTypes.TEXT,    allowNull: true },
-  is_active:   { type: DataTypes.BOOLEAN, defaultValue: true },
+  description:     { type: DataTypes.TEXT,    allowNull: true },
+  organization_id: { type: DataTypes.INTEGER, allowNull: true },
+  is_active:       { type: DataTypes.BOOLEAN, defaultValue: true },
   created_by:  { type: DataTypes.INTEGER, allowNull: true },
   updated_by:  { type: DataTypes.INTEGER, allowNull: true },
 }, { tableName: 'work_centers', timestamps: true });

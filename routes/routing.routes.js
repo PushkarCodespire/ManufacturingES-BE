@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { authenticate, authorize } = require('../config/middleware');
+const { authenticate, authorize, tenantScope } = require('../config/middleware');
 const {
   getAll,
   getById,
@@ -14,7 +14,7 @@ const {
 
 const WRITE_ROLES = ['plant_head', 'it_admin', 'production_manager', 'planning_manager'];
 
-router.use(authenticate);
+router.use(authenticate, tenantScope);
 
 // ── Time Standards Analysis (Batch 1A) ────────────────────────────────────────
 router.get('/steps/time-analysis',              getTimeAnalysis);

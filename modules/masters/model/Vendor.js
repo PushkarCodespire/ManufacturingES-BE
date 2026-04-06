@@ -69,6 +69,9 @@ const Vendor = sequelize.define(
       comment:      'Array of item group tag strings',
     },
 
+    // Tenant
+    organization_id: { type: DataTypes.INTEGER, allowNull: true },
+
     // Status & audit
     is_active:  { type: DataTypes.BOOLEAN, defaultValue: true },
     created_by: { type: DataTypes.INTEGER, allowNull: true, comment: 'FK to users.id' },

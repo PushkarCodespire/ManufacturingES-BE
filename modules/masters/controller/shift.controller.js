@@ -25,7 +25,10 @@ const createShiftSchema = Joi.object({
 // ─── GET /shifts ──────────────────────────────────────────────────────────────
 const getAllShifts = async (req, res) => {
   try {
+    const where = {};
+    if (req.organizationId) where.organization_id = req.organizationId;
     const shifts = await Shift.findAll({
+      where,
       include: auditIncludes,
       order:   [['name', 'ASC']],
     });
@@ -39,7 +42,9 @@ const getAllShifts = async (req, res) => {
 // ─── GET /shifts/:id ─────────────────────────────────────────────────────────
 const getShiftById = async (req, res) => {
   try {
-    const shift = await Shift.findByPk(req.params.id, { include: auditIncludes });
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const shift = await Shift.findOne({ where: findWhere, include: auditIncludes });
     if (!shift) return res.status(404).json({ success: false, message: 'Shift not found' });
     return res.json({ success: true, data: shift });
   } catch (err) {
@@ -61,6 +66,7 @@ const createShift = async (req, res) => {
 
     const shift = await Shift.create({
       ...value,
+      organization_id: req.organizationId || null,
       created_by: req.user?.id || null,
       updated_by: req.user?.id || null,
     });
@@ -83,7 +89,9 @@ const createShift = async (req, res) => {
 // ─── PATCH /shifts/:id ───────────────────────────────────────────────────────
 const updateShift = async (req, res) => {
   try {
-    const shift = await Shift.findByPk(req.params.id);
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const shift = await Shift.findOne({ where: findWhere });
     if (!shift) return res.status(404).json({ success: false, message: 'Shift not found' });
 
     const updateSchema = createShiftSchema.fork(
@@ -110,7 +118,9 @@ const updateShift = async (req, res) => {
 // ─── DELETE /shifts/:id ──────────────────────────────────────────────────────
 const deleteShift = async (req, res) => {
   try {
-    const shift = await Shift.findByPk(req.params.id);
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const shift = await Shift.findOne({ where: findWhere });
     if (!shift) return res.status(404).json({ success: false, message: 'Shift not found' });
 
     await shift.destroy();

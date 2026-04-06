@@ -20,6 +20,8 @@ const createLqcSchema = Joi.object({
   work_order_id:   Joi.string().uuid().optional().allow(null),
   job_card_id:     Joi.string().uuid().optional().allow(null),
   inspector_id:    Joi.number().integer().positive().optional().allow(null),
+  batch_no:        Joi.string().trim().max(100).optional().allow('', null),
+  qty_rejected:    Joi.number().min(0).optional().default(0),
   notes:           Joi.string().trim().max(2000).optional().allow('', null),
   results:         Joi.array().items(resultItemSchema).optional().default([]),
 });

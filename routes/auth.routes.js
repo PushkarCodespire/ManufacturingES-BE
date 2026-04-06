@@ -3,6 +3,7 @@ const rateLimit = require('express-rate-limit');
 const router    = express.Router();
 const {
   login,
+  register,
   refresh,
   changePassword,
   resetPassword,
@@ -31,7 +32,17 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Registration limiter — 5 attempts per hour per IP (prevent abuse)
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5,
+  message: { success: false, message: 'Too many registration attempts. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // ── Public ────────────────────────────────────────────────────────────────────
+router.post('/register', registerLimiter, register);             // Self-service signup
 router.post('/login',   loginLimiter, login);                    // SYS-001
 router.post('/refresh', authLimiter, validateOrigin, refresh);   // SYS-004 — M-05: CSRF origin check
 

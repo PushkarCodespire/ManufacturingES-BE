@@ -59,11 +59,12 @@ const HEADER_INCLUDE = [
 // ── GET /grns ─────────────────────────────────────────────────────────────────
 exports.getAll = async (req, res) => {
   try {
-    const { search, status, vendor_id, warehouse_id } = req.query;
+    const { search, status, vendor_id, warehouse_id, site_id } = req.query;
     const where = {};
     if (status)       where.status = status;
     if (vendor_id)    where.vendor_id = vendor_id;
     if (warehouse_id) where.warehouse_id = warehouse_id;
+    if (site_id)      where.site_id = site_id;
     if (search) where[Op.or] = [
       { grn_no:       { [Op.iLike]: `%${search}%` } },
       { po_reference: { [Op.iLike]: `%${search}%` } },
@@ -141,6 +142,14 @@ exports.create = async (req, res) => {
           });
         }
       }
+    }
+
+    // Auto-set site_id from warehouse
+    if (!rest.site_id && rest.warehouse_id) {
+      try {
+        const wh = await Warehouse.findByPk(rest.warehouse_id, { attributes: ['id', 'site_id'] });
+        if (wh?.site_id) rest.site_id = wh.site_id;
+      } catch (e) { console.warn('[grn.create] site_id lookup (non-fatal):', e.message); }
     }
 
     const grn_no = await nextGrnNo();

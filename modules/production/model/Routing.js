@@ -10,8 +10,9 @@ const Routing = sequelize.define('Routing', {
   status:         { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'draft',
                     comment: 'draft | active | obsolete' },
   effective_date: { type: DataTypes.DATEONLY, allowNull: true },
-  notes:          { type: DataTypes.TEXT, allowNull: true },
-  created_by:     { type: DataTypes.INTEGER, allowNull: true },
+  notes:           { type: DataTypes.TEXT, allowNull: true },
+  organization_id: { type: DataTypes.INTEGER, allowNull: true },
+  created_by:      { type: DataTypes.INTEGER, allowNull: true },
   updated_by:     { type: DataTypes.INTEGER, allowNull: true },
 }, { tableName: 'routings', timestamps: true });
 

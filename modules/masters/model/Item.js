@@ -27,6 +27,7 @@ const Item = sequelize.define(
     hsn_code:        { type: DataTypes.STRING(20),  allowNull: true, comment: 'HSN / SAC code' },
     category:        { type: DataTypes.STRING(50),  allowNull: true, comment: 'Legacy — use item_group instead' },
     reorder_point:   { type: DataTypes.DECIMAL(14,3),allowNull: true, defaultValue: 0, comment: 'Minimum stock level to trigger reorder' },
+    organization_id: { type: DataTypes.INTEGER,     allowNull: true },
     is_active:       { type: DataTypes.BOOLEAN,     defaultValue: true },
     created_by:      { type: DataTypes.INTEGER,     allowNull: true, comment: 'FK to users.id' },
     updated_by:      { type: DataTypes.INTEGER,     allowNull: true, comment: 'FK to users.id' },

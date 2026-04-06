@@ -22,6 +22,8 @@ const Shift = sequelize.define(
       comment:      'Break duration in minutes',
     },
 
+    organization_id: { type: DataTypes.INTEGER, allowNull: true },
+
     is_active: { type: DataTypes.BOOLEAN, defaultValue: true },
 
     created_by: { type: DataTypes.INTEGER, comment: 'User ID who created this shift' },

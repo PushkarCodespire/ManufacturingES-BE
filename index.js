@@ -129,7 +129,10 @@ const IS_DEV  = process.env.NODE_ENV !== 'production';
       console.log('⏭️  Model sync skipped (SKIP_SYNC=true)');
     }
 
-    // ── Step 5: Start server ──────────────────────────────────────────────
+    // ── Step 5: Start export scheduler ─────────────────────────────────────
+    require('./services/exportScheduler').startExportScheduler();
+
+    // ── Step 6: Start server ──────────────────────────────────────────────
     app.listen(PORT, () => {
       console.log(`\n🚀 Dynatech ONE API  →  http://localhost:${PORT}`);
       console.log(`   Health check      →  http://localhost:${PORT}/health`);

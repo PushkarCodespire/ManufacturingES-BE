@@ -24,6 +24,7 @@ const WorkOrder = sequelize.define('WorkOrder', {
   parent_wo_id:      { type: DataTypes.UUID,       allowNull: true },
   bom_line_id:       { type: DataTypes.INTEGER,    allowNull: true },
   routing_id:        { type: DataTypes.INTEGER,    allowNull: true, references: { model: 'routings', key: 'id' } },
+  site_id:           { type: DataTypes.INTEGER, allowNull: true },
   notes:             { type: DataTypes.TEXT, allowNull: true },
   created_by:        { type: DataTypes.INTEGER, allowNull: true },
   updated_by:        { type: DataTypes.INTEGER, allowNull: true },

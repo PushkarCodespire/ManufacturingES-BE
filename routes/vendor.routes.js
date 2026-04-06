@@ -10,10 +10,10 @@ const {
   getVendorAvl,
   getVendorScorecardTrend,
 } = require('../modules/masters/controller/vendor.controller');
-const { authenticate, authorize } = require('../config/middleware');
+const { authenticate, authorize, tenantScope } = require('../config/middleware');
 
 // All vendor routes require authentication
-router.use(authenticate);
+router.use(authenticate, tenantScope);
 
 router.get( '/',                    getAllVendors);
 router.get( '/scorecard/avl',       getVendorAvl);

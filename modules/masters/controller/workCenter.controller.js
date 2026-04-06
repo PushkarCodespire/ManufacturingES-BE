@@ -19,6 +19,7 @@ const getAll = async (req, res) => {
   try {
     const { search, type, is_active } = req.query;
     const where = {};
+    if (req.organizationId) where.organization_id = req.organizationId;
 
     if (search) {
       where[Op.or] = [
@@ -44,7 +45,9 @@ const getAll = async (req, res) => {
 // ── GET /work-centers/:id ─────────────────────────────────────────────────────
 const getById = async (req, res) => {
   try {
-    const record = await WorkCenter.findByPk(req.params.id);
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const record = await WorkCenter.findOne({ where: findWhere });
     if (!record) return res.status(404).json({ success: false, message: 'Work center not found' });
     return res.json({ success: true, data: record });
   } catch (err) {
@@ -63,6 +66,7 @@ const create = async (req, res) => {
     const record = await WorkCenter.create({
       ...value,
       code,
+      organization_id: req.organizationId || null,
       created_by: req.user?.id || null,
       updated_by: req.user?.id || null,
     });
@@ -80,7 +84,9 @@ const update = async (req, res) => {
     const { error, value } = validateUpdate(req.body);
     if (error) return res.status(400).json({ success: false, message: error.details[0].message });
 
-    const record = await WorkCenter.findByPk(req.params.id);
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const record = await WorkCenter.findOne({ where: findWhere });
     if (!record) return res.status(404).json({ success: false, message: 'Work center not found' });
 
     await record.update({ ...value, updated_by: req.user?.id || null });
@@ -94,7 +100,9 @@ const update = async (req, res) => {
 // ── PATCH /work-centers/:id/toggle ───────────────────────────────────────────
 const toggleActive = async (req, res) => {
   try {
-    const record = await WorkCenter.findByPk(req.params.id);
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const record = await WorkCenter.findOne({ where: findWhere });
     if (!record) return res.status(404).json({ success: false, message: 'Work center not found' });
 
     await record.update({
@@ -111,7 +119,9 @@ const toggleActive = async (req, res) => {
 // ── DELETE /work-centers/:id ──────────────────────────────────────────────────
 const remove = async (req, res) => {
   try {
-    const record = await WorkCenter.findByPk(req.params.id);
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const record = await WorkCenter.findOne({ where: findWhere });
     if (!record) return res.status(404).json({ success: false, message: 'Work center not found' });
 
     const usedCount = await RoutingStep.count({ where: { work_center_id: req.params.id } });

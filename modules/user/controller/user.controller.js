@@ -9,6 +9,7 @@ const getAllUsers = async (req, res) => {
     const { department_id, is_active, search, roles } = req.query;
 
     const where = {};
+    if (req.organizationId) where.organization_id = req.organizationId;
     if (department_id)               where.department_id = department_id;
     if (is_active !== undefined)     where.is_active     = is_active === 'true';
     if (search) {
@@ -56,7 +57,10 @@ const getUserById = async (req, res) => {
       return res.status(400).json({ success: false, message: error.details[0].message });
     }
 
-    const user = await User.findByPk(req.params.id, {
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const user = await User.findOne({
+      where: findWhere,
       attributes: { exclude: ['password_hash'] },
       include: [
         { model: Role,       attributes: ['id', 'name', 'label'] },
@@ -131,6 +135,7 @@ const createUser = async (req, res) => {
     const password_hash    = await hashPassword(DEFAULT_PASSWORD);
 
     const user = await User.create({
+      organization_id: req.organizationId || null,
       employee_id,
       name:          value.name,
       email:         value.email,
@@ -250,7 +255,9 @@ const updateUser = async (req, res) => {
       });
     }
 
-    const user = await User.findByPk(req.params.id);
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const user = await User.findOne({ where: findWhere });
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
@@ -342,7 +349,9 @@ const adminResetPassword = async (req, res) => {
 // ─── PATCH /users/:id/toggle — Activate / deactivate user ───────────────────
 const toggleUserStatus = async (req, res) => {
   try {
-    const user = await User.findByPk(req.params.id);
+    const findWhere = { id: req.params.id };
+    if (req.organizationId) findWhere.organization_id = req.organizationId;
+    const user = await User.findOne({ where: findWhere });
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }

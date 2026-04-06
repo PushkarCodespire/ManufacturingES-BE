@@ -16,10 +16,11 @@ const HEADER_INCLUDE = [
 // ── GET /material-requests ────────────────────────────────────────────────────
 exports.getAll = async (req, res) => {
   try {
-    const { search, status, warehouse_id } = req.query;
+    const { search, status, warehouse_id, site_id } = req.query;
     const where = {};
     if (status)       where.status = status;
     if (warehouse_id) where.warehouse_id = warehouse_id;
+    if (site_id)      where.site_id = site_id;
     if (search) where[Op.or] = [{ request_no: { [Op.iLike]: `%${search}%` } }];
 
     const data = await MaterialRequest.findAll({
@@ -62,6 +63,15 @@ exports.create = async (req, res) => {
     if (error) return res.status(400).json({ success: false, message: error.details[0].message });
 
     const { items = [], ...rest } = req.body;
+
+    // Auto-set site_id from warehouse
+    if (!rest.site_id && rest.warehouse_id) {
+      try {
+        const wh = await Warehouse.findByPk(rest.warehouse_id, { attributes: ['id', 'site_id'] });
+        if (wh?.site_id) rest.site_id = wh.site_id;
+      } catch (e) { console.warn('[materialRequest.create] site_id lookup (non-fatal):', e.message); }
+    }
+
     const request_no = await nextRequestNo();
 
     const mr = await MaterialRequest.create({
