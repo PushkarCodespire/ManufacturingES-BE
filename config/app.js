@@ -16,8 +16,9 @@ const app = express();
 // ── Trust proxy — must be set before any req.ip usage ─────────────────────────
 // Set TRUST_PROXY=1 in .env when deployed behind nginx / AWS ALB / Render proxy.
 // Keeps false (direct socket IP only) for local dev with no reverse proxy.
-if (process.env.TRUST_PROXY) {
-  app.set('trust proxy', parseInt(process.env.TRUST_PROXY, 10) || process.env.TRUST_PROXY);
+// Auto-detect proxy in production (Render, Heroku, AWS, GCP all use reverse proxies)
+if (process.env.TRUST_PROXY || process.env.NODE_ENV === 'production' || process.env.RENDER) {
+  app.set('trust proxy', parseInt(process.env.TRUST_PROXY, 10) || 1);
 }
 
 // ── Security headers (helmet) ──────────────────────────────────────────────────
